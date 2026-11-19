@@ -1,0 +1,49 @@
+# Deploy
+
+The service runs in Docker and listens on `127.0.0.1:8090`. On the internet,
+put it behind a reverse proxy that terminates TLS: the service refuses to start
+with a plain `http://` public URL on a public host.
+
+## Run
+
+```bash
+git clone https://github.com/aadegtyarev/agent-artifacts.git
+cd agent-artifacts
+AA_PUBLIC_URL=https://art.example.org docker compose up -d --build
+```
+
+Put `AA_PUBLIC_URL` in a `.env` file next to `compose.yaml` to keep it across
+restarts. Files and the database live in the `data` volume.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `AA_PUBLIC_URL` | required in compose | base of the links handed out |
+| `AA_TTL_HOURS` | `48` | lifetime of an artifact after its last upload |
+| `AA_MAX_FILE_MB` | `25` | size limit of one file |
+| `AA_MAX_TOTAL_MB` | `2048` | size limit of all stored files |
+| `AA_PORT` | `8090` | host port on 127.0.0.1 (compose only) |
+
+Pass the others through `environment:` in `compose.yaml` if you change them.
+
+## Agents
+
+```bash
+docker compose exec app agent-artifacts agent add codex     # prints the key once
+docker compose exec app agent-artifacts agent list
+docker compose exec app agent-artifacts agent remove codex  # also deletes its files
+```
+
+Give the agent `AGENT_ARTIFACTS_URL` (the public URL) and `AGENT_ARTIFACTS_KEY`,
+and install the skill from `skill/agent-artifacts/`.
+
+## Reverse proxy
+
+`deploy/nginx.conf` is a starting point for nginx. Keep `client_max_body_size`
+a little above `AA_MAX_FILE_MB`. Any proxy that terminates TLS and forwards to
+`127.0.0.1:8090` works.
+
+## Update
+
+```bash
+git pull && docker compose up -d --build
+```
