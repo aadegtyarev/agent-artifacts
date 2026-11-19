@@ -8,6 +8,7 @@ import functools
 import hashlib
 import html
 import re
+import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
@@ -149,7 +150,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             except kinds.KindError as e:
                 return _error(415, e.code, str(e))
             if kind.name == "md" and size > kinds.MAX_MARKDOWN_BYTES:
-                return _error(413, "too_large", "Markdown is limited to 1 MB; use .txt or .zip")
+                return _error(413, "too_large", "Markdown is limited to 256 KB; use .txt or .zip")
             await upload.seek(0)
             try:
                 artifact = await run_in_threadpool(
@@ -242,12 +243,15 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             # Opened on its own, the content would look like a page of this
             # site; show it with the viewer's header instead.
             return RedirectResponse(f"/a/{a.id}", status_code=303)
-        headers = {"Cache-Control": "no-store", "Content-Security-Policy": RAW_CSP}
-        if kind.sandboxed:
-            headers["Content-Security-Policy"] = SANDBOX_CSP
+        csp = SANDBOX_CSP if kind.sandboxed else RAW_CSP
+        headers = {"Cache-Control": "no-store", "Content-Security-Policy": csp}
         if kind.name == "md":
             path = store.path(a.id)
-            page = await run_in_threadpool(_markdown_page, path, path.stat().st_mtime_ns, a.name)
+            try:
+                mtime = path.stat().st_mtime_ns
+                page = await run_in_threadpool(_markdown_page, path, mtime, a.name)
+            except FileNotFoundError:  # purged since the lookup
+                return _not_found()
             return HTMLResponse(page, headers=headers)
         return FileResponse(store.path(a.id), media_type=kind.mime, headers=headers)
 
@@ -372,7 +376,17 @@ _MARKDOWN = _markdown()
 
 # Rendering a large file takes seconds, so each version is rendered once and
 # not on every view; the mtime in the key drops a replaced file's page.
-@functools.lru_cache(maxsize=16)
+# Rendering peaks at several times the output size in memory, so one render
+# runs at a time.
+_RENDER_LOCK = threading.Lock()
+
+
+def _render(text: str) -> str:
+    with _RENDER_LOCK:
+        return _MARKDOWN.render(text)
+
+
+@functools.lru_cache(maxsize=8)
 def _markdown_page(path: Path, mtime_ns: int, title: str) -> str:
     text = path.read_bytes().decode("utf-8", "replace")
     return (
@@ -385,7 +399,7 @@ def _markdown_page(path: Path, mtime_ns: int, title: str) -> str:
         "code{padding:1px 4px}pre code{padding:0}table{border-collapse:collapse}"
         "th,td{border:1px solid #d2d2d7;padding:4px 8px}img{max-width:100%}"
         "blockquote{margin:0;padding-left:12px;border-left:3px solid #d2d2d7;color:#6e6e73}"
-        f"</style></head><body>{_MARKDOWN.render(text)}</body></html>"
+        f"</style></head><body>{_render(text)}</body></html>"
     )
 
 

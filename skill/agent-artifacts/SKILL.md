@@ -23,7 +23,7 @@ the user and stop.
   keys, private data or internal URLs in the file.
 - **Allowed files:** `.html` `.htm` `.md` `.txt` `.pdf` `.png` `.jpg` `.jpeg`
   `.gif` `.webp` `.svg` `.zip` `.tar.gz` `.tgz`, up to 25 MB by default;
-  Markdown up to 1 MB.
+  Markdown up to 256 KB.
 
 ## Upload, replace, delete
 
