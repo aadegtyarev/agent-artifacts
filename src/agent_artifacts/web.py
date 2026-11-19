@@ -380,7 +380,15 @@ def _markdown() -> MarkdownIt:
         tokens[idx].attrSet("id", slug if n == 0 else f"{slug}-{n}")
         return renderer.renderToken(tokens, idx, options, env)
 
+    def link_open(renderer, tokens, idx, options, env):  # noqa: ANN001, ANN202
+        # The sandbox only lets other sites open in a new tab.
+        if not str(tokens[idx].attrGet("href") or "").startswith("#"):
+            tokens[idx].attrSet("target", "_blank")
+            tokens[idx].attrSet("rel", "noopener")
+        return renderer.renderToken(tokens, idx, options, env)
+
     md.add_render_rule("heading_open", heading_open)
+    md.add_render_rule("link_open", link_open)
     return md
 
 
