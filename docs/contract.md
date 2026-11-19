@@ -81,8 +81,9 @@ Artifact JSON:
 ```
 
 Errors are `{"error": "<code>", "message": "<text>"}` with codes
-`unauthorized`, `not_found`, `too_large`, `unsupported_type`, `type_mismatch`,
-`storage_full`.
+`bad_request`, `unauthorized`, `not_found`, `too_large`, `unsupported_type`,
+`type_mismatch`, `storage_full`. Uploads must carry `Content-Length`; a body
+larger than the file limit is refused before it is read.
 
 ### Viewer pages (no auth)
 
@@ -103,7 +104,8 @@ guessed; the only listing is the owner agent's own `GET /api/v1/artifacts`.
 
 **Agent keys.** Created by `agent-artifacts agent add <name>`, which prints the
 key once. Only its SHA-256 is stored. `agent remove <name>` revokes it and
-deletes that agent's artifacts. Keys are compared in constant time.
+deletes that agent's artifacts. A key is looked up by its hash, so it is never
+compared byte by byte.
 
 **Untrusted HTML, SVG and Markdown.** Shown only from `/a/{id}/raw`, inside an
 `<iframe sandbox>` on the viewer page, and served with:

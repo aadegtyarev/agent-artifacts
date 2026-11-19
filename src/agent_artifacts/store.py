@@ -1,0 +1,195 @@
+"""Artifacts on disk, metadata and agent key hashes in SQLite.
+
+Every call opens its own connection, so the store is safe to use from the
+thread pool without a lock; SQLite serialises the writes.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import os
+import secrets
+import shutil
+import sqlite3
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
+from pathlib import Path
+from typing import BinaryIO
+
+ID_RE = r"[A-Za-z0-9_-]{22}"
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS agents (
+    name TEXT PRIMARY KEY,
+    key_hash TEXT NOT NULL UNIQUE
+);
+CREATE TABLE IF NOT EXISTS artifacts (
+    id TEXT PRIMARY KEY,
+    owner TEXT NOT NULL REFERENCES agents(name) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    created_at REAL NOT NULL,
+    expires_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS artifacts_owner ON artifacts(owner);
+CREATE INDEX IF NOT EXISTS artifacts_expires ON artifacts(expires_at);
+"""
+
+
+@dataclass(frozen=True)
+class Artifact:
+    id: str
+    owner: str
+    name: str
+    kind: str
+    size: int
+    created_at: float
+    expires_at: float
+
+
+class StorageFull(Exception):
+    pass
+
+
+def hash_key(key: str) -> str:
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
+class Store:
+    def __init__(self, data_dir: Path, *, max_total_bytes: int) -> None:
+        self.files = data_dir / "files"
+        self.cache = data_dir / "cache"
+        self.files.mkdir(parents=True, exist_ok=True)
+        self.cache.mkdir(parents=True, exist_ok=True)
+        self.max_total_bytes = max_total_bytes
+        self._db = data_dir / "meta.sqlite"
+        with self._conn() as db:
+            db.executescript(_SCHEMA)
+
+    @contextmanager
+    def _conn(self) -> Iterator[sqlite3.Connection]:
+        db = sqlite3.connect(self._db, timeout=10)
+        try:
+            db.execute("PRAGMA foreign_keys = ON")
+            with db:
+                yield db
+        finally:
+            db.close()
+
+    # Agents
+
+    def add_agent(self, name: str) -> str:
+        """Create an agent and return its key; only the hash is kept."""
+        key = "aa_" + secrets.token_urlsafe(32)
+        with self._conn() as db:
+            db.execute("INSERT INTO agents VALUES (?, ?)", (name, hash_key(key)))
+        return key
+
+    def remove_agent(self, name: str) -> bool:
+        with self._conn() as db:
+            ids = [r[0] for r in db.execute("SELECT id FROM artifacts WHERE owner = ?", (name,))]
+            gone = db.execute("DELETE FROM agents WHERE name = ?", (name,)).rowcount > 0
+        for artifact_id in ids:
+            self._unlink(artifact_id)
+        return gone
+
+    def agents(self) -> list[str]:
+        with self._conn() as db:
+            return [r[0] for r in db.execute("SELECT name FROM agents ORDER BY name")]
+
+    def agent_for_key(self, key: str) -> str | None:
+        # Looked up by hash, so the key itself is never compared byte by byte.
+        with self._conn() as db:
+            row = db.execute(
+                "SELECT name FROM agents WHERE key_hash = ?", (hash_key(key),)
+            ).fetchone()
+        return row[0] if row else None
+
+    # Artifacts
+
+    def get(self, artifact_id: str, *, owner: str | None = None) -> Artifact | None:
+        """A live artifact, optionally only if ``owner`` owns it."""
+        sql = "SELECT * FROM artifacts WHERE id = ? AND expires_at > ?"
+        args: tuple = (artifact_id, time.time())
+        if owner is not None:
+            sql += " AND owner = ?"
+            args += (owner,)
+        with self._conn() as db:
+            row = db.execute(sql, args).fetchone()
+        return Artifact(*row) if row else None
+
+    def list(self, owner: str) -> list[Artifact]:
+        with self._conn() as db:
+            rows = db.execute(
+                "SELECT * FROM artifacts WHERE owner = ? AND expires_at > ? ORDER BY created_at",
+                (owner, time.time()),
+            ).fetchall()
+        return [Artifact(*r) for r in rows]
+
+    def put(
+        self,
+        src: BinaryIO,
+        *,
+        owner: str,
+        name: str,
+        kind: str,
+        size: int,
+        ttl: int,
+        artifact_id: str | None = None,
+    ) -> Artifact:
+        """Store a new artifact, or replace ``artifact_id``. The caller has
+        already checked that ``owner`` owns ``artifact_id``."""
+        new_id = artifact_id or secrets.token_urlsafe(16)
+        tmp = self.files / f".{new_id}.{secrets.token_hex(4)}.tmp"
+        with open(tmp, "wb") as out:
+            shutil.copyfileobj(src, out)
+        now = time.time()
+        try:
+            with self._conn() as db:
+                # Hold the write lock from the size check to the insert, so two
+                # uploads cannot both fit into the same free space.
+                db.execute("BEGIN IMMEDIATE")
+                used = db.execute(
+                    "SELECT COALESCE(SUM(size), 0) FROM artifacts WHERE id != ?", (new_id,)
+                ).fetchone()[0]
+                if used + size > self.max_total_bytes:
+                    raise StorageFull
+                db.execute(
+                    "INSERT INTO artifacts VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE "
+                    "SET name = excluded.name, kind = excluded.kind, size = excluded.size, "
+                    "expires_at = excluded.expires_at",
+                    (new_id, owner, name, kind, size, now, now + ttl),
+                )
+                os.replace(tmp, self.files / new_id)
+        finally:
+            tmp.unlink(missing_ok=True)
+        self._drop_cache(new_id)
+        return self.get(new_id)  # type: ignore[return-value]
+
+    def delete(self, artifact_id: str) -> None:
+        with self._conn() as db:
+            db.execute("DELETE FROM artifacts WHERE id = ?", (artifact_id,))
+        self._unlink(artifact_id)
+
+    def purge_expired(self) -> int:
+        with self._conn() as db:
+            expired = db.execute("SELECT id FROM artifacts WHERE expires_at <= ?", (time.time(),))
+            ids = [r[0] for r in expired]
+            db.executemany("DELETE FROM artifacts WHERE id = ?", [(i,) for i in ids])
+        for artifact_id in ids:
+            self._unlink(artifact_id)
+        return len(ids)
+
+    def path(self, artifact_id: str) -> Path:
+        return self.files / artifact_id
+
+    def _unlink(self, artifact_id: str) -> None:
+        self.path(artifact_id).unlink(missing_ok=True)
+        self._drop_cache(artifact_id)
+
+    def _drop_cache(self, artifact_id: str) -> None:
+        for cached in self.cache.glob(f"{artifact_id}.*"):
+            cached.unlink(missing_ok=True)
