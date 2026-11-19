@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import time
 
@@ -66,16 +67,16 @@ def test_name_field_overrides_the_file_name(env):
     assert "filename*=UTF-8''%D0%9E%D1%82%D1%87%D1%91%D1%82.md" in dl.headers["content-disposition"]
 
 
-def test_markdown_is_rendered_without_raw_html(env):
+def test_markdown_is_sent_for_the_browser_to_render(env):
     client, _, keys = env
-    text = b"# Top\n\n<script>x()</script>\n\n[up](#top) [ext](https://example.org)\n"
-    art = upload(client, keys["alice"], "n.md", text).json()
+    text = "# Top\n\n</script><script>x()</script> [ext](https://example.org)\n"
+    art = upload(client, keys["alice"], "n.md", text.encode()).json()
     raw = client.get(f"/a/{art['id']}/raw")
-    assert '<h1 id="top">Top</h1>' in raw.text
-    assert '<a href="#top">up</a>' in raw.text
-    assert '<a href="https://example.org" target="_blank" rel="noopener">ext</a>' in raw.text
-    assert "<script>" not in raw.text
     assert raw.headers["content-security-policy"] == SANDBOX_CSP
+    assert "marked v18" in raw.text
+    # The source sits in a <script> as JSON with "<" escaped: it cannot end it.
+    assert "</script><script>x()" not in raw.text
+    assert json.dumps(text).replace("<", "\\u003c") in raw.text
 
 
 def test_image_is_shown_inline_archive_is_download_only(env):
@@ -257,10 +258,8 @@ def test_crash_leftovers_are_purged(env):
     assert not leftover.exists()
 
 
-def test_markdown_size_cap_and_raw_framing_headers(env, monkeypatch):
+def test_raw_framing_headers(env):
     client, _, keys = env
-    monkeypatch.setattr("agent_artifacts.kinds.MAX_MARKDOWN_BYTES", 10)
-    assert upload(client, keys["alice"], "a.md", b"x" * 11).json()["error"] == "too_large"
     img = upload(client, keys["alice"], "a.png", PNG).json()
     assert client.get(f"/a/{img['id']}/raw").headers["content-security-policy"] == (
         "frame-ancestors 'self'"

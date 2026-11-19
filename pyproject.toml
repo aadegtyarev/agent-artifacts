@@ -13,7 +13,6 @@ dependencies = [
     "starlette>=1.10",
     "uvicorn>=0.54",
     "python-multipart>=0.0.34",
-    "markdown-it-py>=4.3",
 ]
 
 [project.scripts]

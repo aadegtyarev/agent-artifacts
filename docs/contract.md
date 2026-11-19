@@ -32,7 +32,7 @@ content's magic bytes where the format has them. A mismatch is rejected.
 | Extension | Shown as | Extra downloads |
 | --- | --- | --- |
 | `.html`, `.htm` | the page, in a sandbox | — |
-| `.md` | rendered Markdown, in a sandbox | — |
+| `.md` | rendered in the viewer's browser, in a sandbox | — |
 | `.txt` | plain text | — |
 | `.pdf` | the browser's PDF viewer | — |
 | `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp` | the image | — |
@@ -47,7 +47,6 @@ Every artifact can be downloaded in its original form under its original name.
 | --- | --- |
 | Lifetime of an artifact | 48 h from the last upload or replace |
 | Size of one file | 25 MB |
-| Size of a Markdown file (fixed; rendered on the server, once per version, one at a time) | 256 KB |
 | Total size of all stored files | 2 GB, then uploads get `507` |
 
 ## HTTP API
@@ -124,7 +123,13 @@ cannot load anything from the network, which is why the skill requires
 self-contained files. Scripts, forms, `#anchor` links and links opening in a new
 tab work, so interactive prototypes do. `localStorage` does not.
 
-Markdown is rendered with raw HTML disabled and served the same way.
+Markdown is not rendered on the server. `/raw` sends its text as JSON inside
+a `<script>` (with `<` escaped, so the text cannot close the tag) together with
+a vendored copy of [marked](https://github.com/markedjs/marked)
+(`src/agent_artifacts/static/marked.umd.js`, v18.1.3, checked against the npm
+package's integrity hash); the viewer's browser renders it in the same sandbox.
+Raw HTML inside the Markdown runs there too, with the same limits as an HTML
+artifact.
 
 Images and PDFs are served without the sandbox, which would stop the browser's
 PDF viewer, but with `frame-ancestors 'self'`. The viewer page sends

@@ -22,8 +22,7 @@ the user and stop.
 - **Nothing secret.** The link is the only protection. No passwords, tokens,
   keys, private data or internal URLs in the file.
 - **Allowed files:** `.html` `.htm` `.md` `.txt` `.pdf` `.png` `.jpg` `.jpeg`
-  `.gif` `.webp` `.svg` `.zip` `.tar.gz` `.tgz`, up to 25 MB by default;
-  Markdown up to 256 KB.
+  `.gif` `.webp` `.svg` `.zip` `.tar.gz` `.tgz`, up to 25 MB by default.
 
 ## Upload, replace, delete
 
@@ -86,6 +85,7 @@ inside the file does not exist.
   saves to PDF. Add `@media print` rules that hide the button and avoid
   layouts tied to the window height.
 
-Markdown is rendered without raw HTML; headings get ids, so `[see](#heading-text)`
+Markdown (GitHub style, tables included) is rendered in the browser; headings
+get ids, so `[see](#heading-text)`
 links work, and links to other sites open in a new tab. For anything richer,
 write HTML.
