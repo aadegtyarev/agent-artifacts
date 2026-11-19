@@ -7,6 +7,7 @@ import base64
 import hashlib
 import html
 import logging
+import os
 import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
@@ -254,13 +255,17 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         a = live(request)
         if a is None or a.kind != "html":
             return _not_found()
-        # Named after the upload time, so a replaced page never serves the
-        # PDF of its previous version.
-        out = store.cache / f"{a.id}.{int(a.expires_at)}.pdf"
-        async with pdf_lock:  # one Chromium at a time
-            if not out.exists():
+        # Keyed by the source file's mtime, read together with its content,
+        # so a replaced page never gets the PDF of its previous version.
+        path = store.path(a.id)
+        out = store.cache / f"{a.id}.{path.stat().st_mtime_ns}.pdf"
+        if not out.exists():
+            if pdf_lock.locked():
+                return _message(503, "Busy making another PDF, try again in a minute.")
+            async with pdf_lock:  # one Chromium at a time
                 try:
-                    source = await run_in_threadpool(store.path(a.id).read_bytes)
+                    mtime, source = await run_in_threadpool(_read_with_mtime, path)
+                    out = store.cache / f"{a.id}.{mtime}.pdf"
                     await pdf.render(source.decode("utf-8", "replace"), out)
                 except Exception:
                     logger.exception("PDF rendering failed for %s", a.id)
@@ -326,6 +331,11 @@ async def _purge_forever(store: Store) -> None:
     while True:
         await run_in_threadpool(store.purge_expired)
         await asyncio.sleep(PURGE_INTERVAL_SECONDS)
+
+
+def _read_with_mtime(path: Path) -> tuple[int, bytes]:
+    with open(path, "rb") as f:
+        return os.fstat(f.fileno()).st_mtime_ns, f.read()
 
 
 def _download(path: Path, name: str, media_type: str = "application/octet-stream") -> Response:

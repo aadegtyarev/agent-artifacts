@@ -256,7 +256,6 @@ def test_crash_leftovers_are_purged(env):
 
 
 def test_html_downloads_as_pdf_without_network(env):
-    pytest.importorskip("playwright")
     client, _, keys = env
     listener = socket.create_server(("127.0.0.1", 0))
     listener.settimeout(0.5)
@@ -278,3 +277,12 @@ def test_html_downloads_as_pdf_without_network(env):
     listener.close()
     txt = upload(client, keys["alice"], "a.txt", b"x").json()
     assert client.get(f"/a/{txt['id']}/pdf").status_code == 404
+
+
+def test_replaced_page_gets_a_fresh_pdf(env):
+    client, _, keys = env
+    art = upload(client, keys["alice"], "a.html", b"<p>one</p>").json()
+    first = client.get(f"/a/{art['id']}/pdf").content
+    upload(client, keys["alice"], "a.html", b"<p>two, longer text</p>", artifact_id=art["id"])
+    second = client.get(f"/a/{art['id']}/pdf").content
+    assert first.startswith(b"%PDF-") and second.startswith(b"%PDF-") and first != second
