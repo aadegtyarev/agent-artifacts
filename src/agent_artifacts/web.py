@@ -146,8 +146,8 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
                 kind = kinds.detect(name, await upload.read(64 * 1024))
             except kinds.KindError as e:
                 return _error(415, e.code, str(e))
-            if kind.name == "md" and size > kinds.MAX_MARKDOWN_BYTES:
-                return _error(413, "too_large", "Markdown is limited to 2 MB; use .txt or .zip")
+            if kind.name in ("md", "txt") and size > kinds.MAX_TEXT_BYTES:
+                return _error(413, "too_large", "Markdown and text are limited to 2 MB; use .zip")
             await upload.seek(0)
             try:
                 artifact = await run_in_threadpool(
