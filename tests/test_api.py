@@ -1,6 +1,5 @@
 import io
 import os
-import socket
 import time
 
 import pytest
@@ -256,36 +255,3 @@ def test_crash_leftovers_are_purged(env):
     os.utime(leftover, (0, 0))
     store.purge_expired()
     assert not leftover.exists()
-
-
-def test_html_downloads_as_pdf_without_network(env):
-    client, _, keys = env
-    listener = socket.create_server(("127.0.0.1", 0))
-    listener.settimeout(0.5)
-    port = listener.getsockname()[1]
-    page = (
-        f"<h1>Report</h1><img src='http://127.0.0.1:{port}/i.png'>"
-        f"<link rel=stylesheet href='http://localhost:{port}/s.css'>"
-        f"<script>fetch('http://127.0.0.1:{port}/f');"
-        f"new WebSocket('ws://127.0.0.1:{port}/w');</script>"
-    ).encode()
-    art = upload(client, keys["alice"], "Report.html", page).json()
-    assert "Download PDF" in client.get(f"/a/{art['id']}").text
-    r = client.get(f"/a/{art['id']}/pdf")
-    assert r.status_code == 200, r.text
-    assert r.content.startswith(b"%PDF-")
-    assert 'filename="Report.pdf"' in r.headers["content-disposition"]
-    with pytest.raises(TimeoutError):
-        listener.accept()
-    listener.close()
-    txt = upload(client, keys["alice"], "a.txt", b"x").json()
-    assert client.get(f"/a/{txt['id']}/pdf").status_code == 404
-
-
-def test_replaced_page_gets_a_fresh_pdf(env):
-    client, _, keys = env
-    art = upload(client, keys["alice"], "a.html", b"<p>one</p>").json()
-    first = client.get(f"/a/{art['id']}/pdf").content
-    upload(client, keys["alice"], "a.html", b"<p>two, longer text</p>", artifact_id=art["id"])
-    second = client.get(f"/a/{art['id']}/pdf").content
-    assert first.startswith(b"%PDF-") and second.startswith(b"%PDF-") and first != second

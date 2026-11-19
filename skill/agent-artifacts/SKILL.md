@@ -6,7 +6,7 @@ description: Share a file with a person as a link — an HTML page, report, prot
 # agent-artifacts
 
 Upload a file, get a link. The person opens it in a browser, downloads it
-(HTML also as PDF) or forwards it. Anyone with the link can open it, without
+or forwards it. Anyone with the link can open it, without
 logging in. Files are deleted some time after the last upload (48 hours by
 default; the service reports `expires_at`).
 
@@ -80,8 +80,10 @@ inside the file does not exist.
   JS variables: `localStorage`, `sessionStorage`, cookies and
   IndexedDB are unavailable and throw.
 - **Links to other sites** open only in a new tab: use `target="_blank"`.
-- **Print-friendly:** the PDF download renders this same page, so avoid layouts
-  that depend on the window height, and add `@media print` rules if needed.
+- **PDF:** there is none on the server. If the person may want one, add a
+  Print button (`onclick="window.print()"`): the browser's print dialog
+  saves to PDF. Add `@media print` rules that hide the button and avoid
+  layouts tied to the window height.
 
 Markdown is rendered without raw HTML; headings get ids, so `[see](#heading-text)`
 links work, and links to other sites open in a new tab. For anything richer,

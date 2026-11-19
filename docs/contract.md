@@ -8,7 +8,8 @@ deleted. Agents use it through a skill that wraps three `curl` calls.
 
 1. An agent finishes a report as an HTML page and uploads it. It gives the
    person the link. The person opens it in a browser, sees the page with its
-   styles and working anchors, and downloads it as HTML or as PDF.
+   styles and working anchors, and downloads it. For a PDF, the person prints
+   the page to PDF in the browser; there is no PDF rendering on the server.
 2. The agent revises the same report three times during one job. Each time it
    replaces the file at the same link, so the person keeps one link.
 3. The agent uploads a screenshot, a Markdown note, a PDF or a zip of results.
@@ -30,7 +31,7 @@ content's magic bytes where the format has them. A mismatch is rejected.
 
 | Extension | Shown as | Extra downloads |
 | --- | --- | --- |
-| `.html`, `.htm` | the page, in a sandbox | PDF |
+| `.html`, `.htm` | the page, in a sandbox | — |
 | `.md` | rendered Markdown, in a sandbox | — |
 | `.txt` | plain text | — |
 | `.pdf` | the browser's PDF viewer | — |
@@ -47,7 +48,6 @@ Every artifact can be downloaded in its original form under its original name.
 | Lifetime of an artifact | 48 h from the last upload or replace |
 | Size of one file | 25 MB |
 | Total size of all stored files | 2 GB, then uploads get `507` |
-| PDF render timeout (fixed) | 20 s |
 
 ## HTTP API
 
@@ -89,10 +89,9 @@ larger than the file limit is refused before it is read.
 
 | Path | What |
 | --- | --- |
-| `/a/{id}` | page with the name, expiry, the content, and buttons: Download, Download PDF (HTML only), Copy link |
+| `/a/{id}` | page with the name, expiry, the content, and buttons: Download, Copy link |
 | `/a/{id}/raw` | the content itself, with the sandbox headers below; opened as a page on its own, it redirects to `/a/{id}` |
 | `/a/{id}/download` | the original file as an attachment under its name |
-| `/a/{id}/pdf` | HTML rendered to PDF, built on first request and cached until the file is replaced, deleted or expires; `503` while another PDF is being made, `502` if rendering fails |
 
 A missing or expired id gives a `404` page saying so. Pages carry
 `X-Robots-Tag: noindex` and `Referrer-Policy: no-referrer`.
@@ -126,15 +125,6 @@ tab work, so interactive prototypes do. `localStorage` does not.
 
 Markdown is rendered with raw HTML disabled and served the same way.
 
-**PDF rendering.** Headless Chromium on the server. Every request the page
-makes is aborted, the browser's proxy is a closed port with no loopback
-exception (this also stops WebSockets and DNS lookups), WebRTC may not send UDP
-outside the proxy, and the context is offline. The page is loaded from memory,
-with no file:// origin. One render at a time, a 20 s timeout, a 512 MB
-JavaScript heap, and a PDF over 50 MB is discarded.
-Chromium runs without its own sandbox (it needs user namespaces), so the
-service must run as an unprivileged user in a container with a memory limit.
-
 **Transport.** The service itself speaks plain HTTP on `127.0.0.1`. It refuses
 to start when its `public_url` is `http://` and the host is not loopback, a
 private-range address or a `.local` / `.lan` name: on the internet it must sit
@@ -142,14 +132,14 @@ behind a TLS reverse proxy.
 
 ## Storage and cleanup
 
-Files under `<data>/files/<id>`, cached PDFs under `<data>/cache/<id>.pdf`,
+Files under `<data>/files/<id>`,
 metadata and key hashes in `<data>/meta.sqlite`. A background task deletes
 expired artifacts every 10 minutes, and expired ids already answer `404` before
 that.
 
 ## Deployment
 
-Docker image with the app and Chromium, `docker compose` binding
+Docker image with the app, `docker compose` binding
 `127.0.0.1:<port>` and a volume for `<data>`. In front, the host's reverse proxy
 terminates TLS (on adbluedog: an nginx vhost with an acme.sh certificate,
 `client_max_body_size` above the size limit).
@@ -165,5 +155,5 @@ teaches:
 - HTML must be one self-contained file: inline CSS and JS, images as `data:`
   URIs, no CDN or web fonts, internal navigation by `#anchor`, no
   `localStorage`;
-- what the person can do with the link (view, download, PDF, forward) and that
+- what the person can do with the link (view, download, forward) and that
   it expires.

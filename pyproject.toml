@@ -14,7 +14,6 @@ dependencies = [
     "uvicorn>=0.54",
     "python-multipart>=0.0.34",
     "markdown-it-py>=4.3",
-    "playwright>=1.65",
 ]
 
 [project.scripts]
