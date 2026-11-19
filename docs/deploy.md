@@ -39,7 +39,11 @@ and install the skill from `skill/agent-artifacts/`.
 ## Reverse proxy
 
 `deploy/nginx.conf` is a starting point for nginx. Keep `client_max_body_size`
-a little above `AA_MAX_FILE_MB`. Any proxy that terminates TLS and forwards to
+a little above `AA_MAX_FILE_MB`. It limits each client IP to 10 requests a
+second for viewing (bursts up to 40), 2 a second for the agent API (bursts up
+to 10) and 20 connections; over that, nginx answers `429` without reaching the
+app. This stops a single noisy client, not a distributed flood: that needs the
+hosting provider or a CDN in front. Any proxy that terminates TLS and forwards to
 `127.0.0.1:8090` works.
 
 ## Update
