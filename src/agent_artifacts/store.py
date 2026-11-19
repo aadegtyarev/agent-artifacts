@@ -61,9 +61,7 @@ def hash_key(key: str) -> str:
 class Store:
     def __init__(self, data_dir: Path, *, max_total_bytes: int) -> None:
         self.files = data_dir / "files"
-        self.cache = data_dir / "cache"
         self.files.mkdir(parents=True, exist_ok=True)
-        self.cache.mkdir(parents=True, exist_ok=True)
         self.max_total_bytes = max_total_bytes
         self._db = data_dir / "meta.sqlite"
         with self._conn() as db:
@@ -176,7 +174,6 @@ class Store:
                 os.replace(tmp, self.files / new_id)
         finally:
             tmp.unlink(missing_ok=True)
-        self._drop_cache(new_id)
         return Artifact(new_id, owner, name, kind, size, created, now + ttl)
 
     def delete(self, artifact_id: str, *, owner: str) -> bool:
@@ -209,8 +206,3 @@ class Store:
 
     def _unlink(self, artifact_id: str) -> None:
         self.path(artifact_id).unlink(missing_ok=True)
-        self._drop_cache(artifact_id)
-
-    def _drop_cache(self, artifact_id: str) -> None:
-        for cached in self.cache.glob(f"{artifact_id}.*"):
-            cached.unlink(missing_ok=True)

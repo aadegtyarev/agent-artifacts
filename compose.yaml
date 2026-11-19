@@ -3,8 +3,6 @@ services:
     build: .
     image: agent-artifacts:local
     restart: unless-stopped
-    # Reaps Chromium processes killed on timeout.
-    init: true
     ports:
       - "127.0.0.1:${AA_PORT:-8090}:8090"
     environment:
@@ -14,9 +12,8 @@ services:
     read_only: true
     tmpfs:
       - /tmp:size=128m
-    shm_size: 256m
-    mem_limit: 1g
-    pids_limit: 512
+    mem_limit: 256m
+    pids_limit: 128
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
