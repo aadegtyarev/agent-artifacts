@@ -277,3 +277,13 @@ def test_replaced_markdown_is_rendered_again(env):
     time.sleep(0.01)
     upload(client, keys["alice"], "a.md", b"# Two", artifact_id=art["id"])
     assert "Two" in client.get(f"/a/{art['id']}/raw").text
+
+
+def test_text_is_shown_with_fixed_colours_and_escaped(env):
+    client, _, keys = env
+    art = upload(client, keys["alice"], "a.txt", "<b>привет</b>".encode()).json()
+    raw = client.get(f"/a/{art['id']}/raw")
+    assert raw.headers["content-type"].startswith("text/html")
+    assert raw.headers["content-security-policy"] == SANDBOX_CSP
+    assert "<pre>&lt;b&gt;привет&lt;/b&gt;</pre>" in raw.text
+    assert "color:#1d1d1f;background:#fff" in raw.text

@@ -242,9 +242,10 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             return RedirectResponse(f"/a/{a.id}", status_code=303)
         csp = SANDBOX_CSP if kind.sandboxed else RAW_CSP
         headers = {"Cache-Control": "no-store", "Content-Security-Policy": csp}
-        if kind.name == "md":
+        if kind.name in ("md", "txt"):
+            build = _markdown_page if kind.name == "md" else _text_page
             try:
-                page = await run_in_threadpool(_markdown_page, store.path(a.id), a.name)
+                page = await run_in_threadpool(build, store.path(a.id), a.name)
             except FileNotFoundError:  # purged since the lookup
                 return _not_found()
             return HTMLResponse(page, headers=headers)
@@ -356,6 +357,21 @@ for (const a of document.querySelectorAll("a[href]")) {
   if (!a.getAttribute("href").startsWith("#")) { a.target = "_blank"; a.rel = "noopener"; }
 }
 """
+
+
+def _text_page(path: Path, title: str) -> str:
+    """Plain text in a page with fixed colours: a bare text/plain document
+    follows the browser's dark mode and turns white-on-white in the frame."""
+    text = html.escape(path.read_bytes().decode("utf-8", "replace"))
+    return (
+        '<!doctype html><html><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        f"<title>{html.escape(title)}</title><style>"
+        "body{margin:0;padding:16px;color:#1d1d1f;background:#fff}"
+        "pre{margin:0;font:14px/1.5 ui-monospace,monospace;white-space:pre-wrap;"
+        "overflow-wrap:anywhere}"
+        f"</style></head><body><pre>{text}</pre></body></html>"
+    )
 
 
 def _markdown_page(path: Path, title: str) -> str:
