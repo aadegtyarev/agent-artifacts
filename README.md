@@ -21,4 +21,4 @@ files: [docs/contract.md](docs/contract.md).
 
 ## License
 
-MIT
+[MIT](LICENSE). Author: Alexander Degtyarev <adegtyarev.ap@gmail.com>.
