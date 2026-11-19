@@ -53,6 +53,8 @@ _EXTENSIONS = {
 }
 
 MAX_NAME = 200
+# Markdown is rendered on the server; past this it costs seconds per file.
+MAX_MARKDOWN_BYTES = 1024 * 1024
 
 
 class KindError(ValueError):

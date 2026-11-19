@@ -35,7 +35,8 @@ def main(argv: list[str] | None = None) -> int:
 
         from .web import create_app
 
-        uvicorn.run(create_app(config), host=args.host, port=args.port)
+        # No access log: the link in each request line is the access to the file.
+        uvicorn.run(create_app(config), host=args.host, port=args.port, access_log=False)
         return 0
 
     store = Store(config.data_dir, max_total_bytes=config.max_total_bytes)
