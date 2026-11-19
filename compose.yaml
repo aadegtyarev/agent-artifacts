@@ -13,7 +13,7 @@ services:
     tmpfs:
       - /tmp:size=128m
     mem_limit: 256m
-    pids_limit: 64
+    pids_limit: 128
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
