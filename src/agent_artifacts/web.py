@@ -4,18 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import functools
 import hashlib
 import html
-import re
-import threading
+import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote
 
-from markdown_it import MarkdownIt
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
 from starlette.convertors import StringConvertor, register_url_convertor
@@ -150,7 +147,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             except kinds.KindError as e:
                 return _error(415, e.code, str(e))
             if kind.name == "md" and size > kinds.MAX_MARKDOWN_BYTES:
-                return _error(413, "too_large", "Markdown is limited to 256 KB; use .txt or .zip")
+                return _error(413, "too_large", "Markdown is limited to 2 MB; use .txt or .zip")
             await upload.seek(0)
             try:
                 artifact = await run_in_threadpool(
@@ -246,10 +243,8 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         csp = SANDBOX_CSP if kind.sandboxed else RAW_CSP
         headers = {"Cache-Control": "no-store", "Content-Security-Policy": csp}
         if kind.name == "md":
-            path = store.path(a.id)
             try:
-                mtime = path.stat().st_mtime_ns
-                page = await run_in_threadpool(_markdown_page, path, mtime, a.name)
+                page = await run_in_threadpool(_markdown_page, store.path(a.id), a.name)
             except FileNotFoundError:  # purged since the lookup
                 return _not_found()
             return HTMLResponse(page, headers=headers)
@@ -344,51 +339,29 @@ def _message(status: int, text: str) -> HTMLResponse:
     )
 
 
-def _markdown() -> MarkdownIt:
-    md = MarkdownIt("commonmark", {"html": False}).enable(["table", "strikethrough"])
+_MARKED_JS = (Path(__file__).parent / "static" / "marked.umd.js").read_text(encoding="utf-8")
 
-    def heading_open(renderer, tokens, idx, options, env):  # noqa: ANN001, ANN202
-        # Give headings an id so "#section" links and copied anchors work.
-        inline = tokens[idx + 1]
-        slug = (
-            re.sub(r"[^\w\- ]", "", inline.content.lower()).strip().replace(" ", "-") or "section"
-        )
-        seen = env.setdefault("slugs", {})
-        n = seen.get(slug, 0)
-        seen[slug] = n + 1
-        tokens[idx].attrSet("id", slug if n == 0 else f"{slug}-{n}")
-        return renderer.renderToken(tokens, idx, options, env)
-
-    def link_open(renderer, tokens, idx, options, env):  # noqa: ANN001, ANN202
-        # The sandbox only lets other sites open in a new tab.
-        if not str(tokens[idx].attrGet("href") or "").startswith("#"):
-            tokens[idx].attrSet("target", "_blank")
-            tokens[idx].attrSet("rel", "noopener")
-        return renderer.renderToken(tokens, idx, options, env)
-
-    md.add_render_rule("heading_open", heading_open)
-    md.add_render_rule("link_open", link_open)
-    return md
+# Runs in the viewer's browser, inside the sandbox: heading ids for #anchor
+# links, and links to other sites in a new tab (the only way out of it).
+_MARKDOWN_JS = """
+document.body.innerHTML = marked.parse(SOURCE);
+const seen = {};
+for (const h of document.querySelectorAll("h1,h2,h3,h4,h5,h6")) {
+  const slug = h.textContent.toLowerCase().trim()
+    .replace(/[^\\p{L}\\p{N}\\- ]/gu, "").replace(/ /g, "-") || "section";
+  const n = seen[slug] = (seen[slug] || 0) + 1;
+  h.id = n > 1 ? `${slug}-${n - 1}` : slug;
+}
+for (const a of document.querySelectorAll("a[href]")) {
+  if (!a.getAttribute("href").startsWith("#")) { a.target = "_blank"; a.rel = "noopener"; }
+}
+"""
 
 
-_MARKDOWN = _markdown()
-
-
-# Rendering a large file takes seconds, so each version is rendered once and
-# not on every view; the mtime in the key drops a replaced file's page.
-# Rendering peaks at several times the output size in memory, so one render
-# runs at a time.
-_RENDER_LOCK = threading.Lock()
-
-
-def _render(text: str) -> str:
-    with _RENDER_LOCK:
-        return _MARKDOWN.render(text)
-
-
-@functools.lru_cache(maxsize=8)
-def _markdown_page(path: Path, mtime_ns: int, title: str) -> str:
-    text = path.read_bytes().decode("utf-8", "replace")
+def _markdown_page(path: Path, title: str) -> str:
+    """The Markdown source and a renderer; the viewer's browser does the work."""
+    # "<" escaped so the text cannot close the <script> it sits in.
+    source = json.dumps(path.read_bytes().decode("utf-8", "replace")).replace("<", "\\u003c")
     return (
         '<!doctype html><html><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
@@ -399,7 +372,8 @@ def _markdown_page(path: Path, mtime_ns: int, title: str) -> str:
         "code{padding:1px 4px}pre code{padding:0}table{border-collapse:collapse}"
         "th,td{border:1px solid #d2d2d7;padding:4px 8px}img{max-width:100%}"
         "blockquote{margin:0;padding-left:12px;border-left:3px solid #d2d2d7;color:#6e6e73}"
-        f"</style></head><body>{_render(text)}</body></html>"
+        f"</style></head><body><script>{_MARKED_JS}</script>"
+        f"<script>const SOURCE = {source};{_MARKDOWN_JS}</script></body></html>"
     )
 
 
