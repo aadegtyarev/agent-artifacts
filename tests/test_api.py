@@ -293,6 +293,6 @@ def test_image_opens_full_size_on_its_own(env):
     client, _, keys = env
     img = upload(client, keys["alice"], "a.png", PNG).json()
     page = client.get(f"/a/{img['id']}").text
-    assert f'<a href="/a/{img["id"]}/raw" target="_blank">' in page
+    assert f'<a href="/a/{img["id"]}/raw" target="_blank" rel="noopener">' in page
     r = client.get(f"/a/{img['id']}/raw", headers={"Sec-Fetch-Dest": "document"})
     assert (r.status_code, r.headers["content-type"]) == (200, "image/png")

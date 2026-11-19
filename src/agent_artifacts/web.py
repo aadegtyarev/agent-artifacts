@@ -209,7 +209,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         elif kind.viewable:
             # A click opens it full size in the browser's image viewer.
             content = (
-                f'<div class="center"><a href="{raw}" target="_blank">'
+                f'<div class="center"><a href="{raw}" target="_blank" rel="noopener">'
                 f'<img src="{raw}" alt="{html.escape(a.name)}"></a></div>'
             )
         else:
