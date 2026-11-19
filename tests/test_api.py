@@ -69,9 +69,12 @@ def test_name_field_overrides_the_file_name(env):
 
 def test_markdown_is_rendered_without_raw_html(env):
     client, _, keys = env
-    art = upload(client, keys["alice"], "n.md", b"# Top\n\n<script>x()</script>\n").json()
+    text = b"# Top\n\n<script>x()</script>\n\n[up](#top) [ext](https://example.org)\n"
+    art = upload(client, keys["alice"], "n.md", text).json()
     raw = client.get(f"/a/{art['id']}/raw")
     assert '<h1 id="top">Top</h1>' in raw.text
+    assert '<a href="#top">up</a>' in raw.text
+    assert '<a href="https://example.org" target="_blank" rel="noopener">ext</a>' in raw.text
     assert "<script>" not in raw.text
     assert raw.headers["content-security-policy"] == SANDBOX_CSP
 
