@@ -35,7 +35,7 @@ content's magic bytes where the format has them. A mismatch is rejected.
 | `.md` | rendered in the viewer's browser, in a sandbox | — |
 | `.txt` | plain text, dark on white, in a sandbox | — |
 | `.pdf` | the browser's PDF viewer | — |
-| `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp` | the image | — |
+| `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp` | the image, fitted; a click opens it full size | — |
 | `.svg` | the image, in a sandbox | — |
 | `.zip`, `.tar.gz`, `.tgz` | name, size, download button | — |
 
@@ -91,7 +91,7 @@ larger than the file limit is refused before it is read.
 | Path | What |
 | --- | --- |
 | `/a/{id}` | page with the name, expiry, the content, and buttons: Download, Copy link |
-| `/a/{id}/raw` | the content itself, with the sandbox headers below; opened as a page on its own, it redirects to `/a/{id}` |
+| `/a/{id}/raw` | the content itself, with the sandbox headers below; opened as a page on its own, HTML, SVG, Markdown and text redirect to `/a/{id}`, while images and PDFs open in the browser's own viewer |
 | `/a/{id}/download` | the original file as an attachment under its name |
 
 A missing or expired id gives a `404` page saying so. Pages carry
