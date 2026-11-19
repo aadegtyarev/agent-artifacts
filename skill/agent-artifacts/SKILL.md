@@ -63,6 +63,7 @@ as `{"error": "<code>", "message": "…"}`:
 | `too_large` | shrink the file or zip it |
 | `unsupported_type`, `type_mismatch` | fix the extension or the content |
 | `storage_full` | the service is full; tell the user |
+| HTTP 429 | too many requests; wait a few seconds and retry |
 
 ## Writing HTML that works there
 
