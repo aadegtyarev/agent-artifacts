@@ -10,6 +10,7 @@ import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
+from pathlib import Path
 from urllib.parse import quote
 
 from markdown_it import MarkdownIt
@@ -19,7 +20,13 @@ from starlette.convertors import StringConvertor, register_url_convertor
 from starlette.datastructures import MutableHeaders, UploadFile
 from starlette.middleware import Middleware
 from starlette.requests import Request
-from starlette.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from starlette.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+)
 from starlette.routing import Route
 
 from . import kinds
@@ -153,6 +160,8 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
                 return _error(507, "storage_full", "the service is out of space, try later")
         finally:
             await form.close()
+        if artifact is None:
+            return _error(404, "not_found", "no such artifact")
         return JSONResponse(as_json(artifact), status_code=200 if artifact_id else 201)
 
     async def collection(request: Request) -> Response:
@@ -168,15 +177,17 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         if agent is None:
             return _error(401, "unauthorized", "missing or unknown agent key")
         artifact_id = request.path_params["id"]
-        if store.get(artifact_id, owner=agent) is None:
-            return _error(404, "not_found", "no such artifact")
         if request.method == "DELETE":
-            await run_in_threadpool(store.delete, artifact_id)
-            return Response(status_code=204)
-        return await save(request, agent, artifact_id)
+            if await run_in_threadpool(store.delete, artifact_id, owner=agent):
+                return Response(status_code=204)
+        elif store.get(artifact_id, owner=agent) is not None:
+            return await save(request, agent, artifact_id)
+        return _error(404, "not_found", "no such artifact")
 
     def live(request: Request) -> Artifact | None:
-        return store.get(request.path_params["id"])
+        a = store.get(request.path_params["id"])
+        # The file may be gone already if the purge ran since the lookup.
+        return a if a and store.path(a.id).exists() else None
 
     async def view(request: Request) -> Response:
         a = live(request)
@@ -215,12 +226,16 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         kind = kinds.get(a.kind)
         if not kind.viewable:
             return _download(store, a)
+        if request.headers.get("sec-fetch-dest") == "document":
+            # Opened on its own, the content would look like a page of this
+            # site; show it with the viewer's header instead.
+            return RedirectResponse(f"/a/{a.id}", status_code=303)
         headers = {"Cache-Control": "no-store"}
         if kind.sandboxed:
             headers["Content-Security-Policy"] = SANDBOX_CSP
         if kind.name == "md":
-            text = (await run_in_threadpool(store.path(a.id).read_bytes)).decode("utf-8", "replace")
-            return HTMLResponse(_markdown_page(markdown, text, a.name), headers=headers)
+            page = await run_in_threadpool(_markdown_page, markdown, store.path(a.id), a.name)
+            return HTMLResponse(page, headers=headers)
         return FileResponse(store.path(a.id), media_type=kind.mime, headers=headers)
 
     async def download(request: Request) -> Response:
@@ -304,7 +319,7 @@ def _not_found() -> HTMLResponse:
     return HTMLResponse(
         _PAGE.format(title="Not found", body=body),
         status_code=404,
-        headers={"Content-Security-Policy": VIEWER_CSP},
+        headers={"Content-Security-Policy": VIEWER_CSP, "Cache-Control": "no-store"},
     )
 
 
@@ -314,7 +329,9 @@ def _markdown() -> MarkdownIt:
     def heading_open(renderer, tokens, idx, options, env):  # noqa: ANN001, ANN202
         # Give headings an id so "#section" links and copied anchors work.
         inline = tokens[idx + 1]
-        slug = re.sub(r"[^\w\- ]", "", inline.content.lower()).strip().replace(" ", "-")
+        slug = (
+            re.sub(r"[^\w\- ]", "", inline.content.lower()).strip().replace(" ", "-") or "section"
+        )
         seen = env.setdefault("slugs", {})
         n = seen.get(slug, 0)
         seen[slug] = n + 1
@@ -325,7 +342,8 @@ def _markdown() -> MarkdownIt:
     return md
 
 
-def _markdown_page(md: MarkdownIt, text: str, title: str) -> str:
+def _markdown_page(md: MarkdownIt, path: Path, title: str) -> str:
+    text = path.read_bytes().decode("utf-8", "replace")
     return (
         '<!doctype html><html><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'

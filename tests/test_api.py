@@ -1,3 +1,5 @@
+import io
+import os
 import time
 
 import pytest
@@ -210,3 +212,43 @@ def test_public_url_must_be_https_on_public_hosts(url, ok):
     else:
         with pytest.raises(ValueError):
             check_public_url(url)
+
+
+def test_raw_opened_as_a_page_goes_to_the_viewer(env):
+    client, _, keys = env
+    art = upload(client, keys["alice"], "a.html", b"<p>x</p>").json()
+    r = client.get(
+        f"/a/{art['id']}/raw", headers={"Sec-Fetch-Dest": "document"}, follow_redirects=False
+    )
+    assert (r.status_code, r.headers["location"]) == (303, f"/a/{art['id']}")
+    framed = client.get(f"/a/{art['id']}/raw", headers={"Sec-Fetch-Dest": "iframe"})
+    assert framed.content == b"<p>x</p>"
+
+
+def test_replace_of_an_expired_artifact_is_not_found(env):
+    client, store, keys = env
+    art = upload(client, keys["alice"], "a.txt", b"x").json()
+    with store._conn() as db:
+        db.execute("UPDATE artifacts SET expires_at = 0")
+    assert upload(client, keys["alice"], "a.txt", b"y", artifact_id=art["id"]).status_code == 404
+    assert (
+        store.put(
+            io.BytesIO(b"y"),
+            owner="bob",
+            name="a.txt",
+            kind="txt",
+            size=1,
+            ttl=60,
+            artifact_id=art["id"],
+        )
+        is None
+    )
+
+
+def test_crash_leftovers_are_purged(env):
+    _, store, _ = env
+    leftover = store.files / ".abc.tmp"
+    leftover.write_bytes(b"x")
+    os.utime(leftover, (0, 0))
+    store.purge_expired()
+    assert not leftover.exists()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import sqlite3
 import sys
 
 from .config import Config
@@ -34,7 +35,7 @@ def main(argv: list[str] | None = None) -> int:
 
         from .web import create_app
 
-        uvicorn.run(create_app(config), host=args.host, port=args.port, proxy_headers=False)
+        uvicorn.run(create_app(config), host=args.host, port=args.port)
         return 0
 
     store = Store(config.data_dir, max_total_bytes=config.max_total_bytes)
@@ -42,10 +43,11 @@ def main(argv: list[str] | None = None) -> int:
         if not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", args.name):
             print("error: name may use letters, digits, '.', '_', '-'", file=sys.stderr)
             return 2
-        if args.name in store.agents():
+        try:
+            print(store.add_agent(args.name))
+        except sqlite3.IntegrityError:
             print(f"error: agent {args.name!r} already exists", file=sys.stderr)
             return 1
-        print(store.add_agent(args.name))
     elif args.action == "remove":
         if not store.remove_agent(args.name):
             print(f"error: no agent {args.name!r}", file=sys.stderr)

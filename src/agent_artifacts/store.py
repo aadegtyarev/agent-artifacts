@@ -139,9 +139,9 @@ class Store:
         size: int,
         ttl: int,
         artifact_id: str | None = None,
-    ) -> Artifact:
-        """Store a new artifact, or replace ``artifact_id``. The caller has
-        already checked that ``owner`` owns ``artifact_id``."""
+    ) -> Artifact | None:
+        """Store a new artifact, or replace ``artifact_id`` if ``owner`` owns
+        it. Returns None when there is no such artifact of ``owner``'s."""
         new_id = artifact_id or secrets.token_urlsafe(16)
         tmp = self.files / f".{new_id}.{secrets.token_hex(4)}.tmp"
         with open(tmp, "wb") as out:
@@ -153,26 +153,39 @@ class Store:
                 # uploads cannot both fit into the same free space.
                 db.execute("BEGIN IMMEDIATE")
                 used = db.execute(
-                    "SELECT COALESCE(SUM(size), 0) FROM artifacts WHERE id != ?", (new_id,)
+                    "SELECT COALESCE(SUM(size), 0) FROM artifacts WHERE id != ? AND expires_at > ?",
+                    (new_id, now),
                 ).fetchone()[0]
                 if used + size > self.max_total_bytes:
                     raise StorageFull
-                db.execute(
-                    "INSERT INTO artifacts VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE "
-                    "SET name = excluded.name, kind = excluded.kind, size = excluded.size, "
-                    "expires_at = excluded.expires_at",
-                    (new_id, owner, name, kind, size, now, now + ttl),
-                )
+                if artifact_id is None:
+                    db.execute(
+                        "INSERT INTO artifacts VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        (new_id, owner, name, kind, size, now, now + ttl),
+                    )
+                    created = now
+                else:
+                    row = db.execute(
+                        "UPDATE artifacts SET name = ?, kind = ?, size = ?, expires_at = ? "
+                        "WHERE id = ? AND owner = ? AND expires_at > ? RETURNING created_at",
+                        (name, kind, size, now + ttl, new_id, owner, now),
+                    ).fetchone()
+                    if row is None:
+                        return None
+                    created = row[0]
                 os.replace(tmp, self.files / new_id)
         finally:
             tmp.unlink(missing_ok=True)
         self._drop_cache(new_id)
-        return self.get(new_id)  # type: ignore[return-value]
+        return Artifact(new_id, owner, name, kind, size, created, now + ttl)
 
-    def delete(self, artifact_id: str) -> None:
+    def delete(self, artifact_id: str, *, owner: str) -> bool:
         with self._conn() as db:
-            db.execute("DELETE FROM artifacts WHERE id = ?", (artifact_id,))
-        self._unlink(artifact_id)
+            sql = "DELETE FROM artifacts WHERE id = ? AND owner = ?"
+            gone = db.execute(sql, (artifact_id, owner)).rowcount > 0
+        if gone:
+            self._unlink(artifact_id)
+        return gone
 
     def purge_expired(self) -> int:
         with self._conn() as db:
@@ -181,6 +194,14 @@ class Store:
             db.executemany("DELETE FROM artifacts WHERE id = ?", [(i,) for i in ids])
         for artifact_id in ids:
             self._unlink(artifact_id)
+        # Leftovers of a crash mid-upload: temp files, and files whose row
+        # never got committed.
+        with self._conn() as db:
+            known = {r[0] for r in db.execute("SELECT id FROM artifacts")}
+        stale = time.time() - 3600
+        for f in self.files.iterdir():
+            if f.name not in known and f.stat().st_mtime < stale:
+                f.unlink(missing_ok=True)
         return len(ids)
 
     def path(self, artifact_id: str) -> Path:

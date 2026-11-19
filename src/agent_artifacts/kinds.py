@@ -3,6 +3,7 @@ content against its name."""
 
 from __future__ import annotations
 
+import os
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -97,10 +98,8 @@ def detect(name: str, head: bytes) -> Kind:
 
 def _extension(name: str) -> str | None:
     lower = name.lower()
-    for ext in sorted(_EXTENSIONS, key=len, reverse=True):
-        if lower.endswith(ext) and len(lower) > len(ext):
-            return ext
-    return None
+    ext = ".tar.gz" if lower.endswith(".tar.gz") else os.path.splitext(lower)[1]
+    return ext if ext in _EXTENSIONS and len(lower) > len(ext) else None
 
 
 def _is_utf8_text(head: bytes) -> bool:
