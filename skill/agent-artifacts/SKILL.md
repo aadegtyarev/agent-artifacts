@@ -22,7 +22,8 @@ the user and stop.
 - **Nothing secret.** The link is the only protection. No passwords, tokens,
   keys, private data or internal URLs in the file.
 - **Allowed files:** `.html` `.htm` `.md` `.txt` `.pdf` `.png` `.jpg` `.jpeg`
-  `.gif` `.webp` `.svg` `.zip` `.tar.gz` `.tgz`, up to 25 MB by default.
+  `.gif` `.webp` `.svg` `.zip` `.tar.gz` `.tgz`, up to 25 MB by default;
+  Markdown up to 256 KB.
 
 ## Upload, replace, delete
 

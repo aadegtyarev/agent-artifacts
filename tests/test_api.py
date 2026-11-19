@@ -255,3 +255,24 @@ def test_crash_leftovers_are_purged(env):
     os.utime(leftover, (0, 0))
     store.purge_expired()
     assert not leftover.exists()
+
+
+def test_markdown_size_cap_and_raw_framing_headers(env, monkeypatch):
+    client, _, keys = env
+    monkeypatch.setattr("agent_artifacts.kinds.MAX_MARKDOWN_BYTES", 10)
+    assert upload(client, keys["alice"], "a.md", b"x" * 11).json()["error"] == "too_large"
+    img = upload(client, keys["alice"], "a.png", PNG).json()
+    assert client.get(f"/a/{img['id']}/raw").headers["content-security-policy"] == (
+        "frame-ancestors 'self'"
+    )
+    page = client.get(f"/a/{img['id']}")
+    assert page.headers["cross-origin-opener-policy"] == "same-origin"
+
+
+def test_replaced_markdown_is_rendered_again(env):
+    client, _, keys = env
+    art = upload(client, keys["alice"], "a.md", b"# One").json()
+    assert "One" in client.get(f"/a/{art['id']}/raw").text
+    time.sleep(0.01)
+    upload(client, keys["alice"], "a.md", b"# Two", artifact_id=art["id"])
+    assert "Two" in client.get(f"/a/{art['id']}/raw").text

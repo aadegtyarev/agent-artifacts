@@ -47,6 +47,7 @@ Every artifact can be downloaded in its original form under its original name.
 | --- | --- |
 | Lifetime of an artifact | 48 h from the last upload or replace |
 | Size of one file | 25 MB |
+| Size of a Markdown file (fixed; rendered on the server, once per version, one at a time) | 256 KB |
 | Total size of all stored files | 2 GB, then uploads get `507` |
 
 ## HTTP API
@@ -124,6 +125,14 @@ self-contained files. Scripts, forms, `#anchor` links and links opening in a new
 tab work, so interactive prototypes do. `localStorage` does not.
 
 Markdown is rendered with raw HTML disabled and served the same way.
+
+Images and PDFs are served without the sandbox, which would stop the browser's
+PDF viewer, but with `frame-ancestors 'self'`. The viewer page sends
+`Cross-Origin-Opener-Policy: same-origin`, so over HTTPS a page an artifact
+opens in a new tab cannot navigate the viewer's tab.
+
+**Logs.** The link is the access, so access logs are off: uvicorn runs without
+one and the nginx example turns it off.
 
 **Transport.** The service itself speaks plain HTTP on `127.0.0.1`. It refuses
 to start when its `public_url` is `http://` and the host is not loopback, a

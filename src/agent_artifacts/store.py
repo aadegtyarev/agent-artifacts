@@ -65,6 +65,7 @@ class Store:
         self.max_total_bytes = max_total_bytes
         self._db = data_dir / "meta.sqlite"
         with self._conn() as db:
+            db.execute("PRAGMA journal_mode = WAL")
             db.executescript(_SCHEMA)
 
     @contextmanager
