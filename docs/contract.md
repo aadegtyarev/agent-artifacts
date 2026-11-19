@@ -90,7 +90,7 @@ larger than the file limit is refused before it is read.
 | Path | What |
 | --- | --- |
 | `/a/{id}` | page with the name, expiry, the content, and buttons: Download, Download PDF (HTML only), Copy link |
-| `/a/{id}/raw` | the content itself, with the sandbox headers below |
+| `/a/{id}/raw` | the content itself, with the sandbox headers below; opened as a page on its own, it redirects to `/a/{id}` |
 | `/a/{id}/download` | the original file as an attachment under its name |
 | `/a/{id}/pdf` | HTML rendered to PDF, built on first request and cached until replace |
 
@@ -114,7 +114,7 @@ compared byte by byte.
 Content-Security-Policy: sandbox allow-scripts allow-forms allow-modals
   allow-popups allow-popups-to-escape-sandbox allow-downloads;
   default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline';
-  img-src data: blob:; font-src data:; media-src data: blob:
+  img-src data: blob:; font-src data:; media-src data: blob:; frame-ancestors 'self'
 X-Content-Type-Options: nosniff
 ```
 
@@ -138,7 +138,7 @@ behind a TLS reverse proxy.
 
 ## Storage and cleanup
 
-Files under `<data>/files/<id>`, cached PDFs under `<data>/pdf/<id>.pdf`,
+Files under `<data>/files/<id>`, cached PDFs under `<data>/cache/<id>.pdf`,
 metadata and key hashes in `<data>/meta.sqlite`. A background task deletes
 expired artifacts every 10 minutes, and expired ids already answer `404` before
 that.
