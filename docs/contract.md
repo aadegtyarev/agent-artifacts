@@ -81,15 +81,16 @@ Artifact JSON:
 ```
 
 Errors are `{"error": "<code>", "message": "<text>"}` with codes
-`unauthorized`, `not_found`, `too_large`, `unsupported_type`, `type_mismatch`,
-`storage_full`.
+`bad_request`, `unauthorized`, `not_found`, `too_large`, `unsupported_type`,
+`type_mismatch`, `storage_full`. Uploads must carry `Content-Length`; a body
+larger than the file limit is refused before it is read.
 
 ### Viewer pages (no auth)
 
 | Path | What |
 | --- | --- |
 | `/a/{id}` | page with the name, expiry, the content, and buttons: Download, Download PDF (HTML only), Copy link |
-| `/a/{id}/raw` | the content itself, with the sandbox headers below |
+| `/a/{id}/raw` | the content itself, with the sandbox headers below; opened as a page on its own, it redirects to `/a/{id}` |
 | `/a/{id}/download` | the original file as an attachment under its name |
 | `/a/{id}/pdf` | HTML rendered to PDF, built on first request and cached until replace |
 
@@ -103,7 +104,8 @@ guessed; the only listing is the owner agent's own `GET /api/v1/artifacts`.
 
 **Agent keys.** Created by `agent-artifacts agent add <name>`, which prints the
 key once. Only its SHA-256 is stored. `agent remove <name>` revokes it and
-deletes that agent's artifacts. Keys are compared in constant time.
+deletes that agent's artifacts. A key is looked up by its hash, so it is never
+compared byte by byte.
 
 **Untrusted HTML, SVG and Markdown.** Shown only from `/a/{id}/raw`, inside an
 `<iframe sandbox>` on the viewer page, and served with:
@@ -112,7 +114,7 @@ deletes that agent's artifacts. Keys are compared in constant time.
 Content-Security-Policy: sandbox allow-scripts allow-forms allow-modals
   allow-popups allow-popups-to-escape-sandbox allow-downloads;
   default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline';
-  img-src data: blob:; font-src data:; media-src data: blob:
+  img-src data: blob:; font-src data:; media-src data: blob:; frame-ancestors 'self'
 X-Content-Type-Options: nosniff
 ```
 
@@ -136,7 +138,7 @@ behind a TLS reverse proxy.
 
 ## Storage and cleanup
 
-Files under `<data>/files/<id>`, cached PDFs under `<data>/pdf/<id>.pdf`,
+Files under `<data>/files/<id>`, cached PDFs under `<data>/cache/<id>.pdf`,
 metadata and key hashes in `<data>/meta.sqlite`. A background task deletes
 expired artifacts every 10 minutes, and expired ids already answer `404` before
 that.
