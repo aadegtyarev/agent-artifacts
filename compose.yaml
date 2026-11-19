@@ -1,0 +1,23 @@
+services:
+  app:
+    build: .
+    image: agent-artifacts:local
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${AA_PORT:-8090}:8090"
+    environment:
+      AA_PUBLIC_URL: ${AA_PUBLIC_URL:?set AA_PUBLIC_URL, e.g. https://art.example.org}
+    volumes:
+      - data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    shm_size: 256m
+    mem_limit: 1g
+    pids_limit: 512
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  data:
