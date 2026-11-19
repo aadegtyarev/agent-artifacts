@@ -47,7 +47,7 @@ Every artifact can be downloaded in its original form under its original name.
 | Lifetime of an artifact | 48 h from the last upload or replace |
 | Size of one file | 25 MB |
 | Total size of all stored files | 2 GB, then uploads get `507` |
-| PDF render timeout | 20 s |
+| PDF render timeout (fixed) | 20 s |
 
 ## HTTP API
 
@@ -92,7 +92,7 @@ larger than the file limit is refused before it is read.
 | `/a/{id}` | page with the name, expiry, the content, and buttons: Download, Download PDF (HTML only), Copy link |
 | `/a/{id}/raw` | the content itself, with the sandbox headers below; opened as a page on its own, it redirects to `/a/{id}` |
 | `/a/{id}/download` | the original file as an attachment under its name |
-| `/a/{id}/pdf` | HTML rendered to PDF, built on first request and cached until replace |
+| `/a/{id}/pdf` | HTML rendered to PDF, built on first request and cached until the file is replaced, deleted or expires; `503` while another PDF is being made, `502` if rendering fails |
 
 A missing or expired id gives a `404` page saying so. Pages carry
 `X-Robots-Tag: noindex` and `Referrer-Policy: no-referrer`.
@@ -126,10 +126,14 @@ tab work, so interactive prototypes do. `localStorage` does not.
 
 Markdown is rendered with raw HTML disabled and served the same way.
 
-**PDF rendering.** Headless Chromium with every network request blocked except
-`data:` and `blob:`, one render at a time, a timeout, and no access to the
-service's own address. Untrusted HTML therefore cannot reach the server's
-internal ports.
+**PDF rendering.** Headless Chromium on the server. Every request the page
+makes is aborted, the browser's proxy is a closed port with no loopback
+exception (this also stops WebSockets and DNS lookups), WebRTC may not send UDP
+outside the proxy, and the context is offline. The page is loaded from memory,
+with no file:// origin. One render at a time, a 20 s timeout, a 512 MB
+JavaScript heap, and a PDF over 50 MB is discarded.
+Chromium runs without its own sandbox (it needs user namespaces), so the
+service must run as an unprivileged user in a container with a memory limit.
 
 **Transport.** The service itself speaks plain HTTP on `127.0.0.1`. It refuses
 to start when its `public_url` is `http://` and the host is not loopback, a

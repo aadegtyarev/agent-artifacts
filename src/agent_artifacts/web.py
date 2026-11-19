@@ -6,6 +6,8 @@ import asyncio
 import base64
 import hashlib
 import html
+import logging
+import os
 import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
@@ -29,9 +31,11 @@ from starlette.responses import (
 )
 from starlette.routing import Route
 
-from . import kinds
+from . import kinds, pdf
 from .config import Config
 from .store import ID_RE, Artifact, StorageFull, Store
+
+logger = logging.getLogger(__name__)
 
 PURGE_INTERVAL_SECONDS = 600
 
@@ -102,6 +106,7 @@ img {{ max-width: 100%; max-height: 100%; }}
 def create_app(config: Config, store: Store | None = None) -> Starlette:
     store = store or Store(config.data_dir, max_total_bytes=config.max_total_bytes)
     markdown = _markdown()
+    pdf_lock = asyncio.Lock()
 
     def agent_of(request: Request) -> str | None:
         scheme, _, key = request.headers.get("authorization", "").partition(" ")
@@ -205,11 +210,15 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             content = f'<div class="center"><img src="{raw}" alt="{html.escape(a.name)}"></div>'
         else:
             content = '<div class="center">Archive: download it to see the contents.</div>'
+        pdf_button = (
+            f'<a class="btn" href="/a/{a.id}/pdf">Download PDF</a>' if a.kind == "html" else ""
+        )
         body = (
             f"<header><div><h1>{html.escape(a.name)}</h1>"
             f'<div class="meta">{_size(a.size)} · expires {_iso(a.expires_at, human=True)}'
             "</div></div>"
             f'<div class="actions"><a class="btn" href="/a/{a.id}/download">Download</a>'
+            f"{pdf_button}"
             f'<input id="url" readonly value="{html.escape(url)}" aria-hidden="true">'
             '<button id="copy" type="button">Copy link</button></div></header>'
             f"<main>{content}</main><script>{_COPY_JS}</script>"
@@ -225,7 +234,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             return _not_found()
         kind = kinds.get(a.kind)
         if not kind.viewable:
-            return _download(store, a)
+            return _download(store.path(a.id), a.name)
         if request.headers.get("sec-fetch-dest") == "document":
             # Opened on its own, the content would look like a page of this
             # site; show it with the viewer's header instead.
@@ -240,7 +249,30 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
 
     async def download(request: Request) -> Response:
         a = live(request)
-        return _not_found() if a is None else _download(store, a)
+        return _not_found() if a is None else _download(store.path(a.id), a.name)
+
+    async def pdf_download(request: Request) -> Response:
+        a = live(request)
+        if a is None or a.kind != "html":
+            return _not_found()
+        # Keyed by the source file's mtime, read together with its content,
+        # so a replaced page never gets the PDF of its previous version.
+        path = store.path(a.id)
+        out = store.cache / f"{a.id}.{path.stat().st_mtime_ns}.pdf"
+        if not out.exists():
+            if pdf_lock.locked():
+                return _message(503, "Busy making another PDF, try again in a minute.")
+            async with pdf_lock:  # one Chromium at a time
+                try:
+                    mtime, source = await run_in_threadpool(_read_with_mtime, path)
+                    out = store.cache / f"{a.id}.{mtime}.pdf"
+                    await pdf.render(source.decode("utf-8", "replace"), out)
+                except Exception:
+                    logger.exception("PDF rendering failed for %s", a.id)
+                    return _message(502, "Could not make a PDF of this page.")
+        return _download(
+            out, re.sub(r"\.html?$", "", a.name, flags=re.I) + ".pdf", "application/pdf"
+        )
 
     async def health(request: Request) -> Response:
         return Response("ok", media_type="text/plain")
@@ -263,6 +295,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             Route("/a/{id:artifact_id}", view),
             Route("/a/{id:artifact_id}/raw", raw),
             Route("/a/{id:artifact_id}/download", download),
+            Route("/a/{id:artifact_id}/pdf", pdf_download),
         ],
         middleware=[Middleware(_CommonHeaders)],
         lifespan=lifespan,
@@ -300,12 +333,17 @@ async def _purge_forever(store: Store) -> None:
         await asyncio.sleep(PURGE_INTERVAL_SECONDS)
 
 
-def _download(store: Store, a: Artifact) -> Response:
-    ascii_name = a.name.encode("ascii", "replace").decode().replace("?", "_")
-    disposition = f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(a.name)}"
+def _read_with_mtime(path: Path) -> tuple[int, bytes]:
+    with open(path, "rb") as f:
+        return os.fstat(f.fileno()).st_mtime_ns, f.read()
+
+
+def _download(path: Path, name: str, media_type: str = "application/octet-stream") -> Response:
+    ascii_name = name.encode("ascii", "replace").decode().replace("?", "_")
+    disposition = f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name)}"
     return FileResponse(
-        store.path(a.id),
-        media_type="application/octet-stream",
+        path,
+        media_type=media_type,
         headers={"Content-Disposition": disposition, "Cache-Control": "no-store"},
     )
 
@@ -315,10 +353,14 @@ def _error(status: int, code: str, message: str) -> JSONResponse:
 
 
 def _not_found() -> HTMLResponse:
-    body = '<main><div class="center">This link has expired or never existed.</div></main>'
+    return _message(404, "This link has expired or never existed.")
+
+
+def _message(status: int, text: str) -> HTMLResponse:
+    body = f'<main><div class="center">{text}</div></main>'
     return HTMLResponse(
-        _PAGE.format(title="Not found", body=body),
-        status_code=404,
+        _PAGE.format(title=text, body=body),
+        status_code=status,
         headers={"Content-Security-Policy": VIEWER_CSP, "Cache-Control": "no-store"},
     )
 
