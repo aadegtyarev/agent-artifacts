@@ -47,6 +47,7 @@ Every artifact can be downloaded in its original form under its original name.
 | --- | --- |
 | Lifetime of an artifact | 48 h from the last upload or replace |
 | Size of one file | 25 MB |
+| Size of a Markdown file (fixed) | 2 MB |
 | Total size of all stored files | 2 GB, then uploads get `507` |
 
 ## HTTP API
@@ -128,8 +129,8 @@ a `<script>` (with `<` escaped, so the text cannot close the tag) together with
 a vendored copy of [marked](https://github.com/markedjs/marked)
 (`src/agent_artifacts/static/marked.umd.js`, v18.1.3, checked against the npm
 package's integrity hash); the viewer's browser renders it in the same sandbox.
-Raw HTML inside the Markdown runs there too, with the same limits as an HTML
-artifact.
+Raw HTML inside the Markdown, event handlers included, is not filtered: it runs
+in the same sandbox with the same limits as an HTML artifact.
 
 Images and PDFs are served without the sandbox, which would stop the browser's
 PDF viewer, but with `frame-ancestors 'self'`. The viewer page sends

@@ -258,8 +258,10 @@ def test_crash_leftovers_are_purged(env):
     assert not leftover.exists()
 
 
-def test_raw_framing_headers(env):
+def test_markdown_cap_and_raw_framing_headers(env, monkeypatch):
     client, _, keys = env
+    monkeypatch.setattr("agent_artifacts.kinds.MAX_MARKDOWN_BYTES", 10)
+    assert upload(client, keys["alice"], "a.md", b"x" * 11).json()["error"] == "too_large"
     img = upload(client, keys["alice"], "a.png", PNG).json()
     assert client.get(f"/a/{img['id']}/raw").headers["content-security-policy"] == (
         "frame-ancestors 'self'"

@@ -146,6 +146,8 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
                 kind = kinds.detect(name, await upload.read(64 * 1024))
             except kinds.KindError as e:
                 return _error(415, e.code, str(e))
+            if kind.name == "md" and size > kinds.MAX_MARKDOWN_BYTES:
+                return _error(413, "too_large", "Markdown is limited to 2 MB; use .txt or .zip")
             await upload.seek(0)
             try:
                 artifact = await run_in_threadpool(
@@ -337,7 +339,7 @@ def _message(status: int, text: str) -> HTMLResponse:
     )
 
 
-_MARKED_JS = (Path(__file__).parent / "static" / "marked.umd.js").read_text()
+_MARKED_JS = (Path(__file__).parent / "static" / "marked.umd.js").read_text(encoding="utf-8")
 
 # Runs in the viewer's browser, inside the sandbox: heading ids for #anchor
 # links, and links to other sites in a new tab (the only way out of it).

@@ -53,6 +53,9 @@ _EXTENSIONS = {
 }
 
 MAX_NAME = 200
+# Markdown goes to the browser as escaped JSON (up to 6x larger for non-Latin
+# text) on every view, and the viewer's browser parses all of it.
+MAX_MARKDOWN_BYTES = 2 * 1024 * 1024
 
 
 class KindError(ValueError):
