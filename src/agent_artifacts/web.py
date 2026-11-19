@@ -98,7 +98,8 @@ main {{ flex: 1; min-height: 0; }}
 iframe {{ border: 0; width: 100%; height: 100%; background: #fff; }}
 .center {{ display: flex; align-items: center; justify-content: center;
   height: 100%; padding: 16px; text-align: center; }}
-img {{ max-width: 100%; max-height: 100%; }}
+img {{ max-width: 100%; max-height: 100%; cursor: zoom-in; }}
+.center a {{ display: contents; }}
 </style></head><body>{body}</body></html>"""
 
 
@@ -206,7 +207,11 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             # Browsers refuse to run their PDF viewer in a sandboxed frame.
             content = f'<iframe src="{raw}" title="content"></iframe>'
         elif kind.viewable:
-            content = f'<div class="center"><img src="{raw}" alt="{html.escape(a.name)}"></div>'
+            # A click opens it full size in the browser's image viewer.
+            content = (
+                f'<div class="center"><a href="{raw}" target="_blank" rel="noopener">'
+                f'<img src="{raw}" alt="{html.escape(a.name)}"></a></div>'
+            )
         else:
             content = '<div class="center">Archive: download it to see the contents.</div>'
         body = (
@@ -236,9 +241,10 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         kind = kinds.get(a.kind)
         if not kind.viewable:
             return _download(store.path(a.id), a.name)
-        if request.headers.get("sec-fetch-dest") == "document":
-            # Opened on its own, the content would look like a page of this
-            # site; show it with the viewer's header instead.
+        if kind.sandboxed and request.headers.get("sec-fetch-dest") == "document":
+            # Opened on its own, a page would look like a page of this site;
+            # show it with the viewer's header instead. Images and PDFs open
+            # as they are, in the browser's own viewer.
             return RedirectResponse(f"/a/{a.id}", status_code=303)
         csp = SANDBOX_CSP if kind.sandboxed else RAW_CSP
         headers = {"Cache-Control": "no-store", "Content-Security-Policy": csp}
