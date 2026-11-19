@@ -33,7 +33,7 @@ content's magic bytes where the format has them. A mismatch is rejected.
 | --- | --- | --- |
 | `.html`, `.htm` | the page, in a sandbox | — |
 | `.md` | rendered in the viewer's browser, in a sandbox | — |
-| `.txt` | plain text | — |
+| `.txt` | plain text, dark on white, in a sandbox | — |
 | `.pdf` | the browser's PDF viewer | — |
 | `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp` | the image | — |
 | `.svg` | the image, in a sandbox | — |
@@ -47,7 +47,7 @@ Every artifact can be downloaded in its original form under its original name.
 | --- | --- |
 | Lifetime of an artifact | 48 h from the last upload or replace |
 | Size of one file | 25 MB |
-| Size of a Markdown file (fixed) | 2 MB |
+| Size of a Markdown or text file (fixed) | 2 MB |
 | Total size of all stored files | 2 GB, then uploads get `507` |
 
 ## HTTP API

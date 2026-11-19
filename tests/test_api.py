@@ -260,7 +260,7 @@ def test_crash_leftovers_are_purged(env):
 
 def test_markdown_cap_and_raw_framing_headers(env, monkeypatch):
     client, _, keys = env
-    monkeypatch.setattr("agent_artifacts.kinds.MAX_MARKDOWN_BYTES", 10)
+    monkeypatch.setattr("agent_artifacts.kinds.MAX_TEXT_BYTES", 10)
     assert upload(client, keys["alice"], "a.md", b"x" * 11).json()["error"] == "too_large"
     img = upload(client, keys["alice"], "a.png", PNG).json()
     assert client.get(f"/a/{img['id']}/raw").headers["content-security-policy"] == (
@@ -277,3 +277,13 @@ def test_replaced_markdown_is_rendered_again(env):
     time.sleep(0.01)
     upload(client, keys["alice"], "a.md", b"# Two", artifact_id=art["id"])
     assert "Two" in client.get(f"/a/{art['id']}/raw").text
+
+
+def test_text_is_shown_with_fixed_colours_and_escaped(env):
+    client, _, keys = env
+    art = upload(client, keys["alice"], "a.txt", "<b>привет</b>".encode()).json()
+    raw = client.get(f"/a/{art['id']}/raw")
+    assert raw.headers["content-type"].startswith("text/html")
+    assert raw.headers["content-security-policy"] == SANDBOX_CSP
+    assert "<pre>&lt;b&gt;привет&lt;/b&gt;</pre>" in raw.text
+    assert "color:#1d1d1f;background:#fff" in raw.text
