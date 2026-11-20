@@ -52,7 +52,7 @@ uv run ~/.claude/skills/agent-artifacts/scripts/artifacts_cli.py setup
 ```
 
 Paste the two `AGENT_ARTIFACTS_` lines and press Ctrl-D (on Windows Ctrl-Z,
-then Enter). Without uv, use `python3` instead of `uv run`. `setup` checks the
+then Enter). Without uv, use `python3` (`python` on Windows) instead of `uv run`. `setup` checks the
 key with the service and prints where it saved it.
 
 You can also keep the key in the environment variables `AGENT_ARTIFACTS_URL`

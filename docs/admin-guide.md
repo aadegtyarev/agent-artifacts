@@ -5,8 +5,10 @@ All of it needs an admin key. Usually you ask your agent in plain words; the
 commands it runs are shown next to each request, in case you want to run them
 yourself. Installing the service is in [deploy.md](deploy.md).
 
-Below, `artifacts_cli.py` stands for the full command:
-`uv run <skills folder>/agent-artifacts/scripts/artifacts_cli.py`.
+Below, `artifacts_cli.py` stands for the full command, for example
+`uv run ~/.claude/skills/agent-artifacts/scripts/artifacts_cli.py`. Other
+agents keep skills elsewhere: see the table in
+[agent-setup.md](agent-setup.md#connect).
 
 ## Get an admin key
 
@@ -32,9 +34,12 @@ docker compose exec app agent-artifacts agent list    # admins are marked "(admi
 ## Invite a person
 
 Ask your agent: "invite petrov to agent-artifacts" (`artifacts_cli.py invite
-petrov`). It gives you a one-time link, valid for 7 days; ask for up to 30.
-Send the link to the person. They open it, press a button and get their key
-with setup instructions, as the [user guide](user-guide.md) describes.
+petrov`). It gives you a one-time link, valid for 7 days; you can ask for 1
+to 30 (`artifacts_cli.py invite petrov 14`). Send the link to the person. They
+open it, press a button and get their key with setup instructions, as the
+[user guide](user-guide.md) describes.
+
+The command prints:
 
 ```json
 {
@@ -55,8 +60,8 @@ again. Cancel it and make a new one: "show open invites"
 (`artifacts_cli.py invites`), then "cancel the invite for petrov"
 (`artifacts_cli.py cancel-invite <id>`).
 
-If someone pressed the button but lost the key, remove the name first, then
-invite again.
+If someone pressed the button but lost the key, remove the name first
+(`artifacts_cli.py remove petrov`), then invite again.
 
 ## See who uses what
 
@@ -79,7 +84,7 @@ hours.
 | "give everyone 300 MB" | `settings user-quota-mb 300` | at least 1 MB |
 | "raise the total limit to 5 GB" | `settings max-total-mb 5120` | at least 1 MB; no more than the disk holds, less a reserve for the database |
 | "give petrov 1 GB" | `quota petrov 1024` | at least 1 MB |
-| "put petrov back on the common limit" | `quota petrov null` | |
+| "put petrov back on the common limit" | `quota petrov null` | — |
 
 The values are kept in the service's database and survive restarts. The
 environment variables in [deploy.md](deploy.md#settings) only give the values a
