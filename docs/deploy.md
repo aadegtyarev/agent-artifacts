@@ -45,8 +45,8 @@ sudo nginx -t && sudo systemctl reload nginx
 
 It does three things beyond proxying:
 
-- turns access logs off for this site, because a request line holds a link and
-  a link is the access to a file;
+- turns access logs off for this site, and error logs down to `crit`, because
+  a request line holds a link and a link is the access to a file;
 - limits each client IP to 10 requests a second for pages (bursts of 40), 2 a
   second for the API (bursts of 10) and 20 connections, answering `429` above
   that;
