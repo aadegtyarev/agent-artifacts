@@ -385,7 +385,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             "<li>Put these two variables into the environment your agent runs in.</li>"
             f'<li>Install the skill: copy <a href="{SKILL_URL}" target="_blank" '
             'rel="noopener">skill/agent-artifacts</a> into <code>~/.claude/skills/</code> '
-            "(Claude Code) or <code>~/.codex/skills/</code> (Codex).</li>"
+            "(Claude Code) or <code>~/.agents/skills/</code> (Codex).</li>"
             "<li>Keep the key secret. If it leaks, ask your agent for a new one: the "
             "skill knows how.</li></ol>"
             f"<script>{_SETUP_JS}</script></main>"
