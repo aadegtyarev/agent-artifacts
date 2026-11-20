@@ -13,16 +13,19 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
 from .config import MB
-from .store import NAME_RE, Store
+from .store import NAME_RE, Invite, NameTaken, Store
 
 HOUR = 3600
+DAY = 24 * HOUR
 MAX_TTL_HOURS = 30 * 24
+INVITE_DAYS = 7
 
 
 def admin_routes(
     store: Store,
     agent_of: Callable[[Request], str | None],
     error: Callable[..., JSONResponse],
+    public_url: str,
 ) -> list[Route]:
     def admin_of(request: Request) -> tuple[str | None, Response | None]:
         agent = agent_of(request)
@@ -95,7 +98,8 @@ def admin_routes(
         quota = data["quota_mb"]
         if quota is not None and not _positive(quota):
             return error(400, "bad_request", "quota_mb must be a number of MB, at least 1, or null")
-        if not store.set_quota(name, None if quota is None else int(quota * MB)):
+        quota_bytes = None if quota is None else int(quota * MB)
+        if not await run_in_threadpool(store.set_quota, name, quota_bytes):
             return error(404, "not_found", "no such user")
         return Response(status_code=204)
 
@@ -117,7 +121,10 @@ def admin_routes(
         if "max_total_mb" in data:
             total = int(data["max_total_mb"] * MB)
             current = await run_in_threadpool(stats)
-            room = current["used_bytes"] + current["disk_free_bytes"]
+            # Leave the database and its journal room to write, or a full
+            # disk would stop even the cleanup.
+            free = current["disk_free_bytes"]
+            room = current["used_bytes"] + free - max(256 * MB, free // 20)
             if total > room:
                 return error(400, "bad_request", f"the disk has room for {room // MB} MB at most")
             values["max_total_bytes"] = total
@@ -125,15 +132,64 @@ def admin_routes(
             if data["ttl_hours"] > MAX_TTL_HOURS:
                 return error(400, "bad_request", f"ttl_hours is at most {MAX_TTL_HOURS}")
             values["ttl_seconds"] = int(data["ttl_hours"] * HOUR)
-        store.set_limits(**values)
+        await run_in_threadpool(lambda: store.set_limits(**values))
         return JSONResponse((await run_in_threadpool(stats))["limits"])
 
+    async def invites(request: Request) -> Response:
+        agent, denied = admin_of(request)
+        if denied:
+            return denied
+        if request.method == "GET":
+            return JSONResponse([_invite_json(i) for i in store.invites()])
+        data = await body(request)
+        if data is None or not {"name"} <= set(data) <= {"name", "days"}:
+            return error(400, "bad_request", 'expected {"name": "<name>", "days": <1-30>}')
+        name, days = data["name"], data.get("days", INVITE_DAYS)
+        if not isinstance(name, str) or not re.fullmatch(NAME_RE, name):
+            return error(
+                400,
+                "bad_request",
+                "name may use letters, digits, '.', '_', '-', and not start with '.'",
+            )
+        if not _positive(days) or days > 30:
+            return error(400, "bad_request", "days must be from 1 to 30")
+        try:
+            invite, token = await run_in_threadpool(
+                store.add_invite, name, by=agent, ttl=int(days * DAY)
+            )
+        except NameTaken:
+            return error(409, "name_taken", f"{name!r} already has a key or an invite")
+        return JSONResponse(
+            _invite_json(invite) | {"url": f"{public_url}/join/{token}"},
+            status_code=201,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    async def invite(request: Request) -> Response:
+        _, denied = admin_of(request)
+        if denied:
+            return denied
+        if not await run_in_threadpool(store.cancel_invite, request.path_params["id"]):
+            return error(404, "not_found", "no such invite")
+        return Response(status_code=204)
+
     return [
+        Route("/api/v1/admin/invites", invites, methods=["GET", "POST"]),
+        Route("/api/v1/admin/invites/{id}", invite, methods=["DELETE"]),
         Route("/api/v1/admin/users", users),
         Route("/api/v1/admin/users/{name}", user, methods=["PATCH", "DELETE"]),
         Route("/api/v1/admin/stats", get_stats),
         Route("/api/v1/admin/settings", settings, methods=["PATCH"]),
     ]
+
+
+def _invite_json(i: Invite) -> dict:
+    return {
+        "id": i.id,
+        "name": i.name,
+        "created_by": i.created_by,
+        "expires_at": _iso(i.expires_at),
+    }
 
 
 def _positive(v: object) -> bool:

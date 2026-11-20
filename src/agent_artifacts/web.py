@@ -32,7 +32,7 @@ from starlette.routing import Route
 from . import kinds
 from .admin import admin_routes
 from .config import Config
-from .store import ID_RE, Artifact, QuotaExceeded, StorageFull, Store
+from .store import ID_RE, TOKEN_RE, Artifact, NameTaken, QuotaExceeded, StorageFull, Store
 
 PURGE_INTERVAL_SECONDS = 600
 
@@ -42,6 +42,13 @@ class _ArtifactId(StringConvertor):
 
 
 register_url_convertor("artifact_id", _ArtifactId())
+
+
+class _InviteToken(StringConvertor):
+    regex = TOKEN_RE
+
+
+register_url_convertor("invite_token", _InviteToken())
 # Multipart framing around the file; the file itself is checked exactly later.
 FORM_OVERHEAD_BYTES = 64 * 1024
 
@@ -75,6 +82,22 @@ VIEWER_CSP = (
     "img-src 'self'; frame-src 'self'; frame-ancestors 'none'; base-uri 'none'; "
     "form-action 'none'"
 )
+
+# The invite pages: a form posting back to the same URL, and a copy button
+# for the settings with the new key.
+_SETUP_JS = (
+    "document.getElementById('copy').onclick=function(){"
+    "var t=document.getElementById('setup');"
+    "(navigator.clipboard?navigator.clipboard.writeText(t.value):Promise.reject())"
+    ".then(function(){document.getElementById('copy').textContent='Copied'},"
+    "function(){t.select()})};"
+)
+_SETUP_JS_HASH = base64.b64encode(hashlib.sha256(_SETUP_JS.encode()).digest()).decode()
+JOIN_CSP = (
+    f"default-src 'none'; script-src 'sha256-{_SETUP_JS_HASH}'; style-src 'unsafe-inline'; "
+    "frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+)
+SKILL_URL = "https://github.com/aadegtyarev/agent-artifacts/tree/main/skill/agent-artifacts"
 
 # One compact header row: icon buttons, the name and details cut to one line each.
 _SVG = '<svg viewBox="0 0 24 24" aria-hidden="true">'
@@ -122,6 +145,12 @@ iframe {{ border: 0; width: 100%; height: 100%; background: #fff; }}
   height: 100%; padding: 16px; text-align: center; }}
 img {{ max-width: 100%; max-height: 100%; cursor: zoom-in; }}
 .center a {{ display: contents; }}
+.join {{ max-width: 560px; margin: 0 auto; padding: 24px 16px; }}
+.join h1 {{ font-size: 20px; margin-bottom: 12px; }}
+.join button {{ height: auto; padding: 8px 16px; font-size: 15px; }}
+textarea {{ width: 100%; height: 6.5em; word-break: break-all; color: inherit;
+  font: 13px ui-monospace, monospace; background: var(--btn);
+  border: 1px solid var(--line); border-radius: 6px; padding: 8px; resize: none; }}
 </style></head><body>{body}</body></html>"""
 
 
@@ -322,6 +351,47 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         a = live(request)
         return _not_found() if a is None else _download(store.path(a.id), a.name)
 
+    async def join(request: Request) -> Response:
+        token = request.path_params["token"]
+        if request.method != "POST":
+            # Only a press of the button uses the invite: chat apps and link
+            # checkers open links themselves (GET or HEAD) to build a preview.
+            invite = store.invite_for_token(token)
+            if invite is None:
+                return _message(404, _INVITE_GONE, csp=JOIN_CSP)
+            body = (
+                f'<main class="join"><h1>An invite for {html.escape(invite.name)}</h1>'
+                "<p>It gives you a key for agent-artifacts: your agents upload files "
+                "there and get links to share. The key is shown once, on the next "
+                "page.</p>"
+                '<form method="post"><button type="submit">Get my key</button></form>'
+                f'<p class="meta">This invite works once, until '
+                f"{_iso(invite.expires_at, human=True)}.</p></main>"
+            )
+            return _join_page(200, f"Invite for {invite.name}", body)
+        try:
+            claimed = await run_in_threadpool(store.claim_invite, token)
+        except NameTaken:
+            return _message(409, "This name is already taken. Ask for a new invite.", csp=JOIN_CSP)
+        if claimed is None:
+            return _message(404, _INVITE_GONE, csp=JOIN_CSP)
+        name, key = claimed
+        setup = f"AGENT_ARTIFACTS_URL={config.public_url}\nAGENT_ARTIFACTS_KEY={key}"
+        body = (
+            f'<main class="join"><h1>Your key, {html.escape(name)}</h1>'
+            "<p>Copy it now: this page is not shown again.</p>"
+            f'<textarea id="setup" readonly aria-label="settings">{html.escape(setup)}</textarea>'
+            '<p><button id="copy" type="button">Copy</button></p><ol>'
+            "<li>Put these two variables into the environment your agent runs in.</li>"
+            f'<li>Install the skill: copy <a href="{SKILL_URL}" target="_blank" '
+            'rel="noopener">skill/agent-artifacts</a> into <code>~/.claude/skills/</code> '
+            "(Claude Code) or <code>~/.agents/skills/</code> (Codex).</li>"
+            "<li>Keep the key secret. If it leaks, ask your agent for a new one: the "
+            "skill knows how.</li></ol>"
+            f"<script>{_SETUP_JS}</script></main>"
+        )
+        return _join_page(200, "Your key", body)
+
     async def health(request: Request) -> Response:
         return Response("ok", media_type="text/plain")
 
@@ -345,7 +415,8 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             Route("/a/{id:artifact_id}", view),
             Route("/a/{id:artifact_id}/raw", raw),
             Route("/a/{id:artifact_id}/download", download),
-            *admin_routes(store, agent_of, _error),
+            Route("/join/{token:invite_token}", join, methods=["GET", "POST"]),
+            *admin_routes(store, agent_of, _error, config.public_url),
         ],
         middleware=[Middleware(_CommonHeaders)],
         lifespan=lifespan,
@@ -406,12 +477,23 @@ def _not_found() -> HTMLResponse:
     return _message(404, "This link has expired or never existed.")
 
 
-def _message(status: int, text: str) -> HTMLResponse:
+def _message(status: int, text: str, *, csp: str = VIEWER_CSP) -> HTMLResponse:
     body = f'<main><div class="center">{text}</div></main>'
     return HTMLResponse(
         _PAGE.format(title=text, body=body),
         status_code=status,
-        headers={"Content-Security-Policy": VIEWER_CSP, "Cache-Control": "no-store"},
+        headers={"Content-Security-Policy": csp, "Cache-Control": "no-store"},
+    )
+
+
+_INVITE_GONE = "This invite was used, has expired or never existed. Ask for a new one."
+
+
+def _join_page(status: int, title: str, body: str) -> HTMLResponse:
+    return HTMLResponse(
+        _PAGE.format(title=html.escape(title), body=body),
+        status_code=status,
+        headers={"Content-Security-Policy": JOIN_CSP, "Cache-Control": "no-store"},
     )
 
 

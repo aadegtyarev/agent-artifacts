@@ -19,7 +19,9 @@ from pathlib import Path
 from typing import BinaryIO
 
 ID_RE = r"[A-Za-z0-9_-]{22}"
-NAME_RE = r"[A-Za-z0-9_.-]{1,64}"
+# Not starting with a dot: "." and ".." would never reach the app in a URL.
+NAME_RE = r"[A-Za-z0-9_-][A-Za-z0-9_.-]{0,63}"
+TOKEN_RE = r"[A-Za-z0-9_-]{43}"  # noqa: S105 (a pattern, not a secret)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS agents (
@@ -37,6 +39,13 @@ CREATE TABLE IF NOT EXISTS artifacts (
 );
 CREATE INDEX IF NOT EXISTS artifacts_owner ON artifacts(owner);
 CREATE INDEX IF NOT EXISTS artifacts_expires ON artifacts(expires_at);
+CREATE TABLE IF NOT EXISTS invites (
+    id TEXT PRIMARY KEY,
+    token_hash TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL UNIQUE,
+    created_by TEXT NOT NULL,
+    expires_at REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value INTEGER NOT NULL
@@ -66,6 +75,18 @@ class Artifact:
 
 class StorageFull(Exception):
     pass
+
+
+class NameTaken(Exception):
+    pass
+
+
+@dataclass(frozen=True)
+class Invite:
+    id: str
+    name: str
+    created_by: str
+    expires_at: float
 
 
 class QuotaExceeded(Exception):
@@ -213,6 +234,69 @@ class Store:
                 "SELECT name FROM agents WHERE key_hash = ?", (hash_key(key),)
             ).fetchone()
         return row[0] if row else None
+
+    # Invites
+
+    def add_invite(self, name: str, *, by: str, ttl: int) -> tuple[Invite, str]:
+        """A one-time invite for a new agent ``name``, and its token; only the
+        token's hash is kept. Raises NameTaken if the name is in use."""
+        token = secrets.token_urlsafe(32)
+        invite = Invite(secrets.token_urlsafe(6), name, by, time.time() + ttl)
+        with self._conn() as db:
+            db.execute("BEGIN IMMEDIATE")
+            db.execute("DELETE FROM invites WHERE expires_at <= ?", (time.time(),))
+            if db.execute("SELECT 1 FROM agents WHERE name = ?", (name,)).fetchone():
+                raise NameTaken
+            try:
+                db.execute(
+                    "INSERT INTO invites VALUES (?, ?, ?, ?, ?)",
+                    (invite.id, hash_key(token), name, by, invite.expires_at),
+                )
+            except sqlite3.IntegrityError:
+                raise NameTaken from None
+        return invite, token
+
+    def invites(self) -> list[Invite]:
+        with self._conn() as db:
+            rows = db.execute(
+                "SELECT id, name, created_by, expires_at FROM invites "
+                "WHERE expires_at > ? ORDER BY expires_at",
+                (time.time(),),
+            ).fetchall()
+        return [Invite(*r) for r in rows]
+
+    def invite_for_token(self, token: str) -> Invite | None:
+        with self._conn() as db:
+            row = db.execute(
+                "SELECT id, name, created_by, expires_at FROM invites "
+                "WHERE token_hash = ? AND expires_at > ?",
+                (hash_key(token), time.time()),
+            ).fetchone()
+        return Invite(*row) if row else None
+
+    def cancel_invite(self, invite_id: str) -> bool:
+        with self._conn() as db:
+            return db.execute("DELETE FROM invites WHERE id = ?", (invite_id,)).rowcount > 0
+
+    def claim_invite(self, token: str) -> tuple[str, str] | None:
+        """Use up the invite: create its agent and return (name, key). None if
+        the token is unknown, used or expired; NameTaken if the name is in use."""
+        key = "aa_" + secrets.token_urlsafe(32)
+        with self._conn() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute(
+                "DELETE FROM invites WHERE token_hash = ? AND expires_at > ? RETURNING name",
+                (hash_key(token), time.time()),
+            ).fetchone()
+            if row is None:
+                return None
+            try:
+                db.execute(
+                    "INSERT INTO agents (name, key_hash) VALUES (?, ?)", (row[0], hash_key(key))
+                )
+            except sqlite3.IntegrityError:  # made by hand since; the invite stays
+                raise NameTaken from None
+        return row[0], key
 
     # Artifacts
 

@@ -26,7 +26,22 @@ curl -sS --fail-with-body -X PATCH -H "$AUTH" -H "$JSON" \
 
 # Remove a person: key revoked, files deleted.
 curl -sS --fail-with-body -X DELETE -H "$AUTH" "$ADMIN/users/<name>"
+
+# Invite a new person: a one-time link, valid 7 days unless "days" (1-30) says
+# otherwise. The answer has "url"; give it to the user, it is shown only now.
+curl -sS --fail-with-body -X POST -H "$AUTH" -H "$JSON" \
+  -d '{"name": "petrov"}' "$ADMIN/invites"
+
+# Invites not used yet, and cancelling one by its id.
+curl -sS --fail-with-body -H "$AUTH" "$ADMIN/invites"
+curl -sS --fail-with-body -X DELETE -H "$AUTH" "$ADMIN/invites/<id>"
 ```
+
+An invite's name becomes the person's name: letters, digits, `.`, `_`, `-`,
+not starting with `.`.
+`409 name_taken` means that name already has a key or an open invite. The
+person opens the link, presses a button and sees their key once, with what to
+put into their agent's environment.
 
 Show sizes to the user in MB. A new lifetime applies to uploads from then on;
 files already stored keep their expiry. `max_total_mb` cannot exceed what the

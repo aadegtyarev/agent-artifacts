@@ -104,10 +104,14 @@ MB, lifetimes as hours.
 | `DELETE /api/v1/admin/users/{name}` | revoke the key and delete its files; not the caller's own | `204` |
 | `GET /api/v1/admin/stats` | `users`, `files`, `used_bytes`, `disk_free_bytes`, `limits` | `200` |
 | `PATCH /api/v1/admin/settings` | any of `user_quota_mb`, `max_total_mb`, `ttl_hours` | `200` + `limits` |
+| `POST /api/v1/admin/invites` | `{"name", "days"}` (days 1–30, default 7): a one-time link for a new agent | `201` + `{"id", "name", "created_by", "expires_at", "url"}`; `409 name_taken` |
+| `GET /api/v1/admin/invites` | open invites, without their links | `200` + list |
+| `DELETE /api/v1/admin/invites/{id}` | cancel one | `204` |
 
 Settings changed this way are kept in the database and override the
 environment variables, which only give the starting values. `max_total_mb`
-cannot exceed the space in use plus the free disk; `ttl_hours` is at most 720.
+cannot exceed the space in use plus the free disk, less a reserve (256 MB or
+5 % of the free space) for the database; `ttl_hours` is at most 720.
 A new lifetime applies to uploads from then on.
 
 ### Viewer pages (no auth)
@@ -121,6 +125,17 @@ A new lifetime applies to uploads from then on.
 A missing or expired id gives a `404` page saying so. Pages carry
 `X-Robots-Tag: noindex` and `Referrer-Policy: no-referrer`.
 
+### Invite pages (no auth)
+
+| Path | What |
+| --- | --- |
+| `GET /join/{token}` | who the invite is for, until when, and a "Get my key" button; uses nothing up |
+| `POST /join/{token}` | creates the agent, uses the invite up and shows the key once with the two environment variables and where the skill is |
+
+A used, cancelled or expired token gives a `404` page; a name that got a key
+some other way meanwhile gives `409`, and the invite stays until cancelled. Opening the link does
+not use it, because chat apps fetch links themselves to build a preview.
+
 ## Security
 
 **Links.** `id` is 128 random bits, URL-safe base64. It cannot be listed or
@@ -131,6 +146,12 @@ key once. Only its SHA-256 is stored. `agent remove <name>` revokes it and
 deletes that agent's artifacts. An agent can replace its own key with
 `POST /api/v1/me/key`, for example after a leak. A key is looked up by its hash, so it is never
 compared byte by byte.
+
+**Invites.** The token is 256 random bits; only its SHA-256 is stored, the
+same as keys. It is used up in the same transaction that creates the agent, so
+two presses cannot both get a key. The pages send `Cache-Control: no-store`,
+`Referrer-Policy: no-referrer` and a CSP allowing only their own form and copy
+script.
 
 **Untrusted HTML, SVG and Markdown.** Shown only from `/a/{id}/raw`, inside an
 `<iframe sandbox>` on the viewer page, and served with:
