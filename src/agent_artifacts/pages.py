@@ -133,8 +133,16 @@ def text_page(path: Path, title: str) -> str:
 
 def markdown_page(path: Path, title: str) -> str:
     """A Markdown artifact and its renderer, for /raw inside the sandbox."""
-    # "<" escaped so the text cannot close the <script> it sits in.
-    source = json.dumps(path.read_bytes().decode("utf-8", "replace")).replace("<", "\\u003c")
+    # Non-ASCII kept as is, so the page is about the size of the file (escaped,
+    # Cyrillic would grow sixfold on every view). "<" escaped so the text
+    # cannot close the <script> it sits in; the two line separators for
+    # older JavaScript engines.
+    source = (
+        json.dumps(path.read_bytes().decode("utf-8", "replace"), ensure_ascii=False)
+        .replace("<", "\\u003c")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+    )
     return _env.get_template("markdown.html").render(
         title=title,
         marked=_MARKED_JS,

@@ -515,3 +515,14 @@ def test_own_pages_escape_values_and_load_only_static_code(env):
     assert client.get("/static/copy.js").status_code == 200
     for path in ("/static/../store.py", "/static/%2e%2e/store.py", "/static/..%2fstore.py"):
         assert client.get(path).status_code == 404, path
+
+
+def test_markdown_page_stays_about_the_size_of_the_file(env):
+    client, _, keys = env
+    text = "Привет, мир. " * 30 + "</script>\u2028"
+    art = upload(client, keys["alice"], "ru.md", text.encode()).json()
+    page = client.get(f"/a/{art['id']}/raw").text
+    source = page.split("const SOURCE = ")[1].split(";\n")[0]
+    assert json.loads(source) == text
+    assert "</script>" not in source and "\u2028" not in source
+    assert len(source.encode()) < len(text.encode()) * 1.2
