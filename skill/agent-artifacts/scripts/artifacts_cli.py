@@ -84,6 +84,19 @@ def write_settings(path: Path, url: str, key: str) -> None:
     os.replace(tmp, path)
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """A redirect means a wrong URL (http:// to https://, say). Following it
+    would turn an upload into a GET and send the key to another address."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001, ANN201, PLR0913
+        raise urllib.error.HTTPError(
+            req.full_url, code, f"redirected to {newurl}; fix {URL_VAR}", headers, fp
+        )
+
+
+_opener = urllib.request.build_opener(_NoRedirect)
+
+
 class Client:
     def __init__(self, url: str, key: str) -> None:
         if not url.startswith(("https://", "http://")):
@@ -98,10 +111,11 @@ class Client:
         if ctype:
             req.add_header("Content-Type", ctype)
         try:
-            with urllib.request.urlopen(req, timeout=120) as r:  # noqa: S310
+            with _opener.open(req, timeout=120) as r:
                 return r.read().decode()
         except urllib.error.HTTPError as e:
-            print(e.read().decode() or f"HTTP {e.code}", file=sys.stderr)
+            body = e.read().decode() if e.fp else ""
+            print(body if body.startswith("{") else f"HTTP {e.code}: {e.reason}", file=sys.stderr)
             sys.exit(1)
         except (urllib.error.URLError, OSError) as e:
             sys.exit(f"artifacts_cli: cannot reach {self.url}: {e}")

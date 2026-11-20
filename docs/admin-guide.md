@@ -34,7 +34,9 @@ person. They open it, press a button and get their key with setup
 instructions: [user guide](user-guide.md).
 
 The name you give becomes the person's name in the service: letters, digits,
-`.`, `_`, `-`. A name that already has a key or an open invite is refused.
+`.`, `_`, `-`, not starting with `.`. A name that already has a key or an open
+invite is refused. If someone pressed the button but lost the key, remove the
+name first (`artifacts_cli.py remove petrov`), then invite again.
 
 Each link works once. The service keeps only a hash of it, so a lost link
 cannot be shown again: cancel it and make a new one. "Show open invites" and

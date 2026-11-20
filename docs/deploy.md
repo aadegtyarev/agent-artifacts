@@ -23,7 +23,7 @@ private-range or `.local`/`.lan` address, passes.
 ```bash
 git clone https://github.com/aadegtyarev/agent-artifacts.git
 cd agent-artifacts
-echo "AA_PUBLIC_URL=https://art.example.org" > .env
+echo "AA_PUBLIC_URL=https://art.example.org" >> .env
 docker compose up -d --build
 curl -s http://127.0.0.1:8090/health      # prints: ok
 ```
@@ -118,7 +118,7 @@ docker compose exec app agent-artifacts agent remove ci-bot   # also deletes its
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `AA_PUBLIC_URL` | required | base of the links handed out |
+| `AA_PUBLIC_URL` | required by `compose.yaml` | base of the links handed out |
 | `AA_TTL_HOURS` | `48` | lifetime of a file after its last upload |
 | `AA_MAX_FILE_MB` | `25` | size limit of one file |
 | `AA_MAX_TOTAL_MB` | `2048` | size limit of all stored files |

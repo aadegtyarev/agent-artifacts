@@ -20,13 +20,15 @@ Open the invite link and press **Get my key**. The next page shows a short
 text:
 
 ```
-Set up agent-artifacts for me: follow https://github.com/aadegtyarev/agent-artifacts/blob/main/docs/agent-setup.md
+Set up agent-artifacts for me: follow https://raw.githubusercontent.com/aadegtyarev/agent-artifacts/main/docs/agent-setup.md
 AGENT_ARTIFACTS_URL=https://art.example.org
 AGENT_ARTIFACTS_KEY=aa_…
 ```
 
 Press **Copy**. The page is shown once: after a reload the invite answers
-"used". Lost the key before saving it? Ask for a new invite.
+"used". Lost the key before saving it? Ask the admin to remove your name and
+invite you again: the name already has a key, so a second invite for it is
+refused until then.
 
 Opening the link does not use it up, so it is safe to send through a chat that
 builds link previews. Only the button does.

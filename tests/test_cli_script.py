@@ -82,3 +82,40 @@ def test_setup_refuses_a_wrong_key(server):
     )
     assert code == 1 and "unauthorized" in err
     assert not (home / ".config" / "agent-artifacts" / "env").exists()
+
+
+def test_help_admin_and_env_key(server):
+    url, store, home = server
+    assert cli(home, "--help")[0] == 0
+    root = store.add_agent("root", admin=True)
+    env = {"AGENT_ARTIFACTS_URL": url, "AGENT_ARTIFACTS_KEY": root}
+    code, out, _ = cli(home, "invite", "petrov", "2", env=env)
+    assert code == 0 and json.loads(out)["url"].startswith(f"{url}/join/")
+    assert cli(home, "quota", "root", "10", env=env)[1].strip() == "done"
+    assert json.loads(cli(home, "settings", '{"ttl_hours": 24}', env=env)[1])["ttl_hours"] == 24
+    code, out, _ = cli(home, "new-key", env=env)  # from the environment: printed, not saved
+    assert code == 0 and out.splitlines()[-1].startswith("aa_")
+    assert not (home / ".config" / "agent-artifacts" / "env").exists()
+
+
+def test_a_redirect_is_an_error_and_keeps_the_key(tmp_path):
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    seen = []
+
+    class Redirect(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            seen.append(self.headers.get("Authorization"))
+            self.send_response(301)
+            self.send_header("Location", "http://127.0.0.1:9/elsewhere")
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    srv = HTTPServer(("127.0.0.1", 0), Redirect)
+    threading.Thread(target=srv.handle_request, daemon=True).start()
+    env = {"AGENT_ARTIFACTS_URL": f"http://127.0.0.1:{srv.server_port}", "AGENT_ARTIFACTS_KEY": "k"}
+    code, _, err = cli(tmp_path, "me", env=env)
+    srv.server_close()
+    assert code == 1 and "301" in err and len(seen) == 1

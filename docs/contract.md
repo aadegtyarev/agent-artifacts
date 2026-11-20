@@ -130,7 +130,7 @@ A missing or expired id gives a `404` page saying so. Pages carry
 | Path | What |
 | --- | --- |
 | `GET /join/{token}` | who the invite is for, until when, and a "Get my key" button; uses nothing up |
-| `POST /join/{token}` | creates the agent, uses the invite up and shows the key once with the two environment variables and where the skill is |
+| `POST /join/{token}` | creates the agent, uses the invite up and shows the key once, in a text to paste into an agent: a link to `docs/agent-setup.md` and the two settings |
 
 A used, cancelled or expired token gives a `404` page; a name that got a key
 some other way meanwhile gives `409`, and the invite stays until cancelled. Opening the link does

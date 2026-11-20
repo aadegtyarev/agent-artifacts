@@ -98,7 +98,8 @@ JOIN_CSP = (
     "frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 )
 REPO_URL = "https://github.com/aadegtyarev/agent-artifacts"
-SETUP_URL = f"{REPO_URL}/blob/main/docs/agent-setup.md"
+# Raw, so an agent fetching it gets Markdown rather than a GitHub page.
+SETUP_URL = "https://raw.githubusercontent.com/aadegtyarev/agent-artifacts/main/docs/agent-setup.md"
 USER_GUIDE_URL = f"{REPO_URL}/blob/main/docs/user-guide.md"
 
 # One compact header row: icon buttons, the name and details cut to one line each.
