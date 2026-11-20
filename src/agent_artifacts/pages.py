@@ -23,6 +23,7 @@ _env = Environment(
     autoescape=select_autoescape(["html"]),
     trim_blocks=True,
     lstrip_blocks=True,
+    auto_reload=False,  # the templates ship with the code
 )
 
 SANDBOX = (
