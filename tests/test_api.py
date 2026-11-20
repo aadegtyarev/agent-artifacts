@@ -506,9 +506,9 @@ def test_two_presses_get_one_key(tmp_path):
 
 def test_own_pages_escape_values_and_load_only_static_code(env):
     client, store, keys = env
-    art = upload(client, keys["alice"], "<b>x</b>.txt", b"hi").json()
+    art = upload(client, keys["alice"], '<i x="1">.txt', b"hi").json()
     page = client.get(f"/a/{art['id']}")
-    assert "<b>x</b>" not in page.text and "&lt;b&gt;x&lt;/b&gt;.txt" in page.text
+    assert "<i " not in page.text and "&lt;i x=&#34;1&#34;&gt;.txt" in page.text
     csp = page.headers["content-security-policy"]
     assert "script-src 'self'" in csp and "style-src 'self'" in csp and "sha256" not in csp
     assert "<script>" not in page.text and "<style>" not in page.text
