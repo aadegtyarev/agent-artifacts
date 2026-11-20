@@ -471,3 +471,13 @@ def test_invite_cancel_and_expiry(env):
     for days in (0, 31, True):
         r = client.post(path, headers=auth(root), json={"name": "x", "days": days})
         assert r.status_code == 400, days
+
+
+def test_two_presses_get_one_key(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    store = Store(tmp_path, max_total_bytes=1000)
+    _, token = store.add_invite("frank", by="root", ttl=60)
+    with ThreadPoolExecutor(8) as pool:
+        results = list(pool.map(lambda _: store.claim_invite(token), range(8)))
+    assert sum(r is not None for r in results) == 1
