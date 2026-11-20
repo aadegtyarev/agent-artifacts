@@ -234,7 +234,11 @@ class Store:
             known = {r[0] for r in db.execute("SELECT id FROM artifacts")}
         stale = time.time() - 3600
         for f in self.files.iterdir():
-            if f.name not in known and f.stat().st_mtime < stale:
+            try:
+                old = f.stat().st_mtime < stale
+            except FileNotFoundError:  # an upload finished or a delete ran meanwhile
+                continue
+            if f.name not in known and old:
                 f.unlink(missing_ok=True)
         return len(ids)
 

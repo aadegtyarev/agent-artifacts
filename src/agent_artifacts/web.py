@@ -7,6 +7,7 @@ import base64
 import hashlib
 import html
 import json
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
@@ -375,7 +376,12 @@ class _CommonHeaders:
 
 async def _purge_forever(store: Store) -> None:
     while True:
-        await run_in_threadpool(store.purge_expired)
+        # One failed pass must not stop the cleanup for good.
+        try:
+            await run_in_threadpool(store.purge_expired)
+        except Exception as e:
+            # Only the type: a path in the message would carry a link's id.
+            logging.getLogger(__name__).warning("purge failed: %s", type(e).__name__)
         await asyncio.sleep(PURGE_INTERVAL_SECONDS)
 
 
