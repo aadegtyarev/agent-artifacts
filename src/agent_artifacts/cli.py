@@ -36,9 +36,18 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if args.command == "serve":
+        import tempfile
+
         import uvicorn
 
         from .web import create_app
+
+        # Uploads over 1 MB are spooled to a temporary file while they arrive.
+        # Keep those on the data volume: a small in-memory /tmp fills up with a
+        # few large uploads at once.
+        spool = config.data_dir / "tmp"
+        spool.mkdir(parents=True, exist_ok=True)
+        tempfile.tempdir = str(spool.resolve())
 
         # No access log: the link in each request line is the access to the file.
         uvicorn.run(create_app(config), host=args.host, port=args.port, access_log=False)
