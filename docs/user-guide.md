@@ -25,20 +25,21 @@ AGENT_ARTIFACTS_URL=https://art.example.org
 AGENT_ARTIFACTS_KEY=aa_…
 ```
 
-Press **Copy**. The page is shown once: after a reload the invite answers
-"used". Lost the key before saving it? Ask the admin to remove your name and
-invite you again: the name already has a key, so a second invite for it is
-refused until then.
+Press **Copy**. The page is shown only once; a reload says the invite is used.
 
-Opening the link does not use it up, so it is safe to send through a chat that
-builds link previews. Only the button does.
+Lost the key before you saved it? Ask the admin to remove your name and invite
+you again. Until then a new invite for the same name is refused.
+
+Opening the link does not use it up. Only the button does, so the link is safe
+in a chat that builds link previews.
 
 ## 2. Give it to your agent
 
 Paste the text into your agent. It follows
-[agent-setup.md](agent-setup.md): copies the skill into its skills folder and
-saves the key to `~/.config/agent-artifacts/env`. Some agents pick up a new
-skill only after a restart.
+[agent-setup.md](agent-setup.md): it copies the skill into its skills folder
+and saves the key to `~/.config/agent-artifacts/env`
+(`%APPDATA%\agent-artifacts\env` on Windows). Some agents see a new skill
+only after a restart.
 
 ## 3. Or set it up by hand
 
@@ -50,11 +51,12 @@ Codex and pi. Then save the key:
 uv run ~/.claude/skills/agent-artifacts/scripts/artifacts_cli.py setup
 ```
 
-Paste the two `AGENT_ARTIFACTS_` lines and press Ctrl-D (Ctrl-Z, Enter on
-Windows). `python3` works instead of `uv run`. `setup` checks the key and
-prints where it saved it. The key can also come from the environment
-variables `AGENT_ARTIFACTS_URL` and `AGENT_ARTIFACTS_KEY`; they win over the
-file.
+Paste the two `AGENT_ARTIFACTS_` lines and press Ctrl-D (on Windows Ctrl-Z,
+then Enter). Without uv, use `python3` (`python` on Windows) instead of `uv run`. `setup` checks the
+key with the service and prints where it saved it.
+
+You can also keep the key in the environment variables `AGENT_ARTIFACTS_URL`
+and `AGENT_ARTIFACTS_KEY`. They win over the file.
 
 ## 4. Check it
 
@@ -87,7 +89,7 @@ secret this way: passwords, tokens, private data, internal addresses.
 
 | What | Limit |
 | --- | --- |
-| Lifetime of a link | set by the service, 48 hours unless changed; restarts on each update |
+| Lifetime of a link | 48 hours unless the service is set otherwise; starts again on each update |
 | One file | 25 MB; Markdown and text 2 MB |
 | All your live files | 500 MB unless the admin gave you another limit |
 | File types | `.html` `.htm` `.md` `.txt` `.pdf` `.png` `.jpg` `.jpeg` `.gif` `.webp` `.svg` `.zip` `.tar.gz` `.tgz` |

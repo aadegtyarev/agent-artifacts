@@ -28,9 +28,9 @@ docker compose up -d --build
 curl -s http://127.0.0.1:8090/health      # prints: ok
 ```
 
-The container listens on `127.0.0.1:8090`, runs as an unprivileged user with
-a read-only root filesystem and no capabilities, and keeps files and the
-database in the `data` volume.
+The container listens on `127.0.0.1:8090`. It runs as an unprivileged user,
+with a read-only root filesystem and no capabilities. Files, the database and
+uploads in progress live in the `data` volume.
 
 ## 2. Put nginx in front
 
@@ -43,15 +43,16 @@ sudo ln -s /etc/nginx/sites-available/art /etc/nginx/sites-enabled/art
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-It does three things beyond proxying:
+Besides proxying, the vhost:
 
-- turns access logs off for this site, and error logs down to `crit`, because
-  a request line holds a link and a link is the access to a file. An app
-  outage then does not show in nginx's log: watch `/health` instead;
-- limits each client IP to 10 requests a second for pages (bursts of 40), 2 a
-  second for the API (bursts of 10) and 20 connections, answering `429` above
-  that;
-- allows uploads a little above the 25 MB file limit.
+- keeps links out of the logs. A request line holds a link, and the link is
+  the access to a file, so access logs are off and error logs keep only
+  `crit`. An app outage then does not show in nginx's log; watch `/health`
+  instead.
+- limits each client IP: 10 requests a second for pages (bursts of 40), 2 a
+  second for the API (bursts of 10), 20 connections. Above that nginx answers
+  `429`.
+- accepts uploads a little above the 25 MB file limit.
 
 The rate limits stop a single noisy client. A distributed flood needs
 protection from the hosting provider or a CDN.

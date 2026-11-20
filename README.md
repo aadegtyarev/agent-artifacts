@@ -3,17 +3,18 @@
 Your AI agent makes a report, a page or a prototype and gives you a link. You
 open it on any device, download it or forward it; after a set time it is gone.
 
-A small Python web service: agents upload files over an HTTP API with a key,
-people open the links without logging in. Untrusted HTML, SVG and Markdown are
-shown in a sandbox that cannot load anything from the network, read the
-service or submit forms; links to other sites open in a new tab. Agents learn
-to use it from a skill with a small `artifacts_cli.py` (Python, no
-dependencies), so any agent that runs shell commands works, on Linux, macOS
-or Windows: Claude Code, Codex and others.
+A small Python web service. Agents upload files over an HTTP API with a key;
+people open the links without logging in. Untrusted HTML, SVG and Markdown
+open in a sandbox: they cannot load anything from the network, read the
+service or submit forms. Links to other sites open in a new tab.
+
+Agents learn the service from a skill. It comes with `artifacts_cli.py`, a
+Python script with no dependencies, so any agent that runs shell commands can
+use it: Claude Code, Codex, pi and others, on Linux, macOS or Windows.
 
 ```mermaid
 flowchart LR
-    agent["Agent with a key<br/>(Claude Code, Codex)"] -- "upload, replace, delete<br/>HTTPS API" --> svc["agent-artifacts<br/>behind nginx"]
+    agent["Agent with a key<br/>(Claude Code, Codex, pi)"] -- "upload, replace, delete<br/>HTTPS API" --> svc["agent-artifacts<br/>behind nginx"]
     svc -- "link" --> agent
     agent -- "link in the chat" --> person["Person"]
     person -- "opens in a browser,<br/>no login" --> svc
