@@ -6,8 +6,9 @@ open it on any device, download it or forward it; after a set time it is gone.
 A small Python web service: agents upload files over an HTTP API with a key,
 people open the links without logging in. Untrusted HTML, SVG and Markdown are
 shown in a sandbox that cannot reach the network or the service. Agents learn
-to use it from a skill with a small `aa` command (bash and curl), so any
-agent that runs shell commands works: Claude Code, Codex and others.
+to use it from a skill with a small `artifacts_cli.py` (Python, no
+dependencies), so any agent that runs shell commands works, on Linux, macOS
+or Windows: Claude Code, Codex and others.
 
 ```mermaid
 flowchart LR
@@ -45,7 +46,7 @@ flowchart LR
 | [Admin guide](docs/admin-guide.md) | you invite people, check who uses how much, or change limits |
 | [Deploy](docs/deploy.md) | you install, configure, back up or upgrade the service |
 | [Contract](docs/contract.md) | you need the exact API, file types, limits or the security model |
-| [Skill](skill/agent-artifacts/SKILL.md) | you want to see what the agent is told, or run `aa` by hand |
+| [Skill](skill/agent-artifacts/SKILL.md) | you want to see what the agent is told, or run `artifacts_cli.py` by hand |
 
 ## What it does not do
 

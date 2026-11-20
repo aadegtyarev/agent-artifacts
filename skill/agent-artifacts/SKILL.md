@@ -10,15 +10,21 @@ or forwards it. Anyone with the link can open it, without
 logging in. Files are deleted some time after the last upload (48 hours by
 default; the service reports `expires_at`).
 
-Everything goes through `scripts/aa` in this skill's folder (bash and curl).
-Call it by its full path, e.g. `~/.claude/skills/agent-artifacts/scripts/aa`;
-below it is `aa`. It finds the service and the key in
-`~/.config/agent-artifacts/env`, or in `AGENT_ARTIFACTS_URL` and
-`AGENT_ARTIFACTS_KEY`. If it says there is no key, ask the user for the two
-lines from their invite page and save them:
+Everything goes through `scripts/artifacts_cli.py` in this skill's folder, a
+Python script with no dependencies. Run it by its full path with `uv run`, or
+with `python3` (`python` on Windows) when uv is not installed:
 
 ```bash
-printf 'AGENT_ARTIFACTS_URL=%s\nAGENT_ARTIFACTS_KEY=%s\n' "<url>" "<key>" | aa setup
+uv run ~/.claude/skills/agent-artifacts/scripts/artifacts_cli.py me
+```
+
+Below, `artifacts_cli.py` stands for that whole command. It finds the service
+and the key in `AGENT_ARTIFACTS_URL` and `AGENT_ARTIFACTS_KEY`, or else in the
+file its `setup` wrote. If it says there is no key, ask the user for the two
+lines from their invite page and save them through stdin:
+
+```bash
+printf 'AGENT_ARTIFACTS_URL=%s\nAGENT_ARTIFACTS_KEY=%s\n' "<url>" "<key>" | artifacts_cli.py setup
 ```
 
 ## Rules
@@ -35,12 +41,12 @@ printf 'AGENT_ARTIFACTS_URL=%s\nAGENT_ARTIFACTS_KEY=%s\n' "<url>" "<key>" | aa s
 ## Upload, replace, delete
 
 ```bash
-aa upload report.html                  # a real file; prints the artifact JSON
-aa upload report.html "Q3 report.html" # optional download name, same extension rules
-aa replace <id> report.html            # same link, new content; the lifetime restarts
-aa list                                # your live files, if you lost the id
-aa rm <id>                             # delete now
-aa me                                  # used_bytes of quota_bytes, files, admin or not
+artifacts_cli.py upload report.html                  # a real file; prints the artifact JSON
+artifacts_cli.py upload report.html "Q3 report.html" # optional download name, same extension rules
+artifacts_cli.py replace <id> report.html            # same link, new content; the lifetime restarts
+artifacts_cli.py list                                # your live files, if you lost the id
+artifacts_cli.py rm <id>                             # delete now
+artifacts_cli.py me                                  # used_bytes of quota_bytes, files, admin or not
 ```
 
 Upload and replace print JSON:
@@ -51,7 +57,7 @@ Upload and replace print JSON:
 ```
 
 Give the person `url` and say until when it works (`expires_at`). On an error
-`aa` exits with 1 and prints `{"error": "<code>", "message": "…"}`:
+`artifacts_cli.py` exits with 1 and prints `{"error": "<code>", "message": "…"}`:
 
 | Code | What to do |
 | --- | --- |
@@ -68,22 +74,22 @@ Give the person `url` and say until when it works (`expires_at`). On an error
 
 Each key has its own space (500 MB by default). An upload that does not fit
 gets `quota_exceeded`, with `used_bytes` and `quota_bytes` in the answer.
-Don't delete anything on your own. Run `aa list`, show the user each file's
+Don't delete anything on your own. Run `artifacts_cli.py list`, show the user each file's
 name, size and `expires_at`, and ask which to delete. Delete those, then
 upload again.
 
 ## If the key leaked
 
-When the user says the key leaked or asks for a new one, run `aa new-key`.
+When the user says the key leaked or asks for a new one, run `artifacts_cli.py new-key`.
 The old key stops working at once; the files stay. If the key came from the
-env file, `aa` saves the new one there and nothing else is needed. If it came
-from `AGENT_ARTIFACTS_KEY`, `aa` prints the new key: tell the user to put it
+env file, `artifacts_cli.py` saves the new one there and nothing else is needed. If it came
+from `AGENT_ARTIFACTS_KEY`, `artifacts_cli.py` prints the new key: tell the user to put it
 where that variable is set. Never write a key into files you upload or into
 logs.
 
 ## Admin key
 
-If `aa me` says `"admin": true`, the key also manages people and limits: read
+If `artifacts_cli.py me` says `"admin": true`, the key also manages people and limits: read
 [admin.md](admin.md) when the user asks to invite someone, see usage, change
 limits or remove a person.
 

@@ -10,7 +10,7 @@ works: Claude Code, Codex and others. It takes a few minutes.
 | --- | --- |
 | An invite link, `https://<service>/join/…` | the person who runs the service |
 | An AI agent that can run shell commands | your usual setup |
-| `git`, `bash` and `curl` on that computer | usually already there |
+| `git`, and `uv` or Python 3.10+ | Linux, macOS or Windows |
 
 The examples use `https://art.example.org` for the service.
 
@@ -40,16 +40,19 @@ skill only after a restart.
 
 ## 3. Or set it up by hand
 
+Copy the `skill/agent-artifacts` folder of this repository into your agent's
+skills folder: `~/.claude/skills/` for Claude Code, `~/.agents/skills/` for
+Codex. Then save the key:
+
 ```bash
-git clone --depth 1 https://github.com/aadegtyarev/agent-artifacts.git /tmp/agent-artifacts
-mkdir -p ~/.claude/skills && cp -r /tmp/agent-artifacts/skill/agent-artifacts ~/.claude/skills/   # Claude Code
-mkdir -p ~/.agents/skills && cp -r /tmp/agent-artifacts/skill/agent-artifacts ~/.agents/skills/   # Codex
-~/.claude/skills/agent-artifacts/scripts/aa setup    # paste the two AGENT_ARTIFACTS_ lines, then Ctrl-D
+uv run ~/.claude/skills/agent-artifacts/scripts/artifacts_cli.py setup
 ```
 
-`aa setup` checks the key and prints where it saved it. Instead of the file,
-the key can come from the environment variables `AGENT_ARTIFACTS_URL` and
-`AGENT_ARTIFACTS_KEY`; they win over the file.
+Paste the two `AGENT_ARTIFACTS_` lines and press Ctrl-D (Ctrl-Z, Enter on
+Windows). `python3` works instead of `uv run`. `setup` checks the key and
+prints where it saved it. The key can also come from the environment
+variables `AGENT_ARTIFACTS_URL` and `AGENT_ARTIFACTS_KEY`; they win over the
+file.
 
 ## 4. Check it
 

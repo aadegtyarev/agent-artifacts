@@ -2,7 +2,7 @@
 
 How to give people keys, see who uses how much space, and change the limits.
 All of it goes through an admin key: ask your agent, which uses the skill's
-`aa` tool, or run `aa` yourself. Installing the service is in
+`artifacts_cli.py` tool, or run `artifacts_cli.py` yourself. Installing the service is in
 [deploy.md](deploy.md).
 
 ## Get an admin key
@@ -15,7 +15,7 @@ docker compose exec app agent-artifacts agent add me --admin
 
 It prints the key once. Connect your agent with it like any other key: give
 the agent the URL, the key and [agent-setup.md](agent-setup.md#connect). The
-skill sees `"admin": true` in `aa me` and reads its admin part,
+skill sees `"admin": true` in `artifacts_cli.py me` and reads its admin part,
 [skill/agent-artifacts/admin.md](../skill/agent-artifacts/admin.md).
 
 To make an existing key admin, or take the role back:
@@ -38,12 +38,12 @@ The name you give becomes the person's name in the service: letters, digits,
 
 Each link works once. The service keeps only a hash of it, so a lost link
 cannot be shown again: cancel it and make a new one. "Show open invites" and
-"cancel the invite for petrov" do that (`aa invites`, `aa cancel-invite <id>`).
+"cancel the invite for petrov" do that (`artifacts_cli.py invites`, `artifacts_cli.py cancel-invite <id>`).
 
-The same by hand, with `aa` from the skill folder:
+The same by hand, with `artifacts_cli.py` from the skill folder:
 
 ```bash
-aa invite petrov
+artifacts_cli.py invite petrov
 ```
 
 ```json
@@ -59,10 +59,10 @@ aa invite petrov
 ## See who uses what
 
 "Who uses agent-artifacts and how much space?" lists everyone with their used
-space, number of files, quota and last upload (`aa users`).
+space, number of files, quota and last upload (`artifacts_cli.py users`).
 
 "Show agent-artifacts stats" gives the totals, free disk and current limits
-(`aa stats`):
+(`artifacts_cli.py stats`):
 
 ```json
 {
@@ -78,10 +78,10 @@ space, number of files, quota and last upload (`aa users`).
 
 | Ask the agent | Changes | Bounds |
 | --- | --- | --- |
-| "keep files for 24 hours" | lifetime of new uploads: `aa settings '{"ttl_hours": 24}'` | 1 to 720 hours |
+| "keep files for 24 hours" | lifetime of new uploads: `artifacts_cli.py settings '{"ttl_hours": 24}'` | 1 to 720 hours |
 | "give everyone 300 MB" | the common per-person space: `user_quota_mb` | at least 1 MB |
 | "raise the total limit to 5 GB" | all stored files together: `max_total_mb` | at least 1 MB, at most what the disk can hold less a reserve for the database |
-| "give petrov 1 GB" / "put petrov back on the common limit" | one person's own space: `aa quota petrov 1024` / `aa quota petrov null` | at least 1 MB |
+| "give petrov 1 GB" / "put petrov back on the common limit" | one person's own space: `artifacts_cli.py quota petrov 1024` / `artifacts_cli.py quota petrov null` | at least 1 MB |
 
 These are kept in the service's database and survive restarts; the
 environment variables in [deploy.md](deploy.md#settings) only give the values a
@@ -90,7 +90,7 @@ files already stored keep their expiry.
 
 ## Remove a person
 
-"Remove petrov from agent-artifacts" (`aa remove petrov`). Their key stops working and their files
+"Remove petrov from agent-artifacts" (`artifacts_cli.py remove petrov`). Their key stops working and their files
 are deleted at once, so the agent asks you to confirm first. An admin cannot
 remove its own key; another admin, or `agent remove` on the server, can.
 

@@ -2,7 +2,7 @@
 
 A small web service where an AI agent uploads a file and gets back a link a
 person can open, download or pass on. Files live for a fixed time and are then
-deleted. Agents use it through a skill and its `aa` command.
+deleted. Agents use it through a skill and its `artifacts_cli.py` command.
 
 ## Scenarios
 
@@ -207,15 +207,16 @@ terminates TLS, with `client_max_body_size` above the size limit
 
 ## Skill
 
-`skill/agent-artifacts/`: `SKILL.md`, `admin.md` and `scripts/aa`, a bash and
-curl command line over the API. Usable from any agent that runs shell
-commands. `aa` reads `AGENT_ARTIFACTS_URL` and `AGENT_ARTIFACTS_KEY` from the
-environment, or else from `~/.config/agent-artifacts/env` (mode 600, written by
-`aa setup`; `AGENT_ARTIFACTS_ENV` points elsewhere). It hands the key to curl
-through a config on a pipe, so it does not show in the process list. The
-skill teaches:
+`skill/agent-artifacts/`: `SKILL.md`, `admin.md` and `scripts/artifacts_cli.py`,
+a command line over the API in Python's standard library (3.10+; `uv run`
+reads its inline metadata). Usable from any agent that runs shell commands.
+It reads `AGENT_ARTIFACTS_URL` and `AGENT_ARTIFACTS_KEY` from the environment,
+or else from the file `setup` writes with mode 600:
+`~/.config/agent-artifacts/env`, `%APPDATA%\agent-artifacts\env` on Windows,
+or `AGENT_ARTIFACTS_ENV`. The key never appears in a command line. The skill
+teaches:
 
-- upload, replace and delete with `aa`, and how to give the person the link;
+- upload, replace and delete with `artifacts_cli.py`, and how to give the person the link;
 - one link per piece of work: keep the id and replace, don't upload again;
 - HTML must be one self-contained file: inline CSS and JS, images as `data:`
   URIs, no CDN or web fonts, internal navigation by `#anchor`, no
