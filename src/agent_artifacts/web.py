@@ -63,7 +63,8 @@ _COPY_JS = (
     "document.getElementById('copy').onclick=function(){"
     "var u=document.getElementById('url');"
     "(navigator.clipboard?navigator.clipboard.writeText(u.value):Promise.reject())"
-    ".then(function(){document.getElementById('copy').textContent='Copied'},"
+    ".then(function(){var b=document.getElementById('copy');b.classList.add('done');"
+    "setTimeout(function(){b.classList.remove('done')},1500)},"
     "function(){u.select()})};"
 )
 _COPY_JS_HASH = base64.b64encode(hashlib.sha256(_COPY_JS.encode()).digest()).decode()
@@ -79,6 +80,10 @@ _DOWNLOAD_ICON = _SVG + '<path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></svg>'
 _LINK_ICON = (
     _SVG + '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/>'
     '<path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>'
+)
+# Shown instead of the link icon for a moment after the link is copied.
+_CHECK_ICON = (
+    '<svg class="check" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>'
 )
 
 _PAGE = """<!doctype html>
@@ -106,6 +111,8 @@ a.btn, button {{ display: flex; align-items: center; justify-content: center;
   border-radius: 6px; text-decoration: none; cursor: pointer; }}
 svg {{ width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2;
   stroke-linecap: round; stroke-linejoin: round; }}
+.check, .done svg {{ display: none; }}
+.done .check {{ display: block; }}
 #url {{ position: absolute; left: -9999px; }}
 main {{ flex: 1; min-height: 0; }}
 iframe {{ border: 0; width: 100%; height: 100%; background: #fff; }}
@@ -236,7 +243,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             f'title="Download" aria-label="Download">{_DOWNLOAD_ICON}</a>'
             f'<input id="url" readonly value="{html.escape(url)}" aria-hidden="true">'
             f'<button id="copy" type="button" title="Copy link" aria-label="Copy link">'
-            f"{_LINK_ICON}</button></div></header>"
+            f"{_LINK_ICON}{_CHECK_ICON}</button></div></header>"
             f"<main>{content}</main><script>{_COPY_JS}</script>"
         )
         return HTMLResponse(
