@@ -199,7 +199,8 @@ PDF viewer, but with `frame-ancestors 'self'`. The viewer page sends
 opens in a new tab cannot navigate the viewer's tab.
 
 **Logs.** The link is the access, so access logs are off: uvicorn runs without
-one and the nginx example turns it off.
+one and the nginx example turns it off, and logs errors, which carry the
+request line too, only at `crit`.
 
 **Transport.** The service itself speaks plain HTTP on `127.0.0.1`. It refuses
 to start when its `public_url` is `http://` and the host is not loopback, a
