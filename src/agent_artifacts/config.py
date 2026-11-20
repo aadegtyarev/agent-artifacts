@@ -18,6 +18,7 @@ class Config:
     ttl_seconds: int = 48 * 3600
     max_file_bytes: int = 25 * MB
     max_total_bytes: int = 2048 * MB
+    user_quota_bytes: int = 500 * MB
 
     @classmethod
     def from_env(cls) -> Config:
@@ -28,6 +29,7 @@ class Config:
             ttl_seconds=int(float(env.get("AA_TTL_HOURS", "48")) * 3600),
             max_file_bytes=int(float(env.get("AA_MAX_FILE_MB", "25")) * MB),
             max_total_bytes=int(float(env.get("AA_MAX_TOTAL_MB", "2048")) * MB),
+            user_quota_bytes=int(float(env.get("AA_USER_QUOTA_MB", "500")) * MB),
         )
 
 

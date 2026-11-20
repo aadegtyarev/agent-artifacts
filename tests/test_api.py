@@ -297,3 +297,24 @@ def test_image_opens_full_size_on_its_own(env):
     assert f'<a href="/a/{img["id"]}/raw" target="_blank" rel="noopener">' in page
     r = client.get(f"/a/{img['id']}/raw", headers={"Sec-Fetch-Dest": "document"})
     assert (r.status_code, r.headers["content-type"]) == (200, "image/png")
+
+
+def test_quota_per_agent_and_me(tmp_path):
+    config = Config(data_dir=tmp_path, public_url="https://art.example.org", max_file_bytes=2000)
+    store = Store(tmp_path, max_total_bytes=10_000, user_quota_bytes=1500)
+    keys = {name: store.add_agent(name) for name in ("alice", "bob")}
+    with TestClient(create_app(config, store)) as client:
+        first = upload(client, keys["alice"], "a.txt", b"x" * 1000).json()
+        r = upload(client, keys["alice"], "b.txt", b"x" * 600)
+        assert r.status_code == 507
+        assert (r.json()["error"], r.json()["used_bytes"], r.json()["quota_bytes"]) == (
+            "quota_exceeded",
+            1000,
+            1500,
+        )
+        # Replacing a file counts only the new size; other agents have their own quota.
+        assert upload(client, keys["alice"], "a.txt", b"x" * 1400, first["id"]).status_code == 200
+        assert upload(client, keys["bob"], "b.txt", b"x" * 1000).status_code == 201
+        me = client.get("/api/v1/me", headers=auth(keys["alice"])).json()
+        assert me == {"name": "alice", "used_bytes": 1400, "quota_bytes": 1500, "files": 1}
+        assert client.get("/api/v1/me").status_code == 401

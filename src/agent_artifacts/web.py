@@ -30,7 +30,7 @@ from starlette.routing import Route
 
 from . import kinds
 from .config import Config
-from .store import ID_RE, Artifact, StorageFull, Store
+from .store import ID_RE, Artifact, QuotaExceeded, StorageFull, Store
 
 PURGE_INTERVAL_SECONDS = 600
 
@@ -124,7 +124,11 @@ img {{ max-width: 100%; max-height: 100%; cursor: zoom-in; }}
 
 
 def create_app(config: Config, store: Store | None = None) -> Starlette:
-    store = store or Store(config.data_dir, max_total_bytes=config.max_total_bytes)
+    store = store or Store(
+        config.data_dir,
+        max_total_bytes=config.max_total_bytes,
+        user_quota_bytes=config.user_quota_bytes,
+    )
 
     def agent_of(request: Request) -> str | None:
         scheme, _, key = request.headers.get("authorization", "").partition(" ")
@@ -181,6 +185,16 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
                     ttl=config.ttl_seconds,
                     artifact_id=artifact_id,
                 )
+            except QuotaExceeded as e:
+                return _error(
+                    507,
+                    "quota_exceeded",
+                    f"your files take {_size(e.used)} of {_size(e.quota)} and this one needs "
+                    f"{_size(size)}; delete files you no longer need (GET /api/v1/artifacts "
+                    "lists them)",
+                    used_bytes=e.used,
+                    quota_bytes=e.quota,
+                )
             except StorageFull:
                 return _error(507, "storage_full", "the service is out of space, try later")
         finally:
@@ -196,6 +210,20 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         if request.method == "POST":
             return await save(request, agent, None)
         return JSONResponse([as_json(a) for a in store.list(agent)])
+
+    async def me(request: Request) -> Response:
+        agent = agent_of(request)
+        if agent is None:
+            return _error(401, "unauthorized", "missing or unknown agent key")
+        used, files = store.usage(agent)
+        return JSONResponse(
+            {
+                "name": agent,
+                "used_bytes": used,
+                "quota_bytes": store.user_quota_bytes,
+                "files": files,
+            }
+        )
 
     async def item(request: Request) -> Response:
         agent = agent_of(request)
@@ -300,6 +328,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
     app = Starlette(
         routes=[
             Route("/health", health),
+            Route("/api/v1/me", me),
             Route("/api/v1/artifacts", collection, methods=["GET", "POST"]),
             Route("/api/v1/artifacts/{id:artifact_id}", item, methods=["PUT", "DELETE"]),
             Route("/a/{id:artifact_id}", view),
@@ -352,8 +381,8 @@ def _download(path: Path, name: str, media_type: str = "application/octet-stream
     )
 
 
-def _error(status: int, code: str, message: str) -> JSONResponse:
-    return JSONResponse({"error": code, "message": message}, status_code=status)
+def _error(status: int, code: str, message: str, **extra: object) -> JSONResponse:
+    return JSONResponse({"error": code, "message": message, **extra}, status_code=status)
 
 
 def _not_found() -> HTMLResponse:

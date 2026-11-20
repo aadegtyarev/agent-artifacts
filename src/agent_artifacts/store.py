@@ -54,15 +54,27 @@ class StorageFull(Exception):
     pass
 
 
+class QuotaExceeded(Exception):
+    """The owner's own files plus the new one would pass their quota."""
+
+    def __init__(self, used: int, quota: int) -> None:
+        super().__init__(f"{used} of {quota} bytes used")
+        self.used = used
+        self.quota = quota
+
+
 def hash_key(key: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
 
 
 class Store:
-    def __init__(self, data_dir: Path, *, max_total_bytes: int) -> None:
+    def __init__(
+        self, data_dir: Path, *, max_total_bytes: int, user_quota_bytes: int | None = None
+    ) -> None:
         self.files = data_dir / "files"
         self.files.mkdir(parents=True, exist_ok=True)
         self.max_total_bytes = max_total_bytes
+        self.user_quota_bytes = user_quota_bytes
         self._db = data_dir / "meta.sqlite"
         with self._conn() as db:
             db.execute("PRAGMA journal_mode = WAL")
@@ -128,6 +140,15 @@ class Store:
             ).fetchall()
         return [Artifact(*r) for r in rows]
 
+    def usage(self, owner: str) -> tuple[int, int]:
+        """Bytes and number of ``owner``'s live artifacts."""
+        with self._conn() as db:
+            return db.execute(
+                "SELECT COALESCE(SUM(size), 0), COUNT(*) FROM artifacts "
+                "WHERE owner = ? AND expires_at > ?",
+                (owner, time.time()),
+            ).fetchone()
+
     def put(
         self,
         src: BinaryIO,
@@ -148,9 +169,17 @@ class Store:
         now = time.time()
         try:
             with self._conn() as db:
-                # Hold the write lock from the size check to the insert, so two
+                # Hold the write lock from the size checks to the insert, so two
                 # uploads cannot both fit into the same free space.
                 db.execute("BEGIN IMMEDIATE")
+                if self.user_quota_bytes is not None:
+                    own = db.execute(
+                        "SELECT COALESCE(SUM(size), 0) FROM artifacts "
+                        "WHERE owner = ? AND id != ? AND expires_at > ?",
+                        (owner, new_id, now),
+                    ).fetchone()[0]
+                    if own + size > self.user_quota_bytes:
+                        raise QuotaExceeded(own, self.user_quota_bytes)
                 used = db.execute(
                     "SELECT COALESCE(SUM(size), 0) FROM artifacts WHERE id != ? AND expires_at > ?",
                     (new_id, now),
