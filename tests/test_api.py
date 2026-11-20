@@ -332,3 +332,11 @@ def test_new_key_replaces_the_old_one(env):
         art["id"]
     ]
     assert client.post("/api/v1/me/key").status_code == 401
+
+
+def test_purge_skips_a_file_that_vanishes_meanwhile(env, monkeypatch):
+    _, store, _ = env
+    gone = store.files / ".x.tmp"
+    real_iterdir = type(store.files).iterdir
+    monkeypatch.setattr(type(store.files), "iterdir", lambda self: [*real_iterdir(self), gone])
+    assert store.purge_expired() == 0
