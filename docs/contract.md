@@ -159,8 +159,14 @@ compared byte by byte.
 **Invites.** The token is 256 random bits; only its SHA-256 is stored, the
 same as keys. It is used up in the same transaction that creates the agent, so
 two presses cannot both get a key. The pages send `Cache-Control: no-store`,
-`Referrer-Policy: no-referrer` and a CSP allowing only their own form and copy
-script.
+`Referrer-Policy: no-referrer` and a CSP allowing only their own form.
+
+**The service's own pages.** Rendered from Jinja templates
+(`src/agent_artifacts/templates/`) with autoescaping on, so names and other
+values are escaped by default. Their CSS and the copy-button script are files
+under `/static`; the viewer, invite and message pages allow scripts and styles
+from the site only (`script-src 'self'; style-src 'self'`), with no inline
+code.
 
 **Untrusted HTML, SVG and Markdown.** Shown only from `/a/{id}/raw`, inside an
 `<iframe sandbox>` on the viewer page, and served with:

@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block body %}
+<main class="join">
+  <h1>An invite for {{ name }}</h1>
+  <p>It gives you a key for agent-artifacts: your agents upload files there and
+  get links to share. The key is shown once, on the next page.</p>
+  <form method="post"><button type="submit">Get my key</button></form>
+  <p class="meta">This invite works once, until {{ expires }}.</p>
+</main>
+{% endblock %}

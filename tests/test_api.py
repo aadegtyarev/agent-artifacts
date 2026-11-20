@@ -8,8 +8,9 @@ from starlette.testclient import TestClient
 
 from agent_artifacts.config import Config, check_public_url
 from agent_artifacts.kinds import KindError, clean_name, detect
+from agent_artifacts.pages import SANDBOX_CSP
 from agent_artifacts.store import Store
-from agent_artifacts.web import SANDBOX_CSP, create_app
+from agent_artifacts.web import create_app
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
 

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% import "icons.html" as icon %}
+{% block body %}
+<header>
+  <div class="name">
+    <h1 title="{{ a.name }}">{{ a.name }}</h1>
+    <div class="meta">{{ size }} · expires {{ expires }}</div>
+  </div>
+  <div class="actions">
+    <a class="btn" href="/a/{{ a.id }}/download" title="Download" aria-label="Download">{{ icon.download() }}</a>
+    <input id="url" class="copy-source" readonly value="{{ url }}" aria-hidden="true" tabindex="-1">
+    <button type="button" data-copy="url" title="Copy link" aria-label="Copy link">{{ icon.link() }}{{ icon.check() }}</button>
+  </div>
+</header>
+<main>
+{%- if kind.sandboxed %}
+  <iframe sandbox="{{ sandbox }}" src="{{ raw }}" title="content"></iframe>
+{%- elif kind.name == "pdf" %}
+  {#- Browsers refuse to run their PDF viewer in a sandboxed frame. #}
+  <iframe src="{{ raw }}" title="content"></iframe>
+{%- elif kind.viewable %}
+  {#- A click opens it full size in the browser's image viewer. #}
+  <div class="center"><a href="{{ raw }}" target="_blank" rel="noopener"><img src="{{ raw }}" alt="{{ a.name }}"></a></div>
+{%- else %}
+  <div class="center">Archive: download it to see the contents.</div>
+{%- endif %}
+</main>
+{% endblock %}
