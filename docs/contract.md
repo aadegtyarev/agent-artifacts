@@ -174,7 +174,8 @@ code.
 ```
 Content-Security-Policy: sandbox allow-scripts allow-forms allow-modals
   allow-popups allow-popups-to-escape-sandbox allow-downloads;
-  default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline';
+  default-src 'none'; form-action 'none'; script-src 'unsafe-inline';
+  style-src 'unsafe-inline';
   img-src data: blob:; font-src data:; media-src data: blob:; frame-ancestors 'self'
 X-Content-Type-Options: nosniff
 ```
