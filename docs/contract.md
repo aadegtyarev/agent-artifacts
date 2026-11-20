@@ -48,7 +48,8 @@ Every artifact can be downloaded in its original form under its original name.
 | Lifetime of an artifact | 48 h from the last upload or replace |
 | Size of one file | 25 MB |
 | Size of a Markdown or text file (fixed) | 2 MB |
-| Total size of all stored files | 2 GB, then uploads get `507` |
+| Size of one agent's live files | 500 MB, then its uploads get `507` `quota_exceeded` |
+| Total size of all stored files | 2 GB, then uploads get `507` `storage_full` |
 
 ## HTTP API
 
@@ -62,6 +63,7 @@ a missing one.
 | `PUT /api/v1/artifacts/{id}` | replace the file, same fields; resets the lifetime; the type may change | `200` + artifact JSON |
 | `DELETE /api/v1/artifacts/{id}` | delete now | `204` |
 | `GET /api/v1/artifacts` | the calling agent's live artifacts | `200` + list |
+| `GET /api/v1/me` | the calling agent's name and space | `200` + `{"name", "used_bytes", "quota_bytes", "files"}` |
 
 `name` defaults to the uploaded file name. It is reduced to a safe base name
 (no directories, no control characters, at most 200 characters) and must keep
@@ -83,7 +85,9 @@ Artifact JSON:
 
 Errors are `{"error": "<code>", "message": "<text>"}` with codes
 `bad_request`, `unauthorized`, `not_found`, `too_large`, `unsupported_type`,
-`type_mismatch`, `storage_full`. Uploads must carry `Content-Length`; a body
+`type_mismatch`, `quota_exceeded`, `storage_full`. `quota_exceeded` also
+carries `used_bytes` and `quota_bytes`; a replace counts only the new file's
+size. Uploads must carry `Content-Length`; a body
 larger than the file limit is refused before it is read.
 
 ### Viewer pages (no auth)

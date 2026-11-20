@@ -21,6 +21,7 @@ restarts. Files and the database live in the `data` volume.
 | `AA_TTL_HOURS` | `48` | lifetime of an artifact after its last upload |
 | `AA_MAX_FILE_MB` | `25` | size limit of one file |
 | `AA_MAX_TOTAL_MB` | `2048` | size limit of all stored files |
+| `AA_USER_QUOTA_MB` | `500` | size limit of one agent's live files |
 | `AA_PORT` | `8090` | host port on 127.0.0.1 (compose only) |
 
 Pass the others through `environment:` in `compose.yaml` if you change them.

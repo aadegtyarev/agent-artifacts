@@ -43,6 +43,9 @@ curl -sS --fail-with-body -H "$AUTH" "$API"
 
 # Delete now.
 curl -sS --fail-with-body -X DELETE -H "$AUTH" "$API/<id>"
+
+# Your space: used_bytes of quota_bytes, and how many files.
+curl -sS --fail-with-body -H "$AUTH" "$AGENT_ARTIFACTS_URL/api/v1/me"
 ```
 
 Upload and replace answer with JSON:
@@ -62,8 +65,17 @@ as `{"error": "<code>", "message": "…"}`:
 | `not_found` | the id expired or isn't yours; upload anew |
 | `too_large` | shrink the file or zip it |
 | `unsupported_type`, `type_mismatch` | fix the extension or the content |
+| `quota_exceeded` | the user's space is used up; see below |
 | `storage_full` | the service is full; tell the user |
 | HTTP 429 | too many requests; wait a few seconds and retry |
+
+## When the space runs out
+
+Each key has its own space (500 MB by default). An upload that does not fit
+gets `quota_exceeded`, with `used_bytes` and `quota_bytes` in the answer.
+Don't delete anything on your own. List the files (`GET $API`), show the user
+each one's name, size and `expires_at`, and ask which to delete. Delete those,
+then upload again.
 
 ## Writing HTML that works there
 
