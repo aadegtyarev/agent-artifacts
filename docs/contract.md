@@ -141,9 +141,12 @@ A missing or expired id gives a `404` page saying so. Pages carry
 | `GET /join/{token}` | who the invite is for, until when, and a "Get my key" button; uses nothing up |
 | `POST /join/{token}` | creates the agent, uses the invite up and shows the key once, in a text to paste into an agent: a link to `docs/agent-setup.md` and the two settings |
 
-A used, cancelled or expired token gives a `404` page; a name that got a key
-some other way meanwhile gives `409`, and the invite stays until cancelled. Opening the link does
-not use it, because chat apps fetch links themselves to build a preview.
+A used, cancelled or expired token gives a `404` page. If the name got a key
+some other way in the meantime, the answer is `409` and the invite stays until
+cancelled.
+
+Opening the link does not use it up, because chat apps and link checkers fetch
+links themselves (GET or HEAD) to build a preview. Only the POST does.
 
 ## Security
 
@@ -153,8 +156,8 @@ guessed; the only listing is the owner agent's own `GET /api/v1/artifacts`.
 **Agent keys.** Created by `agent-artifacts agent add <name>`, which prints the
 key once. Only its SHA-256 is stored. `agent remove <name>` revokes it and
 deletes that agent's artifacts. An agent can replace its own key with
-`POST /api/v1/me/key`, for example after a leak. A key is looked up by its hash, so it is never
-compared byte by byte.
+`POST /api/v1/me/key`, for example after a leak. A key is looked up by its
+hash, so it is never compared byte by byte.
 
 **Invites.** The token is 256 random bits; only its SHA-256 is stored, the
 same as keys. It is used up in the same transaction that creates the agent, so
@@ -235,7 +238,8 @@ or else from the file `setup` writes with mode 600:
 or `AGENT_ARTIFACTS_ENV`. The key never appears in a command line. The skill
 teaches:
 
-- upload, replace and delete with `artifacts_cli.py`, and how to give the person the link;
+- upload, replace and delete with `artifacts_cli.py`, and how to give the
+  person the link;
 - one link per piece of work: keep the id and replace, don't upload again;
 - HTML must be one self-contained file: inline CSS and JS, images as `data:`
   URIs, no CDN or web fonts, internal navigation by `#anchor`, no

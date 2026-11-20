@@ -27,11 +27,12 @@ at least 1 MB, times at least an hour. A new lifetime applies to uploads from
 then on: files already stored keep their expiry. `max-total-mb` cannot exceed
 what the disk can hold, and the error says how much it can.
 
-**Invites.** `artifacts_cli.py invite` prints JSON with `url`. Give that link to the user to
-pass on: it is shown only now, the service keeps only its hash. The name
-becomes the person's name: letters, digits, `.`, `_`, `-`, not starting with
-`.`. `409 name_taken` means the name already has a key or an open invite. The
-person opens the link, presses a button and gets their key once, with setup
-text for their own agent.
+**Invites.** `artifacts_cli.py invite` prints JSON with `url`. Give that link
+to the user to pass on. It is shown only now: the service keeps only its hash.
+
+The name becomes the person's name: letters, digits, `.`, `_`, `-`, not
+starting with a dot. `409 name_taken` means the name already has a key or an
+open invite. The person opens the link, presses a button and gets their key
+once, with a text to paste into their own agent.
 
 An admin cannot remove its own key.

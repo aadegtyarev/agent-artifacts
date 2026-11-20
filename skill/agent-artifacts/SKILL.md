@@ -5,10 +5,10 @@ description: Share a file with a person as a link — an HTML page, report, prot
 
 # agent-artifacts
 
-Upload a file, get a link. The person opens it in a browser, downloads it
-or forwards it. Anyone with the link can open it, without
-logging in. Files are deleted some time after the last upload (48 hours by
-default; the service reports `expires_at`).
+Upload a file, get a link. The person opens it in a browser, downloads it or
+forwards it. Anyone with the link can open it, without logging in. Files are
+deleted some time after the last upload: 48 hours by default, and the service
+reports `expires_at`.
 
 Everything goes through `scripts/artifacts_cli.py` in this skill's folder, a
 Python script with no dependencies. Run it by its full path with `uv run`, or
@@ -77,24 +77,25 @@ Give the person `url` and say until when it works (`expires_at`). On an error
 
 Each key has its own space (500 MB by default). An upload that does not fit
 gets `quota_exceeded`, with `used_bytes` and `quota_bytes` in the answer.
-Don't delete anything on your own. Run `artifacts_cli.py list`, show the user each file's
-name, size and `expires_at`, and ask which to delete. Delete those, then
-upload again.
+Don't delete anything on your own. Run `artifacts_cli.py list`, show the user
+each file's name, size and `expires_at`, and ask which to delete. Delete
+those, then upload again.
 
 ## If the key leaked
 
-When the user says the key leaked or asks for a new one, run `artifacts_cli.py new-key`.
-The old key stops working at once; the files stay. If the key came from the
-env file, `artifacts_cli.py` saves the new one there and nothing else is needed. If it came
-from `AGENT_ARTIFACTS_KEY`, `artifacts_cli.py` prints the new key: tell the user to put it
-where that variable is set. Never write a key into files you upload or into
-logs.
+When the user says the key leaked or asks for a new one, run
+`artifacts_cli.py new-key`. The old key stops working at once; the files stay.
+
+If the key came from the file `setup` wrote, the new one is saved there and
+nothing else is needed. If it came from `AGENT_ARTIFACTS_KEY`, the command
+prints the new key: tell the user to put it where that variable is set. Never
+write a key into files you upload or into logs.
 
 ## Admin key
 
-If `artifacts_cli.py me` says `"admin": true`, the key also manages people and limits: read
-[admin.md](admin.md) when the user asks to invite someone, see usage, change
-limits or remove a person.
+If `artifacts_cli.py me` says `"admin": true`, the key also manages people and
+limits. Read [admin.md](admin.md) when the user asks to invite someone, see
+usage, change limits or remove a person.
 
 ## Writing HTML that works there
 
