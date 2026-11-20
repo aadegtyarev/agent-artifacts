@@ -73,6 +73,14 @@ VIEWER_CSP = (
     "form-action 'none'"
 )
 
+# One compact header row: icon buttons, the name and details cut to one line each.
+_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true">'
+_DOWNLOAD_ICON = _SVG + '<path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></svg>'
+_LINK_ICON = (
+    _SVG + '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/>'
+    '<path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>'
+)
+
 _PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -85,14 +93,19 @@ _PAGE = """<!doctype html>
 * {{ box-sizing: border-box; }}
 body {{ margin: 0; font: 15px/1.4 system-ui, sans-serif; color: var(--fg);
   background: var(--bg); display: flex; flex-direction: column; height: 100vh; }}
-header {{ display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center;
-  padding: 10px 16px; border-bottom: 1px solid var(--line); }}
-h1 {{ font-size: 16px; margin: 0; overflow-wrap: anywhere; }}
-.meta {{ color: var(--muted); font-size: 13px; }}
-.actions {{ display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }}
-a.btn, button {{ font: inherit; color: inherit; background: var(--btn);
-  border: 1px solid var(--line); border-radius: 6px; padding: 5px 12px;
-  text-decoration: none; cursor: pointer; }}
+header {{ display: flex; gap: 8px; align-items: center; padding: 4px 8px 4px 12px;
+  border-bottom: 1px solid var(--line); }}
+.name {{ flex: 1; min-width: 0; }}
+h1, .meta {{ margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+h1 {{ font-size: 14px; }}
+.meta {{ color: var(--muted); font-size: 12px; }}
+.actions {{ display: flex; gap: 4px; }}
+a.btn, button {{ display: flex; align-items: center; justify-content: center;
+  min-width: 32px; height: 32px; padding: 0 6px; font: 13px system-ui, sans-serif;
+  color: inherit; background: var(--btn); border: 1px solid var(--line);
+  border-radius: 6px; text-decoration: none; cursor: pointer; }}
+svg {{ width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round; }}
 #url {{ position: absolute; left: -9999px; }}
 main {{ flex: 1; min-height: 0; }}
 iframe {{ border: 0; width: 100%; height: 100%; background: #fff; }}
@@ -214,13 +227,16 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             )
         else:
             content = '<div class="center">Archive: download it to see the contents.</div>'
+        name = html.escape(a.name)
         body = (
-            f"<header><div><h1>{html.escape(a.name)}</h1>"
+            f'<header><div class="name"><h1 title="{name}">{name}</h1>'
             f'<div class="meta">{_size(a.size)} · expires {_iso(a.expires_at, human=True)}'
             "</div></div>"
-            f'<div class="actions"><a class="btn" href="/a/{a.id}/download">Download</a>'
+            f'<div class="actions"><a class="btn" href="/a/{a.id}/download" '
+            f'title="Download" aria-label="Download">{_DOWNLOAD_ICON}</a>'
             f'<input id="url" readonly value="{html.escape(url)}" aria-hidden="true">'
-            '<button id="copy" type="button">Copy link</button></div></header>'
+            f'<button id="copy" type="button" title="Copy link" aria-label="Copy link">'
+            f"{_LINK_ICON}</button></div></header>"
             f"<main>{content}</main><script>{_COPY_JS}</script>"
         )
         return HTMLResponse(

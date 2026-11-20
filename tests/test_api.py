@@ -49,6 +49,7 @@ def test_upload_view_download(env):
     page = client.get(f"/a/{art['id']}")
     assert page.status_code == 200
     assert f'src="/a/{art["id"]}/raw"' in page.text and "sandbox=" in page.text
+    assert 'aria-label="Download"' in page.text and 'aria-label="Copy link"' in page.text
 
     raw = client.get(f"/a/{art['id']}/raw")
     assert raw.content == b"<h1 id=x>Hi</h1>"
