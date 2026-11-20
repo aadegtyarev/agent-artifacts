@@ -423,3 +423,51 @@ def test_cli_admin_role(tmp_path, monkeypatch, capsys):
     capsys.readouterr()
     assert main(["agent", "list"]) == 0
     assert capsys.readouterr().out.split("\n")[:2] == ["me", "you (admin)"]
+
+
+def test_invite_gives_one_key_once(env):
+    client, store, keys = env
+    root = store.add_agent("root", admin=True)
+    path = "/api/v1/admin/invites"
+    assert client.post(path, headers=auth(keys["alice"]), json={"name": "carol"}).status_code == 403
+    r = client.post(path, headers=auth(root), json={"name": "carol", "days": 2})
+    assert r.status_code == 201 and r.headers["cache-control"] == "no-store"
+    invite = r.json()
+    assert invite["url"].startswith("https://art.example.org/join/")
+    for name in ("carol", "alice", "bad name"):
+        assert client.post(path, headers=auth(root), json={"name": name}).status_code in (409, 400)
+    assert [i["name"] for i in client.get(path, headers=auth(root)).json()] == ["carol"]
+
+    join = invite["url"].removeprefix("https://art.example.org")
+    page = client.get(join)  # a link preview: shows the button, uses nothing
+    assert page.status_code == 200 and "Get my key" in page.text
+    assert "form-action 'self'" in page.headers["content-security-policy"]
+    assert client.get(join).status_code == 200
+
+    got = client.post(join)
+    assert got.status_code == 200 and got.headers["cache-control"] == "no-store"
+    key = got.text.split("AGENT_ARTIFACTS_KEY=")[1].split("<")[0]
+    assert client.get("/api/v1/me", headers=auth(key)).json()["name"] == "carol"
+    assert client.post(join).status_code == 404
+    assert client.get(join).status_code == 404
+    assert client.get(path, headers=auth(root)).json() == []
+
+
+def test_invite_cancel_and_expiry(env):
+    client, store, _ = env
+    root = store.add_agent("root", admin=True)
+    path = "/api/v1/admin/invites"
+    first = client.post(path, headers=auth(root), json={"name": "dave"}).json()
+    assert client.delete(f"{path}/{first['id']}", headers=auth(root)).status_code == 204
+    assert client.post(first["url"].removeprefix("https://art.example.org")).status_code == 404
+    second = client.post(path, headers=auth(root), json={"name": "dave"}).json()
+    with store._conn() as db:
+        db.execute("UPDATE invites SET expires_at = 0")
+    assert client.post(second["url"].removeprefix("https://art.example.org")).status_code == 404
+    # A name taken by hand after the invite was made: the invite stays unused.
+    third = client.post(path, headers=auth(root), json={"name": "erin"}).json()
+    store.add_agent("erin")
+    assert client.post(third["url"].removeprefix("https://art.example.org")).status_code == 409
+    for days in (0, 31, True):
+        r = client.post(path, headers=auth(root), json={"name": "x", "days": days})
+        assert r.status_code == 400, days
