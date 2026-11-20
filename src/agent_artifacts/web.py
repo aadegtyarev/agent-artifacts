@@ -379,8 +379,9 @@ async def _purge_forever(store: Store) -> None:
         # One failed pass must not stop the cleanup for good.
         try:
             await run_in_threadpool(store.purge_expired)
-        except Exception:
-            logging.getLogger(__name__).exception("purge failed")
+        except Exception as e:
+            # Only the type: a path in the message would carry a link's id.
+            logging.getLogger(__name__).warning("purge failed: %s", type(e).__name__)
         await asyncio.sleep(PURGE_INTERVAL_SECONDS)
 
 
