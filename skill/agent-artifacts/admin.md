@@ -1,49 +1,32 @@
 # agent-artifacts: admin key
 
-Read this only when `GET $AGENT_ARTIFACTS_URL/api/v1/me` answers
-`"admin": true`. An admin key also manages people and limits. Do what the user
-asks, and confirm with them before removing a person: their key stops working
-and their files are deleted at once.
+For keys where `aa me` says `"admin": true`. `aa` is `scripts/aa` in this
+skill's folder. Do what the user asks, and confirm with them before removing a
+person: their key stops working and their files are deleted at once.
 
 ```bash
-ADMIN="$AGENT_ARTIFACTS_URL/api/v1/admin"
-AUTH="Authorization: Bearer $AGENT_ARTIFACTS_KEY"
-JSON="Content-Type: application/json"
-
-# People: name, admin, used_bytes, files, quota_bytes, own_quota, last_upload_at.
-curl -sS --fail-with-body -H "$AUTH" "$ADMIN/users"
-
-# Totals, free disk and the common limits.
-curl -sS --fail-with-body -H "$AUTH" "$ADMIN/stats"
-
-# Change the common limits; send only the ones to change.
-curl -sS --fail-with-body -X PATCH -H "$AUTH" -H "$JSON" \
-  -d '{"user_quota_mb": 500, "max_total_mb": 5120, "ttl_hours": 24}' "$ADMIN/settings"
-
-# One person's own quota in MB; null returns them to the common one.
-curl -sS --fail-with-body -X PATCH -H "$AUTH" -H "$JSON" \
-  -d '{"quota_mb": 1000}' "$ADMIN/users/<name>"
-
-# Remove a person: key revoked, files deleted.
-curl -sS --fail-with-body -X DELETE -H "$AUTH" "$ADMIN/users/<name>"
-
-# Invite a new person: a one-time link, valid 7 days unless "days" (1-30) says
-# otherwise. The answer has "url"; give it to the user, it is shown only now.
-curl -sS --fail-with-body -X POST -H "$AUTH" -H "$JSON" \
-  -d '{"name": "petrov"}' "$ADMIN/invites"
-
-# Invites not used yet, and cancelling one by its id.
-curl -sS --fail-with-body -H "$AUTH" "$ADMIN/invites"
-curl -sS --fail-with-body -X DELETE -H "$AUTH" "$ADMIN/invites/<id>"
+aa users                   # name, admin, used_bytes, files, quota_bytes, own_quota, last_upload_at
+aa stats                   # totals, free disk, the common limits
+aa invite petrov           # a one-time link for petrov, valid 7 days
+aa invite petrov 14        # ... valid 14 days (1 to 30)
+aa invites                 # open invites, with their ids
+aa cancel-invite <id>      # cancel one
+aa quota petrov 1000       # petrov's own quota in MB
+aa quota petrov null       # back to the common quota
+aa remove petrov           # revoke the key, delete the files
+aa settings '{"user_quota_mb": 500, "max_total_mb": 5120, "ttl_hours": 24}'
 ```
 
-An invite's name becomes the person's name: letters, digits, `.`, `_`, `-`,
-not starting with `.`.
-`409 name_taken` means that name already has a key or an open invite. The
-person opens the link, presses a button and sees their key once, with what to
-put into their agent's environment.
+`aa settings` takes any of the three; send only the ones to change. Values are
+numbers of at least 1. A new lifetime applies to uploads from then on: files
+already stored keep their expiry. `max_total_mb` cannot exceed what the disk
+can hold, and the error says how much it can.
 
-Show sizes to the user in MB. A new lifetime applies to uploads from then on;
-files already stored keep their expiry. `max_total_mb` cannot exceed what the
-disk can hold (`400 bad_request` says how much). An admin cannot remove its own
-key.
+**Invites.** `aa invite` prints JSON with `url`. Give that link to the user to
+pass on: it is shown only now, the service keeps only its hash. The name
+becomes the person's name: letters, digits, `.`, `_`, `-`, not starting with
+`.`. `409 name_taken` means the name already has a key or an open invite. The
+person opens the link, presses a button and gets their key once, with setup
+text for their own agent.
+
+Show sizes to the user in MB. An admin cannot remove its own key.

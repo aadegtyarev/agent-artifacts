@@ -10,9 +10,16 @@ or forwards it. Anyone with the link can open it, without
 logging in. Files are deleted some time after the last upload (48 hours by
 default; the service reports `expires_at`).
 
-Needs two environment variables: `AGENT_ARTIFACTS_URL` (for example
-`https://art.example.org`) and `AGENT_ARTIFACTS_KEY`. If either is missing, tell
-the user and stop.
+Everything goes through `scripts/aa` in this skill's folder (bash and curl).
+Call it by its full path, e.g. `~/.claude/skills/agent-artifacts/scripts/aa`;
+below it is `aa`. It finds the service and the key in
+`~/.config/agent-artifacts/env`, or in `AGENT_ARTIFACTS_URL` and
+`AGENT_ARTIFACTS_KEY`. If it says there is no key, ask the user for the two
+lines from their invite page and save them:
+
+```bash
+printf 'AGENT_ARTIFACTS_URL=%s\nAGENT_ARTIFACTS_KEY=%s\n' "<url>" "<key>" | aa setup
+```
 
 ## Rules
 
@@ -28,40 +35,27 @@ the user and stop.
 ## Upload, replace, delete
 
 ```bash
-API="$AGENT_ARTIFACTS_URL/api/v1/artifacts"
-AUTH="Authorization: Bearer $AGENT_ARTIFACTS_KEY"
-
-# Upload a real file (not stdin). `name` is optional, sets the download name
-# and must end in an allowed extension.
-curl -sS --fail-with-body -H "$AUTH" -F "file=@report.html" -F "name=Q3 report.html" "$API"
-
-# Replace the file at the same link (the type may change); the lifetime restarts.
-curl -sS --fail-with-body -X PUT -H "$AUTH" -F "file=@report.html" "$API/<id>"
-
-# Your live files, if you lost the id.
-curl -sS --fail-with-body -H "$AUTH" "$API"
-
-# Delete now.
-curl -sS --fail-with-body -X DELETE -H "$AUTH" "$API/<id>"
-
-# Your space: used_bytes of quota_bytes, how many files, and whether the key
-# is an admin key (then see admin.md next to this file).
-curl -sS --fail-with-body -H "$AUTH" "$AGENT_ARTIFACTS_URL/api/v1/me"
+aa upload report.html                  # a real file; prints the artifact JSON
+aa upload report.html "Q3 report.html" # optional download name, same extension rules
+aa replace <id> report.html            # same link, new content; the lifetime restarts
+aa list                                # your live files, if you lost the id
+aa rm <id>                             # delete now
+aa me                                  # used_bytes of quota_bytes, files, admin or not
 ```
 
-Upload and replace answer with JSON:
+Upload and replace print JSON:
 
 ```json
 {"id": "Vq3…", "url": "https://…/a/Vq3…", "name": "Q3 report.html", "type": "html",
  "size": 48213, "created_at": "…", "expires_at": "…"}
 ```
 
-Give the person `url` and say until when it works (`expires_at`). Errors come
-as `{"error": "<code>", "message": "…"}`:
+Give the person `url` and say until when it works (`expires_at`). On an error
+`aa` exits with 1 and prints `{"error": "<code>", "message": "…"}`:
 
 | Code | What to do |
 | --- | --- |
-| `bad_request` | send `file` as multipart from a file path |
+| `bad_request` | check the file path and name |
 | `unauthorized` | the key is wrong or revoked; tell the user |
 | `not_found` | the id expired or isn't yours; upload anew |
 | `too_large` | shrink the file or zip it |
@@ -74,22 +68,24 @@ as `{"error": "<code>", "message": "…"}`:
 
 Each key has its own space (500 MB by default). An upload that does not fit
 gets `quota_exceeded`, with `used_bytes` and `quota_bytes` in the answer.
-Don't delete anything on your own. List the files (`GET $API`), show the user
-each one's name, size and `expires_at`, and ask which to delete. Delete those,
-then upload again.
+Don't delete anything on your own. Run `aa list`, show the user each file's
+name, size and `expires_at`, and ask which to delete. Delete those, then
+upload again.
 
 ## If the key leaked
 
-When the user says the key leaked or asks for a new one:
+When the user says the key leaked or asks for a new one, run `aa new-key`.
+The old key stops working at once; the files stay. If the key came from the
+env file, `aa` saves the new one there and nothing else is needed. If it came
+from `AGENT_ARTIFACTS_KEY`, `aa` prints the new key: tell the user to put it
+where that variable is set. Never write a key into files you upload or into
+logs.
 
-```bash
-curl -sS --fail-with-body -X POST -H "$AUTH" "$AGENT_ARTIFACTS_URL/api/v1/me/key"
-```
+## Admin key
 
-The answer is `{"name": "…", "key": "aa_…"}`. The old key stops working at
-once; the files stay. Tell the user to put the new key into
-`AGENT_ARTIFACTS_KEY` wherever it is set. Don't write it into files you
-upload or into logs.
+If `aa me` says `"admin": true`, the key also manages people and limits: read
+[admin.md](admin.md) when the user asks to invite someone, see usage, change
+limits or remove a person.
 
 ## Writing HTML that works there
 

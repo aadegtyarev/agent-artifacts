@@ -97,7 +97,9 @@ JOIN_CSP = (
     f"default-src 'none'; script-src 'sha256-{_SETUP_JS_HASH}'; style-src 'unsafe-inline'; "
     "frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 )
-SKILL_URL = "https://github.com/aadegtyarev/agent-artifacts/tree/main/skill/agent-artifacts"
+REPO_URL = "https://github.com/aadegtyarev/agent-artifacts"
+SETUP_URL = f"{REPO_URL}/blob/main/docs/agent-setup.md"
+USER_GUIDE_URL = f"{REPO_URL}/blob/main/docs/user-guide.md"
 
 # One compact header row: icon buttons, the name and details cut to one line each.
 _SVG = '<svg viewBox="0 0 24 24" aria-hidden="true">'
@@ -148,7 +150,7 @@ img {{ max-width: 100%; max-height: 100%; cursor: zoom-in; }}
 .join {{ max-width: 560px; margin: 0 auto; padding: 24px 16px; }}
 .join h1 {{ font-size: 20px; margin-bottom: 12px; }}
 .join button {{ height: auto; padding: 8px 16px; font-size: 15px; }}
-textarea {{ width: 100%; height: 6.5em; word-break: break-all; color: inherit;
+textarea {{ width: 100%; height: 8.5em; word-break: break-all; color: inherit;
   font: 13px ui-monospace, monospace; background: var(--btn);
   border: 1px solid var(--line); border-radius: 6px; padding: 8px; resize: none; }}
 </style></head><body>{body}</body></html>"""
@@ -376,18 +378,21 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         if claimed is None:
             return _message(404, _INVITE_GONE, csp=JOIN_CSP)
         name, key = claimed
-        setup = f"AGENT_ARTIFACTS_URL={config.public_url}\nAGENT_ARTIFACTS_KEY={key}"
+        # One text to paste into any agent: what to do, then the two settings.
+        setup = (
+            f"Set up agent-artifacts for me: follow {SETUP_URL}\n"
+            f"AGENT_ARTIFACTS_URL={config.public_url}\nAGENT_ARTIFACTS_KEY={key}"
+        )
         body = (
             f'<main class="join"><h1>Your key, {html.escape(name)}</h1>'
             "<p>Copy it now: this page is not shown again.</p>"
-            f'<textarea id="setup" readonly aria-label="settings">{html.escape(setup)}</textarea>'
-            '<p><button id="copy" type="button">Copy</button></p><ol>'
-            "<li>Put these two variables into the environment your agent runs in.</li>"
-            f'<li>Install the skill: copy <a href="{SKILL_URL}" target="_blank" '
-            'rel="noopener">skill/agent-artifacts</a> into <code>~/.claude/skills/</code> '
-            "(Claude Code) or <code>~/.agents/skills/</code> (Codex).</li>"
-            "<li>Keep the key secret. If it leaks, ask your agent for a new one: the "
-            "skill knows how.</li></ol>"
+            f'<textarea id="setup" readonly aria-label="setup">{html.escape(setup)}</textarea>'
+            '<p><button id="copy" type="button">Copy</button></p>'
+            "<p>Paste the text into your agent: Claude Code, Codex or any other that "
+            "runs shell commands. It installs the skill and saves the key. To do it by "
+            f'hand, see the <a href="{USER_GUIDE_URL}" target="_blank" rel="noopener">'
+            "user guide</a>.</p>"
+            "<p>Keep the key secret. If it leaks, ask your agent for a new one.</p>"
             f"<script>{_SETUP_JS}</script></main>"
         )
         return _join_page(200, "Your key", body)
