@@ -406,6 +406,7 @@ def test_admin_api(env):
         {"ttl_seconds": 60},
         {"ttl_seconds": 10**7},
         {"max_total_bytes": 10**15},
+        {"user_quota_bytes": 10**30},
         {"x": 1},
         {},
     ):

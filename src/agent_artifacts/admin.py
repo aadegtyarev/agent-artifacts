@@ -83,7 +83,7 @@ def admin_routes(store: Store, public_url: str) -> list[Route]:
             values = {}
             if "user_quota_bytes" in data:
                 values["user_quota_bytes"] = _int(
-                    data["user_quota_bytes"], "user_quota_bytes", MIN_BYTES
+                    data["user_quota_bytes"], "user_quota_bytes", MIN_BYTES, MAX_BYTES
                 )
             if "max_total_bytes" in data:
                 total = _int(data["max_total_bytes"], "max_total_bytes", MIN_BYTES, MAX_BYTES)
