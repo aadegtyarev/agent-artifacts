@@ -10,7 +10,6 @@ import json
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
-from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote
 
@@ -31,6 +30,7 @@ from starlette.routing import Route
 
 from . import kinds
 from .admin import admin_routes
+from .api import ApiError, error, iso, on_api_error, require_agent, user_json
 from .config import Config
 from .store import ID_RE, TOKEN_RE, Artifact, NameTaken, QuotaExceeded, StorageFull, Store
 
@@ -165,12 +165,6 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         ttl_seconds=config.ttl_seconds,
     )
 
-    def agent_of(request: Request) -> str | None:
-        scheme, _, key = request.headers.get("authorization", "").partition(" ")
-        if scheme.lower() != "bearer" or not key:
-            return None
-        return store.agent_for_key(key.strip())
-
     def as_json(a: Artifact) -> dict:
         return {
             "id": a.id,
@@ -178,36 +172,36 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             "name": a.name,
             "type": a.kind,
             "size": a.size,
-            "created_at": _iso(a.created_at),
-            "expires_at": _iso(a.expires_at),
+            "created_at": iso(a.created_at),
+            "expires_at": iso(a.expires_at),
         }
 
     async def save(request: Request, agent: str, artifact_id: str | None) -> Response:
         length = request.headers.get("content-length")
         if length is None or not length.isdigit():
-            return _error(411, "bad_request", "Content-Length is required")
+            return error(411, "bad_request", "Content-Length is required")
         if int(length) > config.max_file_bytes + FORM_OVERHEAD_BYTES:
-            return _error(413, "too_large", f"limit is {config.max_file_bytes} bytes")
+            return error(413, "too_large", f"limit is {config.max_file_bytes} bytes")
         try:
             form = await request.form(max_files=1, max_fields=2, max_part_size=4096)
         except Exception:  # starlette raises several types for a malformed body
-            return _error(400, "bad_request", "expected multipart/form-data")
+            return error(400, "bad_request", "expected multipart/form-data")
         try:
             upload = form.get("file")
             if not isinstance(upload, UploadFile):
-                return _error(400, "bad_request", "multipart field 'file' is required")
+                return error(400, "bad_request", "multipart field 'file' is required")
             size = upload.size or 0
             if size > config.max_file_bytes:
-                return _error(413, "too_large", f"limit is {config.max_file_bytes} bytes")
+                return error(413, "too_large", f"limit is {config.max_file_bytes} bytes")
             name_field = form.get("name")
             raw_name = name_field if isinstance(name_field, str) and name_field else upload.filename
             try:
                 name = kinds.clean_name(raw_name or "")
                 kind = kinds.detect(name, await upload.read(64 * 1024))
             except kinds.KindError as e:
-                return _error(415, e.code, str(e))
+                return error(415, e.code, str(e))
             if kind.name in ("md", "txt") and size > kinds.MAX_TEXT_BYTES:
-                return _error(413, "too_large", "Markdown and text are limited to 2 MB; use .zip")
+                return error(413, "too_large", "Markdown and text are limited to 2 MB; use .zip")
             await upload.seek(0)
             try:
                 artifact = await run_in_threadpool(
@@ -220,7 +214,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
                     artifact_id=artifact_id,
                 )
             except QuotaExceeded as e:
-                return _error(
+                return error(
                     507,
                     "quota_exceeded",
                     f"your files take {_size(e.used)} of {_size(e.quota)} and this one needs "
@@ -230,54 +224,39 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
                     quota_bytes=e.quota,
                 )
             except StorageFull:
-                return _error(507, "storage_full", "the service is out of space, try later")
+                return error(507, "storage_full", "the service is out of space, try later")
         finally:
             await form.close()
         if artifact is None:
-            return _error(404, "not_found", "no such artifact")
+            return error(404, "not_found", "no such artifact")
         return JSONResponse(as_json(artifact), status_code=200 if artifact_id else 201)
 
     async def collection(request: Request) -> Response:
-        agent = agent_of(request)
-        if agent is None:
-            return _error(401, "unauthorized", "missing or unknown agent key")
+        agent = require_agent(store, request)
         if request.method == "POST":
             return await save(request, agent, None)
         return JSONResponse([as_json(a) for a in store.list(agent)])
 
     async def me(request: Request) -> Response:
-        agent = agent_of(request)
-        if agent is None:
-            return _error(401, "unauthorized", "missing or unknown agent key")
-        used, files = store.usage(agent)
-        return JSONResponse(
-            {
-                "name": agent,
-                "used_bytes": used,
-                "quota_bytes": store.quota_for(agent),
-                "files": files,
-                "admin": store.is_admin(agent),
-            }
-        )
+        info = await run_in_threadpool(store.agent_info, require_agent(store, request))
+        if info is None:  # removed since the key was checked
+            raise ApiError(401, "unauthorized", "missing or unknown agent key")
+        return JSONResponse(user_json(info, store.settings()["user_quota_bytes"]))
 
     async def new_key(request: Request) -> Response:
-        agent = agent_of(request)
-        if agent is None:
-            return _error(401, "unauthorized", "missing or unknown agent key")
+        agent = require_agent(store, request)
         key = await run_in_threadpool(store.new_key, agent)
         return JSONResponse({"name": agent, "key": key}, headers={"Cache-Control": "no-store"})
 
     async def item(request: Request) -> Response:
-        agent = agent_of(request)
-        if agent is None:
-            return _error(401, "unauthorized", "missing or unknown agent key")
+        agent = require_agent(store, request)
         artifact_id = request.path_params["id"]
         if request.method == "DELETE":
             if await run_in_threadpool(store.delete, artifact_id, owner=agent):
                 return Response(status_code=204)
         elif store.get(artifact_id, owner=agent) is not None:
             return await save(request, agent, artifact_id)
-        return _error(404, "not_found", "no such artifact")
+        return error(404, "not_found", "no such artifact")
 
     def live(request: Request) -> Artifact | None:
         a = store.get(request.path_params["id"])
@@ -307,7 +286,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         name = html.escape(a.name)
         body = (
             f'<header><div class="name"><h1 title="{name}">{name}</h1>'
-            f'<div class="meta">{_size(a.size)} · expires {_iso(a.expires_at, human=True)}'
+            f'<div class="meta">{_size(a.size)} · expires {iso(a.expires_at, human=True)}'
             "</div></div>"
             f'<div class="actions"><a class="btn" href="/a/{a.id}/download" '
             f'title="Download" aria-label="Download">{_DOWNLOAD_ICON}</a>'
@@ -369,7 +348,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
                 "page.</p>"
                 '<form method="post"><button type="submit">Get my key</button></form>'
                 f'<p class="meta">This invite works once, until '
-                f"{_iso(invite.expires_at, human=True)}.</p></main>"
+                f"{iso(invite.expires_at, human=True)}.</p></main>"
             )
             return _join_page(200, f"Invite for {invite.name}", body)
         try:
@@ -422,9 +401,10 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             Route("/a/{id:artifact_id}/raw", raw),
             Route("/a/{id:artifact_id}/download", download),
             Route("/join/{token:invite_token}", join, methods=["GET", "POST"]),
-            *admin_routes(store, agent_of, _error, config.public_url),
+            *admin_routes(store, config.public_url),
         ],
         middleware=[Middleware(_CommonHeaders)],
+        exception_handlers={ApiError: on_api_error},
         lifespan=lifespan,
     )
 
@@ -473,10 +453,6 @@ def _download(path: Path, name: str, media_type: str = "application/octet-stream
         media_type=media_type,
         headers={"Content-Disposition": disposition, "Cache-Control": "no-store"},
     )
-
-
-def _error(status: int, code: str, message: str, **extra: object) -> JSONResponse:
-    return JSONResponse({"error": code, "message": message, **extra}, status_code=status)
 
 
 def _not_found() -> HTMLResponse:
@@ -554,11 +530,6 @@ def _markdown_page(path: Path, title: str) -> str:
         f"</style></head><body><script>{_MARKED_JS}</script>"
         f"<script>const SOURCE = {source};{_MARKDOWN_JS}</script></body></html>"
     )
-
-
-def _iso(ts: float, *, human: bool = False) -> str:
-    dt = datetime.fromtimestamp(ts, UTC)
-    return dt.strftime("%Y-%m-%d %H:%M UTC") if human else dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _size(n: int) -> str:

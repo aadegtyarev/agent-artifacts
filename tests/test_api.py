@@ -321,6 +321,8 @@ def test_quota_per_agent_and_me(tmp_path):
             "quota_bytes": 1500,
             "files": 1,
             "admin": False,
+            "own_quota": False,
+            "last_upload_at": me["last_upload_at"],
         }
         assert client.get("/api/v1/me").status_code == 401
 
@@ -362,18 +364,26 @@ def test_admin_api(env):
     assert (stats["users"], stats["files"], stats["used_bytes"]) == (3, 1, 100)
 
     # Her own quota, then back to the common one.
-    r = client.patch("/api/v1/admin/users/alice", headers=auth(root), json={"quota_mb": 2})
-    assert r.status_code == 204 and store.quota_for("alice") == 2 * 1024 * 1024
-    client.patch("/api/v1/admin/users/alice", headers=auth(root), json={"quota_mb": None})
-    assert store.quota_for("alice") is None
-    for bad in ({"quota_mb": 0.5}, {"quota_mb": True}, {"quota_mb": 1, "admin": True}, [1]):
+    mb = 1024 * 1024
+    r = client.patch("/api/v1/admin/users/alice", headers=auth(root), json={"quota_bytes": 2 * mb})
+    assert r.status_code == 200
+    assert (r.json()["quota_bytes"], r.json()["own_quota"]) == (2 * mb, True)
+    r = client.patch("/api/v1/admin/users/alice", headers=auth(root), json={"quota_bytes": None})
+    assert r.json()["own_quota"] is False
+    for bad in (
+        {"quota_bytes": mb - 1},
+        {"quota_bytes": 1.5 * mb},
+        {"quota_bytes": True},
+        {"quota_bytes": mb, "admin": True},
+        [1],
+    ):
         r = client.patch("/api/v1/admin/users/alice", headers=auth(root), json=bad)
         assert r.status_code == 400, bad
     r = client.patch("/api/v1/admin/users/alice", headers=auth(root), content=b"{not json")
     assert r.status_code == 400
     assert (
         client.patch(
-            "/api/v1/admin/users/nobody", headers=auth(root), json={"quota_mb": 1}
+            "/api/v1/admin/users/nobody", headers=auth(root), json={"quota_bytes": mb}
         ).status_code
         == 404
     )
@@ -383,14 +393,21 @@ def test_admin_api(env):
         ("PATCH", "/api/v1/admin/settings"),
     ):
         for headers in (auth(keys["alice"]), {}):
-            r = client.request(method, path, headers=headers, json={"quota_mb": 1})
+            r = client.request(method, path, headers=headers, json={"quota_bytes": mb})
             assert r.status_code in (401, 403), (method, path)
 
-    r = client.patch("/api/v1/admin/settings", headers=auth(root), json={"ttl_hours": 24})
-    assert r.json()["ttl_hours"] == 24
+    r = client.patch("/api/v1/admin/settings", headers=auth(root), json={"ttl_seconds": 86400})
+    assert r.json()["ttl_seconds"] == 86400
+    assert client.get("/api/v1/admin/settings", headers=auth(root)).json() == r.json()
     art = upload(client, keys["bob"], "c.txt", b"x").json()
     assert store.get(art["id"]).expires_at - store.get(art["id"]).created_at == 24 * 3600
-    for bad in ({"ttl_hours": 0.0001}, {"ttl_hours": 10_000}, {"max_total_mb": 1e8}, {"x": 1}, {}):
+    for bad in (
+        {"ttl_seconds": 60},
+        {"ttl_seconds": 10**7},
+        {"max_total_bytes": 10**15},
+        {"x": 1},
+        {},
+    ):
         r = client.patch("/api/v1/admin/settings", headers=auth(root), json=bad)
         assert r.status_code == 400, bad
 
@@ -430,7 +447,7 @@ def test_invite_gives_one_key_once(env):
     root = store.add_agent("root", admin=True)
     path = "/api/v1/admin/invites"
     assert client.post(path, headers=auth(keys["alice"]), json={"name": "carol"}).status_code == 403
-    r = client.post(path, headers=auth(root), json={"name": "carol", "days": 2})
+    r = client.post(path, headers=auth(root), json={"name": "carol", "ttl_seconds": 2 * 86400})
     assert r.status_code == 201 and r.headers["cache-control"] == "no-store"
     invite = r.json()
     assert invite["url"].startswith("https://art.example.org/join/")
@@ -469,9 +486,9 @@ def test_invite_cancel_and_expiry(env):
     third = client.post(path, headers=auth(root), json={"name": "erin"}).json()
     store.add_agent("erin")
     assert client.post(third["url"].removeprefix("https://art.example.org")).status_code == 409
-    for days in (0, 31, True):
-        r = client.post(path, headers=auth(root), json={"name": "x", "days": days})
-        assert r.status_code == 400, days
+    for ttl in (0, 31 * 86400, True):
+        r = client.post(path, headers=auth(root), json={"name": "x", "ttl_seconds": ttl})
+        assert r.status_code == 400, ttl
 
 
 def test_two_presses_get_one_key(tmp_path):

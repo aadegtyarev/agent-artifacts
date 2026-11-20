@@ -63,26 +63,18 @@ artifacts_cli.py invite petrov
 "Who uses agent-artifacts and how much space?" lists everyone with their used
 space, number of files, quota and last upload (`artifacts_cli.py users`).
 
-"Show agent-artifacts stats" gives the totals, free disk and current limits
-(`artifacts_cli.py stats`):
-
-```json
-{
-  "users": 1,
-  "files": 1,
-  "used_bytes": 11,
-  "disk_free_bytes": 6425055232,
-  "limits": {"user_quota_mb": 500.0, "max_total_mb": 2048.0, "ttl_hours": 48.0}
-}
-```
+"Show agent-artifacts stats" gives the totals and free disk (`artifacts_cli.py
+stats`), and "show the settings" the current limits (`artifacts_cli.py
+settings`). The API answers in bytes and seconds; the agent turns them into MB
+and hours for you.
 
 ## Change the limits
 
 | Ask the agent | Changes | Bounds |
 | --- | --- | --- |
-| "keep files for 24 hours" | lifetime of new uploads: `artifacts_cli.py settings '{"ttl_hours": 24}'` | 1 to 720 hours |
-| "give everyone 300 MB" | the common per-person space: `user_quota_mb` | at least 1 MB |
-| "raise the total limit to 5 GB" | all stored files together: `max_total_mb` | at least 1 MB, at most what the disk can hold less a reserve for the database |
+| "keep files for 24 hours" | lifetime of new uploads: `artifacts_cli.py settings ttl-hours 24` | 1 to 720 hours |
+| "give everyone 300 MB" | the common per-person space: `settings user-quota-mb 300` | at least 1 MB |
+| "raise the total limit to 5 GB" | all stored files together: `settings max-total-mb 5120` | at least 1 MB, at most what the disk can hold less a reserve for the database |
 | "give petrov 1 GB" / "put petrov back on the common limit" | one person's own space: `artifacts_cli.py quota petrov 1024` / `artifacts_cli.py quota petrov null` | at least 1 MB |
 
 These are kept in the service's database and survive restarts; the

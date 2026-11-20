@@ -63,7 +63,7 @@ a missing one.
 | `PUT /api/v1/artifacts/{id}` | replace the file, same fields; resets the lifetime; the type may change | `200` + artifact JSON |
 | `DELETE /api/v1/artifacts/{id}` | delete now | `204` |
 | `GET /api/v1/artifacts` | the calling agent's live artifacts | `200` + list |
-| `GET /api/v1/me` | the calling agent's name, space and role | `200` + `{"name", "used_bytes", "quota_bytes", "files", "admin"}` |
+| `GET /api/v1/me` | the calling agent's name, space and role | `200` + user JSON, see [Admin calls](#admin-calls) |
 | `POST /api/v1/me/key` | a new key for the calling agent; the old one stops working, the files stay | `200` + `{"name", "key"}` |
 
 `name` defaults to the uploaded file name. It is reduced to a safe base name
@@ -94,36 +94,34 @@ larger than the file limit is refused before it is read.
 ### Admin calls
 
 An admin key (`agent add --admin`, or `agent admin <name>` for an existing
-one) may also call these; any other key gets `403 forbidden`. Sizes go in as
-MB, lifetimes as hours.
+one) may also call these; any other key gets `403 forbidden`. Sizes are bytes
+and times are seconds, as in the rest of the API.
 
 | Call | Purpose | Answer |
 | --- | --- | --- |
-| `GET /api/v1/admin/users` | every agent: `name`, `admin`, `used_bytes`, `files`, `quota_bytes`, `own_quota`, `last_upload_at` | `200` + list |
-| `PATCH /api/v1/admin/users/{name}` | `{"quota_mb": <MB> or null}`: its own quota, or back to the common one | `204` |
+| `GET /api/v1/admin/users` | every agent | `200` + list of user JSON |
+| `PATCH /api/v1/admin/users/{name}` | `{"quota_bytes": N or null}`: its own quota, or back to the common one | `200` + user JSON |
 | `DELETE /api/v1/admin/users/{name}` | revoke the key and delete its files; not the caller's own | `204` |
-| `GET /api/v1/admin/stats` | `users`, `files`, `used_bytes`, `disk_free_bytes`, `limits` | `200` |
-| `PATCH /api/v1/admin/settings` | any of `user_quota_mb`, `max_total_mb`, `ttl_hours` | `200` + `limits` |
-| `POST /api/v1/admin/invites` | `{"name", "days"}` (days 1–30, default 7): a one-time link for a new agent | `201` + `{"id", "name", "created_by", "expires_at", "url"}`; `409 name_taken` |
+| `GET /api/v1/admin/stats` | `{"users", "files", "used_bytes", "disk_free_bytes"}` | `200` |
+| `GET /api/v1/admin/settings` | `{"user_quota_bytes", "max_total_bytes", "ttl_seconds"}` | `200` |
+| `PATCH /api/v1/admin/settings` | any of those three | `200` + all three |
+| `POST /api/v1/admin/invites` | `{"name", "ttl_seconds"}` (one hour to 30 days, default 7 days): a one-time link for a new agent | `201` + `{"id", "name", "created_by", "expires_at", "url"}`; `409 name_taken` |
 | `GET /api/v1/admin/invites` | open invites, without their links | `200` + list |
 | `DELETE /api/v1/admin/invites/{id}` | cancel one | `204` |
 
-Settings changed this way are kept in the database and override the
-environment variables, which only give the starting values. `max_total_mb`
-cannot exceed the space in use plus the free disk, less a reserve (256 MB or
-5 % of the free space) for the database; `ttl_hours` is at most 720.
-A new lifetime applies to uploads from then on.
+User JSON, the same in `/api/v1/me`:
 
-### Viewer pages (no auth)
+```json
+{"name": "petrov", "admin": false, "used_bytes": 48213, "files": 1,
+ "quota_bytes": 524288000, "own_quota": false, "last_upload_at": "2026-11-20T10:00:00Z"}
+```
 
-| Path | What |
-| --- | --- |
-| `/a/{id}` | page with the name, expiry, the content, and buttons: Download, Copy link |
-| `/a/{id}/raw` | the content itself, with the sandbox headers below; opened as a page on its own, HTML, SVG, Markdown and text redirect to `/a/{id}`, while images and PDFs open in the browser's own viewer |
-| `/a/{id}/download` | the original file as an attachment under its name |
-
-A missing or expired id gives a `404` page saying so. Pages carry
-`X-Robots-Tag: noindex` and `Referrer-Policy: no-referrer`.
+Values are whole numbers: sizes at least 1 MB (1048576), times at least one
+hour, `ttl_seconds` at most 30 days. Settings changed this way are kept in the
+database and override the environment variables, which only give the starting
+values. `max_total_bytes` cannot exceed the space in use plus the free disk,
+less a reserve (256 MB or 5 % of the free space) for the database. A new
+lifetime applies to uploads from then on.
 
 ### Invite pages (no auth)
 

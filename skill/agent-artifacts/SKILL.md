@@ -27,6 +27,8 @@ lines from their invite page and save them through stdin:
 printf 'AGENT_ARTIFACTS_URL=%s\nAGENT_ARTIFACTS_KEY=%s\n' "<url>" "<key>" | artifacts_cli.py setup
 ```
 
+In PowerShell: `"AGENT_ARTIFACTS_URL=<url>`nAGENT_ARTIFACTS_KEY=<key>" | artifacts_cli.py setup`.
+
 ## Rules
 
 - **One link per piece of work.** Upload once, keep the `id`, and replace the
@@ -45,7 +47,7 @@ artifacts_cli.py upload report.html                  # a real file; prints the a
 artifacts_cli.py upload report.html "Q3 report.html" # optional download name, same extension rules
 artifacts_cli.py replace <id> report.html            # same link, new content; the lifetime restarts
 artifacts_cli.py list                                # your live files, if you lost the id
-artifacts_cli.py rm <id>                             # delete now
+artifacts_cli.py delete <id>                         # delete now
 artifacts_cli.py me                                  # used_bytes of quota_bytes, files, admin or not
 ```
 
@@ -68,7 +70,8 @@ Give the person `url` and say until when it works (`expires_at`). On an error
 | `unsupported_type`, `type_mismatch` | fix the extension or the content |
 | `quota_exceeded` | the user's space is used up; see below |
 | `storage_full` | the service is full; tell the user |
-| HTTP 429 | too many requests; wait a few seconds and retry |
+| `HTTP 429` | too many requests; wait a few seconds and retry |
+| other `HTTP …` | the service or its proxy failed; tell the user |
 
 ## When the space runs out
 
