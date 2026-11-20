@@ -2,7 +2,7 @@
 
 A small web service where an AI agent uploads a file and gets back a link a
 person can open, download or pass on. Files live for a fixed time and are then
-deleted. Agents use it through a skill that wraps three `curl` calls.
+deleted. Agents use it through a skill and its `artifacts_cli.py` command.
 
 ## Scenarios
 
@@ -130,7 +130,7 @@ A missing or expired id gives a `404` page saying so. Pages carry
 | Path | What |
 | --- | --- |
 | `GET /join/{token}` | who the invite is for, until when, and a "Get my key" button; uses nothing up |
-| `POST /join/{token}` | creates the agent, uses the invite up and shows the key once with the two environment variables and where the skill is |
+| `POST /join/{token}` | creates the agent, uses the invite up and shows the key once, in a text to paste into an agent: a link to `docs/agent-setup.md` and the two settings |
 
 A used, cancelled or expired token gives a `404` page; a name that got a key
 some other way meanwhile gives `409`, and the invite stays until cancelled. Opening the link does
@@ -202,16 +202,21 @@ that.
 
 Docker image with the app, `docker compose` binding
 `127.0.0.1:<port>` and a volume for `<data>`. In front, the host's reverse proxy
-terminates TLS (on adbluedog: an nginx vhost with an acme.sh certificate,
-`client_max_body_size` above the size limit).
+terminates TLS, with `client_max_body_size` above the size limit
+([deploy.md](deploy.md)).
 
 ## Skill
 
-`skill/SKILL.md`, usable from Claude Code and Codex. Reads
-`AGENT_ARTIFACTS_URL` and `AGENT_ARTIFACTS_KEY` from the environment. It
+`skill/agent-artifacts/`: `SKILL.md`, `admin.md` and `scripts/artifacts_cli.py`,
+a command line over the API in Python's standard library (3.10+; `uv run`
+reads its inline metadata). Usable from any agent that runs shell commands.
+It reads `AGENT_ARTIFACTS_URL` and `AGENT_ARTIFACTS_KEY` from the environment,
+or else from the file `setup` writes with mode 600:
+`~/.config/agent-artifacts/env`, `%APPDATA%\agent-artifacts\env` on Windows,
+or `AGENT_ARTIFACTS_ENV`. The key never appears in a command line. The skill
 teaches:
 
-- upload, replace and delete with `curl`, and how to give the person the link;
+- upload, replace and delete with `artifacts_cli.py`, and how to give the person the link;
 - one link per piece of work: keep the id and replace, don't upload again;
 - HTML must be one self-contained file: inline CSS and JS, images as `data:`
   URIs, no CDN or web fonts, internal navigation by `#anchor`, no
