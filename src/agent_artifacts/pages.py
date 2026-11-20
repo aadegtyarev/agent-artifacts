@@ -33,7 +33,7 @@ SANDBOX = (
 # For untrusted HTML, SVG, Markdown and text: an opaque origin with no
 # network access, so the content can neither read this site nor phone home.
 SANDBOX_CSP = (
-    f"sandbox {SANDBOX}; default-src 'none'; script-src 'unsafe-inline'; "
+    f"sandbox {SANDBOX}; default-src 'none'; form-action 'none'; script-src 'unsafe-inline'; "
     "style-src 'unsafe-inline'; img-src data: blob:; font-src data:; "
     "media-src data: blob:; frame-ancestors 'self'"
 )

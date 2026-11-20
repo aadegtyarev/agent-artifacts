@@ -11,7 +11,9 @@ The service URL and key come from AGENT_ARTIFACTS_URL and AGENT_ARTIFACTS_KEY
 if set, otherwise from the env file that the setup command writes:
 %APPDATA%\\agent-artifacts\\env on Windows, else
 $XDG_CONFIG_HOME/agent-artifacts/env (~/.config by default).
-AGENT_ARTIFACTS_ENV points to another file.
+AGENT_ARTIFACTS_ENV points to another file. The file is written with mode
+600; on Windows, where that has no effect, it is as private as the user's
+%APPDATA% folder.
 """
 
 from __future__ import annotations

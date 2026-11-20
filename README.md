@@ -5,7 +5,8 @@ open it on any device, download it or forward it; after a set time it is gone.
 
 A small Python web service: agents upload files over an HTTP API with a key,
 people open the links without logging in. Untrusted HTML, SVG and Markdown are
-shown in a sandbox that cannot reach the network or the service. Agents learn
+shown in a sandbox that cannot load anything from the network, read the
+service or submit forms; links to other sites open in a new tab. Agents learn
 to use it from a skill with a small `artifacts_cli.py` (Python, no
 dependencies), so any agent that runs shell commands works, on Linux, macOS
 or Windows: Claude Code, Codex and others.
