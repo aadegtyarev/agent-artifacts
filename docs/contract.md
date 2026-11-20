@@ -183,8 +183,10 @@ X-Content-Type-Options: nosniff
 There is no `allow-same-origin`, so the content runs in an opaque origin: it
 cannot read the service's pages, other artifacts, or browser storage. It also
 cannot load anything from the network, which is why the skill requires
-self-contained files. Scripts, forms, `#anchor` links and links opening in a new
-tab work, so interactive prototypes do. `localStorage` does not.
+self-contained files. Scripts, forms handled by scripts, `#anchor` links and
+links opening in a new tab work, so interactive prototypes do. A form that
+really submits goes nowhere (`form-action 'none'`), and `localStorage` is not
+there.
 
 Markdown is not rendered on the server. `/raw` sends its text as JSON inside
 a `<script>` (with `<` escaped, so the text cannot close the tag) together with

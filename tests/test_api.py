@@ -526,3 +526,7 @@ def test_markdown_page_stays_about_the_size_of_the_file(env):
     assert json.loads(source) == text
     assert "</script>" not in source and "\u2028" not in source
     assert len(source.encode()) < len(text.encode()) * 1.2
+
+
+def test_sandboxed_forms_submit_nowhere():
+    assert "form-action 'none'" in SANDBOX_CSP
