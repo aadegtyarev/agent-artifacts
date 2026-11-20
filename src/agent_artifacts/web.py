@@ -74,9 +74,10 @@ VIEWER_CSP = (
 )
 
 # One compact header row: icon buttons, the name and details cut to one line each.
-_DOWNLOAD_ICON = '<svg viewBox="0 0 24 24"><path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></svg>'
+_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true">'
+_DOWNLOAD_ICON = _SVG + '<path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></svg>'
 _LINK_ICON = (
-    '<svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/>'
+    _SVG + '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/>'
     '<path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>'
 )
 
@@ -226,8 +227,9 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             )
         else:
             content = '<div class="center">Archive: download it to see the contents.</div>'
+        name = html.escape(a.name)
         body = (
-            f'<header><div class="name"><h1>{html.escape(a.name)}</h1>'
+            f'<header><div class="name"><h1 title="{name}">{name}</h1>'
             f'<div class="meta">{_size(a.size)} · expires {_iso(a.expires_at, human=True)}'
             "</div></div>"
             f'<div class="actions"><a class="btn" href="/a/{a.id}/download" '
