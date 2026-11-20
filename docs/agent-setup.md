@@ -26,6 +26,7 @@ Windows. Below, `run` means `uv run` if uv is installed, otherwise `python3`
    | --- | --- |
    | Claude Code | `~/.claude/skills/` |
    | Codex | `~/.agents/skills/` |
+   | pi | `~/.agents/skills/` (it also reads `~/.pi/agent/skills/`; use one) |
    | anything else | its personal skills folder, if it has one |
 
    On Windows, `~` is your user folder (`%USERPROFILE%`).
