@@ -374,6 +374,7 @@ def test_admin_api(env):
         {"quota_bytes": mb - 1},
         {"quota_bytes": 1.5 * mb},
         {"quota_bytes": True},
+        {"quota_bytes": 10**30},
         {"quota_bytes": mb, "admin": True},
         [1],
     ):

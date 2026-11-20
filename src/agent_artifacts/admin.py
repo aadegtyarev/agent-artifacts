@@ -21,6 +21,7 @@ HOUR = 3600
 DAY = 24 * HOUR
 # Lower bounds, so no setting rounds down to nothing; upper bounds on time.
 MIN_BYTES, MIN_SECONDS = MB, HOUR
+MAX_BYTES = 2**50  # a petabyte; SQLite integers end at 2**63
 MAX_TTL_SECONDS = 30 * DAY
 INVITE_TTL_SECONDS = 7 * DAY
 # Left free on the disk for the database and its journal: on a full disk even
@@ -56,7 +57,7 @@ def admin_routes(store: Store, public_url: str) -> list[Route]:
         data = await json_body(request, {"quota_bytes"}, {"quota_bytes"})
         quota = data["quota_bytes"]
         if quota is not None:
-            quota = _int(quota, "quota_bytes", MIN_BYTES)
+            quota = _int(quota, "quota_bytes", MIN_BYTES, MAX_BYTES)
         await run_in_threadpool(store.set_quota, name, quota)
         return JSONResponse(await run_in_threadpool(person, name))
 
@@ -85,7 +86,7 @@ def admin_routes(store: Store, public_url: str) -> list[Route]:
                     data["user_quota_bytes"], "user_quota_bytes", MIN_BYTES
                 )
             if "max_total_bytes" in data:
-                total = _int(data["max_total_bytes"], "max_total_bytes", MIN_BYTES)
+                total = _int(data["max_total_bytes"], "max_total_bytes", MIN_BYTES, MAX_BYTES)
                 infos = await run_in_threadpool(store.agent_infos)
                 free = await run_in_threadpool(disk_free)
                 room = sum(i.used_bytes for i in infos) + free - max(RESERVE_BYTES, free // 20)

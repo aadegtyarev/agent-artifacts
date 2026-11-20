@@ -123,6 +123,17 @@ values. `max_total_bytes` cannot exceed the space in use plus the free disk,
 less a reserve (256 MB or 5 % of the free space) for the database. A new
 lifetime applies to uploads from then on.
 
+### Viewer pages (no auth)
+
+| Path | What |
+| --- | --- |
+| `/a/{id}` | page with the name, expiry, the content, and buttons: Download, Copy link |
+| `/a/{id}/raw` | the content itself, with the sandbox headers below; opened as a page on its own, HTML, SVG, Markdown and text redirect to `/a/{id}`, while images and PDFs open in the browser's own viewer |
+| `/a/{id}/download` | the original file as an attachment under its name |
+
+A missing or expired id gives a `404` page saying so. Pages carry
+`X-Robots-Tag: noindex` and `Referrer-Policy: no-referrer`.
+
 ### Invite pages (no auth)
 
 | Path | What |

@@ -253,7 +253,7 @@ def main() -> None:
     except Usage as e:
         print(str(e).rstrip(), file=sys.stderr)
         sys.exit(2)
-    except ValueError as e:  # a number argument that does not parse
+    except (ValueError, OverflowError) as e:  # a number argument that does not parse
         print(f"artifacts_cli: {e}", file=sys.stderr)
         sys.exit(2)
     if out:
