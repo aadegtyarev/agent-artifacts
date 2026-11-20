@@ -44,7 +44,8 @@ curl -sS --fail-with-body -H "$AUTH" "$API"
 # Delete now.
 curl -sS --fail-with-body -X DELETE -H "$AUTH" "$API/<id>"
 
-# Your space: used_bytes of quota_bytes, and how many files.
+# Your space: used_bytes of quota_bytes, how many files, and whether the key
+# is an admin key (then see admin.md next to this file).
 curl -sS --fail-with-body -H "$AUTH" "$AGENT_ARTIFACTS_URL/api/v1/me"
 ```
 

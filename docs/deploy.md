@@ -24,6 +24,12 @@ restarts. Files and the database live in the `data` volume.
 | `AA_USER_QUOTA_MB` | `500` | size limit of one agent's live files |
 | `AA_PORT` | `8090` | host port on 127.0.0.1 (compose only) |
 
+Back up `meta.sqlite` before upgrading: a new release may add columns on its
+first start, and an older release cannot use the database afterwards.
+
+`AA_TTL_HOURS`, `AA_MAX_TOTAL_MB` and `AA_USER_QUOTA_MB` are starting values:
+once an admin changes them through the API, the values in the database win.
+
 Pass the others through `environment:` in `compose.yaml` if you change them.
 
 ## Agents
@@ -32,6 +38,9 @@ Pass the others through `environment:` in `compose.yaml` if you change them.
 docker compose exec app agent-artifacts agent add codex     # prints the key once
 docker compose exec app agent-artifacts agent list
 docker compose exec app agent-artifacts agent remove codex  # also deletes its files
+docker compose exec app agent-artifacts agent add me --admin # may manage people and limits
+docker compose exec app agent-artifacts agent admin codex    # make an existing one admin
+docker compose exec app agent-artifacts agent admin codex --revoke
 ```
 
 Give the agent `AGENT_ARTIFACTS_URL` (the public URL) and `AGENT_ARTIFACTS_KEY`,
