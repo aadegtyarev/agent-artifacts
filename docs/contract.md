@@ -110,7 +110,8 @@ MB, lifetimes as hours.
 
 Settings changed this way are kept in the database and override the
 environment variables, which only give the starting values. `max_total_mb`
-cannot exceed the space in use plus the free disk; `ttl_hours` is at most 720.
+cannot exceed the space in use plus the free disk, less a reserve (256 MB or
+5 % of the free space) for the database; `ttl_hours` is at most 720.
 A new lifetime applies to uploads from then on.
 
 ### Viewer pages (no auth)

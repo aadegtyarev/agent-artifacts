@@ -19,7 +19,8 @@ from pathlib import Path
 from typing import BinaryIO
 
 ID_RE = r"[A-Za-z0-9_-]{22}"
-NAME_RE = r"[A-Za-z0-9_.-]{1,64}"
+# Not starting with a dot: "." and ".." would never reach the app in a URL.
+NAME_RE = r"[A-Za-z0-9_-][A-Za-z0-9_.-]{0,63}"
 TOKEN_RE = r"[A-Za-z0-9_-]{43}"  # noqa: S105 (a pattern, not a secret)
 
 _SCHEMA = """

@@ -98,7 +98,8 @@ def admin_routes(
         quota = data["quota_mb"]
         if quota is not None and not _positive(quota):
             return error(400, "bad_request", "quota_mb must be a number of MB, at least 1, or null")
-        if not store.set_quota(name, None if quota is None else int(quota * MB)):
+        quota_bytes = None if quota is None else int(quota * MB)
+        if not await run_in_threadpool(store.set_quota, name, quota_bytes):
             return error(404, "not_found", "no such user")
         return Response(status_code=204)
 
@@ -120,7 +121,10 @@ def admin_routes(
         if "max_total_mb" in data:
             total = int(data["max_total_mb"] * MB)
             current = await run_in_threadpool(stats)
-            room = current["used_bytes"] + current["disk_free_bytes"]
+            # Leave the database and its journal room to write, or a full
+            # disk would stop even the cleanup.
+            free = current["disk_free_bytes"]
+            room = current["used_bytes"] + free - max(256 * MB, free // 20)
             if total > room:
                 return error(400, "bad_request", f"the disk has room for {room // MB} MB at most")
             values["max_total_bytes"] = total
@@ -128,7 +132,7 @@ def admin_routes(
             if data["ttl_hours"] > MAX_TTL_HOURS:
                 return error(400, "bad_request", f"ttl_hours is at most {MAX_TTL_HOURS}")
             values["ttl_seconds"] = int(data["ttl_hours"] * HOUR)
-        store.set_limits(**values)
+        await run_in_threadpool(lambda: store.set_limits(**values))
         return JSONResponse((await run_in_threadpool(stats))["limits"])
 
     async def invites(request: Request) -> Response:
@@ -142,7 +146,11 @@ def admin_routes(
             return error(400, "bad_request", 'expected {"name": "<name>", "days": <1-30>}')
         name, days = data["name"], data.get("days", INVITE_DAYS)
         if not isinstance(name, str) or not re.fullmatch(NAME_RE, name):
-            return error(400, "bad_request", "name may use letters, digits, '.', '_', '-'")
+            return error(
+                400,
+                "bad_request",
+                "name may use letters, digits, '.', '_', '-', and not start with '.'",
+            )
         if not _positive(days) or days > 30:
             return error(400, "bad_request", "days must be from 1 to 30")
         try:
@@ -161,7 +169,7 @@ def admin_routes(
         _, denied = admin_of(request)
         if denied:
             return denied
-        if not store.cancel_invite(request.path_params["id"]):
+        if not await run_in_threadpool(store.cancel_invite, request.path_params["id"]):
             return error(404, "not_found", "no such invite")
         return Response(status_code=204)
 

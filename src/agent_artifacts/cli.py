@@ -47,7 +47,10 @@ def main(argv: list[str] | None = None) -> int:
     store = Store(config.data_dir, max_total_bytes=config.max_total_bytes)
     if args.action == "add":
         if not re.fullmatch(NAME_RE, args.name):
-            print("error: name may use letters, digits, '.', '_', '-'", file=sys.stderr)
+            print(
+                "error: name may use letters, digits, '.', '_', '-', and not start with '.'",
+                file=sys.stderr,
+            )
             return 2
         try:
             print(store.add_agent(args.name, admin=args.admin))

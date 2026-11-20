@@ -434,11 +434,12 @@ def test_invite_gives_one_key_once(env):
     assert r.status_code == 201 and r.headers["cache-control"] == "no-store"
     invite = r.json()
     assert invite["url"].startswith("https://art.example.org/join/")
-    for name in ("carol", "alice", "bad name"):
+    for name in ("carol", "alice", "bad name", "..", ".hidden"):
         assert client.post(path, headers=auth(root), json={"name": name}).status_code in (409, 400)
     assert [i["name"] for i in client.get(path, headers=auth(root)).json()] == ["carol"]
 
     join = invite["url"].removeprefix("https://art.example.org")
+    assert client.head(join).status_code == 200  # a link checker uses nothing either
     page = client.get(join)  # a link preview: shows the button, uses nothing
     assert page.status_code == 200 and "Get my key" in page.text
     assert "form-action 'self'" in page.headers["content-security-policy"]

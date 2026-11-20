@@ -37,7 +37,8 @@ curl -sS --fail-with-body -H "$AUTH" "$ADMIN/invites"
 curl -sS --fail-with-body -X DELETE -H "$AUTH" "$ADMIN/invites/<id>"
 ```
 
-An invite's name becomes the person's name: letters, digits, `.`, `_`, `-`.
+An invite's name becomes the person's name: letters, digits, `.`, `_`, `-`,
+not starting with `.`.
 `409 name_taken` means that name already has a key or an open invite. The
 person opens the link, presses a button and sees their key once, with what to
 put into their agent's environment.

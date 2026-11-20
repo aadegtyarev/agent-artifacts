@@ -353,9 +353,9 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
 
     async def join(request: Request) -> Response:
         token = request.path_params["token"]
-        if request.method == "GET":
-            # Only a press of the button uses the invite: chat apps open links
-            # themselves to build a preview.
+        if request.method != "POST":
+            # Only a press of the button uses the invite: chat apps and link
+            # checkers open links themselves (GET or HEAD) to build a preview.
             invite = store.invite_for_token(token)
             if invite is None:
                 return _message(404, _INVITE_GONE, csp=JOIN_CSP)
