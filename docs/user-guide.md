@@ -44,7 +44,7 @@ skill only after a restart.
 
 Copy the `skill/agent-artifacts` folder of this repository into your agent's
 skills folder: `~/.claude/skills/` for Claude Code, `~/.agents/skills/` for
-Codex. Then save the key:
+Codex and pi. Then save the key:
 
 ```bash
 uv run ~/.claude/skills/agent-artifacts/scripts/artifacts_cli.py setup
