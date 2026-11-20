@@ -47,7 +47,7 @@ def main(argv: list[str] | None = None) -> int:
         # few large uploads at once.
         spool = config.data_dir / "tmp"
         spool.mkdir(parents=True, exist_ok=True)
-        tempfile.tempdir = str(spool)
+        tempfile.tempdir = str(spool.resolve())
 
         # No access log: the link in each request line is the access to the file.
         uvicorn.run(create_app(config), host=args.host, port=args.port, access_log=False)
