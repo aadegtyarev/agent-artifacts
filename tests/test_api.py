@@ -243,7 +243,6 @@ def test_replace_of_an_expired_artifact_is_not_found(env):
             name="a.txt",
             kind="txt",
             size=1,
-            ttl=60,
             artifact_id=art["id"],
         )
         is None
@@ -316,7 +315,13 @@ def test_quota_per_agent_and_me(tmp_path):
         assert upload(client, keys["alice"], "a.txt", b"x" * 1400, first["id"]).status_code == 200
         assert upload(client, keys["bob"], "b.txt", b"x" * 1000).status_code == 201
         me = client.get("/api/v1/me", headers=auth(keys["alice"])).json()
-        assert me == {"name": "alice", "used_bytes": 1400, "quota_bytes": 1500, "files": 1}
+        assert me == {
+            "name": "alice",
+            "used_bytes": 1400,
+            "quota_bytes": 1500,
+            "files": 1,
+            "admin": False,
+        }
         assert client.get("/api/v1/me").status_code == 401
 
 
@@ -340,3 +345,50 @@ def test_purge_skips_a_file_that_vanishes_meanwhile(env, monkeypatch):
     real_iterdir = type(store.files).iterdir
     monkeypatch.setattr(type(store.files), "iterdir", lambda self: [*real_iterdir(self), gone])
     assert store.purge_expired() == 0
+
+
+def test_admin_api(env):
+    client, store, keys = env
+    root = store.add_agent("root", admin=True)
+    upload(client, keys["alice"], "a.txt", b"x" * 100)
+    for path in ("/api/v1/admin/users", "/api/v1/admin/stats"):
+        assert client.get(path, headers=auth(keys["alice"])).status_code == 403
+        assert client.get(path).status_code == 401
+    people = client.get("/api/v1/admin/users", headers=auth(root)).json()
+    alice = next(p for p in people if p["name"] == "alice")
+    assert (alice["used_bytes"], alice["files"], alice["own_quota"]) == (100, 1, False)
+    assert alice["last_upload_at"].endswith("Z")
+    stats = client.get("/api/v1/admin/stats", headers=auth(root)).json()
+    assert (stats["users"], stats["files"], stats["used_bytes"]) == (3, 1, 100)
+
+    # Her own quota, then back to the common one.
+    r = client.patch("/api/v1/admin/users/alice", headers=auth(root), json={"quota_mb": 0.0001})
+    assert r.status_code == 204
+    assert upload(client, keys["alice"], "b.txt", b"x" * 100).json()["error"] == "quota_exceeded"
+    client.patch("/api/v1/admin/users/alice", headers=auth(root), json={"quota_mb": None})
+    assert upload(client, keys["alice"], "b.txt", b"x" * 100).status_code == 201
+
+    r = client.patch("/api/v1/admin/settings", headers=auth(root), json={"ttl_hours": 24})
+    assert r.json()["ttl_hours"] == 24
+    art = upload(client, keys["bob"], "c.txt", b"x").json()
+    assert store.get(art["id"]).expires_at - store.get(art["id"]).created_at == 24 * 3600
+    for bad in ({"ttl_hours": 0}, {"ttl_hours": 10_000}, {"max_total_mb": 1e8}, {"x": 1}, {}):
+        r = client.patch("/api/v1/admin/settings", headers=auth(root), json=bad)
+        assert r.status_code == 400, bad
+
+    assert client.delete("/api/v1/admin/users/root", headers=auth(root)).status_code == 400
+    assert client.delete("/api/v1/admin/users/bob", headers=auth(root)).status_code == 204
+    assert client.get(art["url"].removeprefix("https://art.example.org")).status_code == 404
+    assert client.delete("/api/v1/admin/users/bob", headers=auth(root)).status_code == 404
+
+
+def test_old_database_gets_the_new_columns(tmp_path):
+    import sqlite3
+
+    db = sqlite3.connect(tmp_path / "meta.sqlite")
+    db.execute("CREATE TABLE agents (name TEXT PRIMARY KEY, key_hash TEXT NOT NULL UNIQUE)")
+    db.execute("INSERT INTO agents VALUES ('old', 'h')")
+    db.commit()
+    db.close()
+    store = Store(tmp_path, max_total_bytes=1000)
+    assert not store.is_admin("old") and store.set_admin("old", True) and store.is_admin("old")

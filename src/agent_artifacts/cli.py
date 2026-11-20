@@ -8,7 +8,7 @@ import sqlite3
 import sys
 
 from .config import Config
-from .store import Store
+from .store import NAME_RE, Store
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -19,7 +19,10 @@ def main(argv: list[str] | None = None) -> int:
     serve.add_argument("--port", type=int, default=8090)
     agent = sub.add_parser("agent", help="manage agent keys")
     agent_sub = agent.add_subparsers(dest="action", required=True)
-    agent_sub.add_parser("add", help="create an agent and print its key").add_argument("name")
+    add = agent_sub.add_parser("add", help="create an agent and print its key")
+    add.add_argument("name")
+    add.add_argument("--admin", action="store_true", help="may manage users and limits")
+    agent_sub.add_parser("admin", help="make an existing agent an admin").add_argument("name")
     agent_sub.add_parser("remove", help="revoke an agent and delete its files").add_argument("name")
     agent_sub.add_parser("list", help="list agents")
     args = parser.parse_args(argv)
@@ -41,13 +44,17 @@ def main(argv: list[str] | None = None) -> int:
 
     store = Store(config.data_dir, max_total_bytes=config.max_total_bytes)
     if args.action == "add":
-        if not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", args.name):
+        if not re.fullmatch(NAME_RE, args.name):
             print("error: name may use letters, digits, '.', '_', '-'", file=sys.stderr)
             return 2
         try:
-            print(store.add_agent(args.name))
+            print(store.add_agent(args.name, admin=args.admin))
         except sqlite3.IntegrityError:
             print(f"error: agent {args.name!r} already exists", file=sys.stderr)
+            return 1
+    elif args.action == "admin":
+        if not store.set_admin(args.name, True):
+            print(f"error: no agent {args.name!r}", file=sys.stderr)
             return 1
     elif args.action == "remove":
         if not store.remove_agent(args.name):

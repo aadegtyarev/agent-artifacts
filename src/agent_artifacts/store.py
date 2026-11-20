@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 ID_RE = r"[A-Za-z0-9_-]{22}"
+NAME_RE = r"[A-Za-z0-9_.-]{1,64}"
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS agents (
@@ -36,7 +37,20 @@ CREATE TABLE IF NOT EXISTS artifacts (
 );
 CREATE INDEX IF NOT EXISTS artifacts_owner ON artifacts(owner);
 CREATE INDEX IF NOT EXISTS artifacts_expires ON artifacts(expires_at);
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value INTEGER NOT NULL
+);
 """
+
+# Columns added after the first release, for databases created before them.
+_AGENT_COLUMNS = {
+    "admin": "INTEGER NOT NULL DEFAULT 0",
+    "quota_bytes": "INTEGER",  # NULL: the common quota
+    "last_upload_at": "REAL",
+}
+
+LIMITS = ("user_quota_bytes", "max_total_bytes", "ttl_seconds")
 
 
 @dataclass(frozen=True)
@@ -67,18 +81,41 @@ def hash_key(key: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
 
 
+@dataclass(frozen=True)
+class AgentInfo:
+    name: str
+    admin: bool
+    quota_bytes: int | None  # its own quota, None for the common one
+    last_upload_at: float | None
+    used_bytes: int
+    files: int
+
+
 class Store:
     def __init__(
-        self, data_dir: Path, *, max_total_bytes: int, user_quota_bytes: int | None = None
+        self,
+        data_dir: Path,
+        *,
+        max_total_bytes: int,
+        user_quota_bytes: int | None = None,
+        ttl_seconds: int = 48 * 3600,
     ) -> None:
         self.files = data_dir / "files"
         self.files.mkdir(parents=True, exist_ok=True)
-        self.max_total_bytes = max_total_bytes
-        self.user_quota_bytes = user_quota_bytes
+        # Starting values; an admin can override them, see set_limits().
+        self.defaults = {
+            "user_quota_bytes": user_quota_bytes,
+            "max_total_bytes": max_total_bytes,
+            "ttl_seconds": ttl_seconds,
+        }
         self._db = data_dir / "meta.sqlite"
         with self._conn() as db:
             db.execute("PRAGMA journal_mode = WAL")
             db.executescript(_SCHEMA)
+            have = {r[1] for r in db.execute("PRAGMA table_info(agents)")}
+            for column, decl in _AGENT_COLUMNS.items():
+                if column not in have:
+                    db.execute(f"ALTER TABLE agents ADD COLUMN {column} {decl}")
 
     @contextmanager
     def _conn(self) -> Iterator[sqlite3.Connection]:
@@ -90,14 +127,69 @@ class Store:
         finally:
             db.close()
 
+    # Limits
+
+    def limits(self, db: sqlite3.Connection | None = None) -> dict[str, int | None]:
+        if db is None:
+            with self._conn() as db:
+                return self.limits(db)
+        return self.defaults | dict(db.execute("SELECT key, value FROM settings").fetchall())
+
+    def set_limits(self, **values: int) -> None:
+        assert set(values) <= set(LIMITS), values
+        with self._conn() as db:
+            db.executemany(
+                "INSERT INTO settings VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                values.items(),
+            )
+
+    def quota_for(self, name: str, db: sqlite3.Connection | None = None) -> int | None:
+        if db is None:
+            with self._conn() as db:
+                return self.quota_for(name, db)
+        row = db.execute("SELECT quota_bytes FROM agents WHERE name = ?", (name,)).fetchone()
+        own = row[0] if row else None
+        return own if own is not None else self.limits(db)["user_quota_bytes"]
+
     # Agents
 
-    def add_agent(self, name: str) -> str:
+    def add_agent(self, name: str, *, admin: bool = False) -> str:
         """Create an agent and return its key; only the hash is kept."""
         key = "aa_" + secrets.token_urlsafe(32)
         with self._conn() as db:
-            db.execute("INSERT INTO agents VALUES (?, ?)", (name, hash_key(key)))
+            db.execute(
+                "INSERT INTO agents (name, key_hash, admin) VALUES (?, ?, ?)",
+                (name, hash_key(key), int(admin)),
+            )
         return key
+
+    def set_admin(self, name: str, admin: bool) -> bool:
+        with self._conn() as db:
+            sql = "UPDATE agents SET admin = ? WHERE name = ?"
+            return db.execute(sql, (int(admin), name)).rowcount > 0
+
+    def set_quota(self, name: str, quota_bytes: int | None) -> bool:
+        """Give ``name`` its own quota, or None for the common one."""
+        with self._conn() as db:
+            sql = "UPDATE agents SET quota_bytes = ? WHERE name = ?"
+            return db.execute(sql, (quota_bytes, name)).rowcount > 0
+
+    def is_admin(self, name: str) -> bool:
+        with self._conn() as db:
+            row = db.execute("SELECT admin FROM agents WHERE name = ?", (name,)).fetchone()
+        return bool(row and row[0])
+
+    def agent_infos(self) -> list[AgentInfo]:
+        with self._conn() as db:
+            rows = db.execute(
+                "SELECT a.name, a.admin, a.quota_bytes, a.last_upload_at, "
+                "COALESCE(SUM(f.size), 0), COUNT(f.id) FROM agents a "
+                "LEFT JOIN artifacts f ON f.owner = a.name AND f.expires_at > ? "
+                "GROUP BY a.name ORDER BY a.name",
+                (time.time(),),
+            ).fetchall()
+        return [AgentInfo(r[0], bool(r[1]), *r[2:]) for r in rows]
 
     def new_key(self, name: str) -> str:
         """Give ``name`` a new key; the old one stops working at once."""
@@ -164,7 +256,6 @@ class Store:
         name: str,
         kind: str,
         size: int,
-        ttl: int,
         artifact_id: str | None = None,
     ) -> Artifact | None:
         """Store a new artifact, or replace ``artifact_id`` if ``owner`` owns
@@ -179,19 +270,22 @@ class Store:
                 # Hold the write lock from the size checks to the insert, so two
                 # uploads cannot both fit into the same free space.
                 db.execute("BEGIN IMMEDIATE")
-                if self.user_quota_bytes is not None:
+                limits = self.limits(db)
+                ttl = limits["ttl_seconds"]
+                quota = self.quota_for(owner, db)
+                if quota is not None:
                     own = db.execute(
                         "SELECT COALESCE(SUM(size), 0) FROM artifacts "
                         "WHERE owner = ? AND id != ? AND expires_at > ?",
                         (owner, new_id, now),
                     ).fetchone()[0]
-                    if own + size > self.user_quota_bytes:
-                        raise QuotaExceeded(own, self.user_quota_bytes)
+                    if own + size > quota:
+                        raise QuotaExceeded(own, quota)
                 used = db.execute(
                     "SELECT COALESCE(SUM(size), 0) FROM artifacts WHERE id != ? AND expires_at > ?",
                     (new_id, now),
                 ).fetchone()[0]
-                if used + size > self.max_total_bytes:
+                if used + size > limits["max_total_bytes"]:
                     raise StorageFull
                 if artifact_id is None:
                     db.execute(
@@ -208,6 +302,7 @@ class Store:
                     if row is None:
                         return None
                     created = row[0]
+                db.execute("UPDATE agents SET last_upload_at = ? WHERE name = ?", (now, owner))
                 os.replace(tmp, self.files / new_id)
         finally:
             tmp.unlink(missing_ok=True)

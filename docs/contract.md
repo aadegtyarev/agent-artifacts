@@ -48,7 +48,7 @@ Every artifact can be downloaded in its original form under its original name.
 | Lifetime of an artifact | 48 h from the last upload or replace |
 | Size of one file | 25 MB |
 | Size of a Markdown or text file (fixed) | 2 MB |
-| Size of one agent's live files | 500 MB, then its uploads get `507` `quota_exceeded` |
+| Size of one agent's live files | 500 MB, then its uploads get `507` `quota_exceeded`; an admin can set it per agent |
 | Total size of all stored files | 2 GB, then uploads get `507` `storage_full` |
 
 ## HTTP API
@@ -63,7 +63,7 @@ a missing one.
 | `PUT /api/v1/artifacts/{id}` | replace the file, same fields; resets the lifetime; the type may change | `200` + artifact JSON |
 | `DELETE /api/v1/artifacts/{id}` | delete now | `204` |
 | `GET /api/v1/artifacts` | the calling agent's live artifacts | `200` + list |
-| `GET /api/v1/me` | the calling agent's name and space | `200` + `{"name", "used_bytes", "quota_bytes", "files"}` |
+| `GET /api/v1/me` | the calling agent's name, space and role | `200` + `{"name", "used_bytes", "quota_bytes", "files", "admin"}` |
 | `POST /api/v1/me/key` | a new key for the calling agent; the old one stops working, the files stay | `200` + `{"name", "key"}` |
 
 `name` defaults to the uploaded file name. It is reduced to a safe base name
@@ -90,6 +90,25 @@ Errors are `{"error": "<code>", "message": "<text>"}` with codes
 carries `used_bytes` and `quota_bytes`; a replace counts only the new file's
 size. Uploads must carry `Content-Length`; a body
 larger than the file limit is refused before it is read.
+
+### Admin calls
+
+An admin key (`agent add --admin`, or `agent admin <name>` for an existing
+one) may also call these; any other key gets `403 forbidden`. Sizes go in as
+MB, lifetimes as hours.
+
+| Call | Purpose | Answer |
+| --- | --- | --- |
+| `GET /api/v1/admin/users` | every agent: `name`, `admin`, `used_bytes`, `files`, `quota_bytes`, `own_quota`, `last_upload_at` | `200` + list |
+| `PATCH /api/v1/admin/users/{name}` | `{"quota_mb": <MB> or null}`: its own quota, or back to the common one | `204` |
+| `DELETE /api/v1/admin/users/{name}` | revoke the key and delete its files; not the caller's own | `204` |
+| `GET /api/v1/admin/stats` | `users`, `files`, `used_bytes`, `disk_free_bytes`, `limits` | `200` |
+| `PATCH /api/v1/admin/settings` | any of `user_quota_mb`, `max_total_mb`, `ttl_hours` | `200` + `limits` |
+
+Settings changed this way are kept in the database and override the
+environment variables, which only give the starting values. `max_total_mb`
+cannot exceed the space in use plus the free disk; `ttl_hours` is at most 720.
+A new lifetime applies to uploads from then on.
 
 ### Viewer pages (no auth)
 

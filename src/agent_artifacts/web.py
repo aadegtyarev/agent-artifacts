@@ -30,6 +30,7 @@ from starlette.responses import (
 from starlette.routing import Route
 
 from . import kinds
+from .admin import admin_routes
 from .config import Config
 from .store import ID_RE, Artifact, QuotaExceeded, StorageFull, Store
 
@@ -129,6 +130,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         config.data_dir,
         max_total_bytes=config.max_total_bytes,
         user_quota_bytes=config.user_quota_bytes,
+        ttl_seconds=config.ttl_seconds,
     )
 
     def agent_of(request: Request) -> str | None:
@@ -183,7 +185,6 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
                     name=name,
                     kind=kind.name,
                     size=size,
-                    ttl=config.ttl_seconds,
                     artifact_id=artifact_id,
                 )
             except QuotaExceeded as e:
@@ -221,8 +222,9 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             {
                 "name": agent,
                 "used_bytes": used,
-                "quota_bytes": store.user_quota_bytes,
+                "quota_bytes": store.quota_for(agent),
                 "files": files,
+                "admin": store.is_admin(agent),
             }
         )
 
@@ -343,6 +345,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             Route("/a/{id:artifact_id}", view),
             Route("/a/{id:artifact_id}/raw", raw),
             Route("/a/{id:artifact_id}/download", download),
+            *admin_routes(store, agent_of, _error),
         ],
         middleware=[Middleware(_CommonHeaders)],
         lifespan=lifespan,
