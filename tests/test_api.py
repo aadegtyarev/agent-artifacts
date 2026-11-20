@@ -8,8 +8,9 @@ from starlette.testclient import TestClient
 
 from agent_artifacts.config import Config, check_public_url
 from agent_artifacts.kinds import KindError, clean_name, detect
+from agent_artifacts.pages import SANDBOX_CSP
 from agent_artifacts.store import Store
-from agent_artifacts.web import SANDBOX_CSP, create_app
+from agent_artifacts.web import create_app
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
 
@@ -501,3 +502,16 @@ def test_two_presses_get_one_key(tmp_path):
     with ThreadPoolExecutor(8) as pool:
         results = list(pool.map(lambda _: store.claim_invite(token), range(8)))
     assert sum(r is not None for r in results) == 1
+
+
+def test_own_pages_escape_values_and_load_only_static_code(env):
+    client, store, keys = env
+    art = upload(client, keys["alice"], "<i x=1>&.txt", b"hi").json()
+    page = client.get(f"/a/{art['id']}")
+    assert "<i x" not in page.text and "&lt;i x=1&gt;&amp;.txt" in page.text
+    csp = page.headers["content-security-policy"]
+    assert "script-src 'self'" in csp and "style-src 'self'" in csp and "sha256" not in csp
+    assert "<script>" not in page.text and "<style>" not in page.text
+    assert client.get("/static/copy.js").status_code == 200
+    for path in ("/static/../store.py", "/static/%2e%2e/store.py", "/static/..%2fstore.py"):
+        assert client.get(path).status_code == 404, path

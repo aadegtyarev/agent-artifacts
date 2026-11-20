@@ -1,12 +1,9 @@
-"""HTTP: the agent API under /api/v1 and the viewer pages under /a."""
+"""HTTP routes: the agent API under /api/v1, the viewer under /a, invites
+under /join. The HTML itself is in pages.py, the admin API in admin.py."""
 
 from __future__ import annotations
 
 import asyncio
-import base64
-import hashlib
-import html
-import json
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
@@ -26,9 +23,10 @@ from starlette.responses import (
     RedirectResponse,
     Response,
 )
-from starlette.routing import Route
+from starlette.routing import Mount, Route
+from starlette.staticfiles import StaticFiles
 
-from . import kinds
+from . import kinds, pages
 from .admin import admin_routes
 from .api import ApiError, error, iso, on_api_error, require_agent, user_json
 from .config import Config
@@ -51,110 +49,6 @@ class _InviteToken(StringConvertor):
 register_url_convertor("invite_token", _InviteToken())
 # Multipart framing around the file; the file itself is checked exactly later.
 FORM_OVERHEAD_BYTES = 64 * 1024
-
-SANDBOX = (
-    "allow-scripts allow-forms allow-modals allow-popups "
-    "allow-popups-to-escape-sandbox allow-downloads"
-)
-# For untrusted HTML, SVG, Markdown and text: an opaque origin with no
-# network access, so the content can neither read this site nor phone home.
-SANDBOX_CSP = (
-    f"sandbox {SANDBOX}; default-src 'none'; script-src 'unsafe-inline'; "
-    "style-src 'unsafe-inline'; img-src data: blob:; font-src data:; "
-    "media-src data: blob:; frame-ancestors 'self'"
-)
-
-# Images and PDFs: not sandboxed (browsers won't show a PDF in a sandbox),
-# but only this site may frame them.
-RAW_CSP = "frame-ancestors 'self'"
-
-_COPY_JS = (
-    "document.getElementById('copy').onclick=function(){"
-    "var u=document.getElementById('url');"
-    "(navigator.clipboard?navigator.clipboard.writeText(u.value):Promise.reject())"
-    ".then(function(){var b=document.getElementById('copy');b.classList.add('done');"
-    "setTimeout(function(){b.classList.remove('done')},1500)},"
-    "function(){u.select()})};"
-)
-_COPY_JS_HASH = base64.b64encode(hashlib.sha256(_COPY_JS.encode()).digest()).decode()
-VIEWER_CSP = (
-    f"default-src 'none'; script-src 'sha256-{_COPY_JS_HASH}'; style-src 'unsafe-inline'; "
-    "img-src 'self'; frame-src 'self'; frame-ancestors 'none'; base-uri 'none'; "
-    "form-action 'none'"
-)
-
-# The invite pages: a form posting back to the same URL, and a copy button
-# for the settings with the new key.
-_SETUP_JS = (
-    "document.getElementById('copy').onclick=function(){"
-    "var t=document.getElementById('setup');"
-    "(navigator.clipboard?navigator.clipboard.writeText(t.value):Promise.reject())"
-    ".then(function(){document.getElementById('copy').textContent='Copied'},"
-    "function(){t.select()})};"
-)
-_SETUP_JS_HASH = base64.b64encode(hashlib.sha256(_SETUP_JS.encode()).digest()).decode()
-JOIN_CSP = (
-    f"default-src 'none'; script-src 'sha256-{_SETUP_JS_HASH}'; style-src 'unsafe-inline'; "
-    "frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
-)
-REPO_URL = "https://github.com/aadegtyarev/agent-artifacts"
-# Raw, so an agent fetching it gets Markdown rather than a GitHub page.
-SETUP_URL = "https://raw.githubusercontent.com/aadegtyarev/agent-artifacts/main/docs/agent-setup.md"
-USER_GUIDE_URL = f"{REPO_URL}/blob/main/docs/user-guide.md"
-
-# One compact header row: icon buttons, the name and details cut to one line each.
-_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true">'
-_DOWNLOAD_ICON = _SVG + '<path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></svg>'
-_LINK_ICON = (
-    _SVG + '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/>'
-    '<path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>'
-)
-# Shown instead of the link icon for a moment after the link is copied.
-_CHECK_ICON = (
-    '<svg class="check" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>'
-)
-
-_PAGE = """<!doctype html>
-<html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{title}</title>
-<style>
-:root {{ color-scheme: light dark; --fg: #1d1d1f; --bg: #fff; --muted: #6e6e73;
-  --line: #d2d2d7; --btn: #f2f2f4; }}
-@media (prefers-color-scheme: dark) {{ :root {{ --fg: #f2f2f4; --bg: #1c1c1e;
-  --muted: #a1a1a6; --line: #3a3a3c; --btn: #2c2c2e; }} }}
-* {{ box-sizing: border-box; }}
-body {{ margin: 0; font: 15px/1.4 system-ui, sans-serif; color: var(--fg);
-  background: var(--bg); display: flex; flex-direction: column; height: 100vh; }}
-header {{ display: flex; gap: 8px; align-items: center; padding: 4px 8px 4px 12px;
-  border-bottom: 1px solid var(--line); }}
-.name {{ flex: 1; min-width: 0; }}
-h1, .meta {{ margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
-h1 {{ font-size: 14px; }}
-.meta {{ color: var(--muted); font-size: 12px; }}
-.actions {{ display: flex; gap: 4px; }}
-a.btn, button {{ display: flex; align-items: center; justify-content: center;
-  min-width: 32px; height: 32px; padding: 0 6px; font: 13px system-ui, sans-serif;
-  color: inherit; background: var(--btn); border: 1px solid var(--line);
-  border-radius: 6px; text-decoration: none; cursor: pointer; }}
-svg {{ width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2;
-  stroke-linecap: round; stroke-linejoin: round; }}
-.check, .done svg {{ display: none; }}
-.done .check {{ display: block; }}
-#url {{ position: absolute; left: -9999px; }}
-main {{ flex: 1; min-height: 0; }}
-iframe {{ border: 0; width: 100%; height: 100%; background: #fff; }}
-.center {{ display: flex; align-items: center; justify-content: center;
-  height: 100%; padding: 16px; text-align: center; }}
-img {{ max-width: 100%; max-height: 100%; cursor: zoom-in; }}
-.center a {{ display: contents; }}
-.join {{ max-width: 560px; margin: 0 auto; padding: 24px 16px; }}
-.join h1 {{ font-size: 20px; margin-bottom: 12px; }}
-.join button {{ height: auto; padding: 8px 16px; font-size: 15px; }}
-textarea {{ width: 100%; height: 8.5em; word-break: break-all; color: inherit;
-  font: 13px ui-monospace, monospace; background: var(--btn);
-  border: 1px solid var(--line); border-radius: 6px; padding: 8px; resize: none; }}
-</style></head><body>{body}</body></html>"""
 
 
 def create_app(config: Config, store: Store | None = None) -> Starlette:
@@ -217,9 +111,9 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
                 return error(
                     507,
                     "quota_exceeded",
-                    f"your files take {_size(e.used)} of {_size(e.quota)} and this one needs "
-                    f"{_size(size)}; delete files you no longer need (GET /api/v1/artifacts "
-                    "lists them)",
+                    f"your files take {pages.size(e.used)} of {pages.size(e.quota)} and this "
+                    f"one needs {pages.size(size)}; delete files you no longer need "
+                    "(GET /api/v1/artifacts lists them)",
                     used_bytes=e.used,
                     quota_bytes=e.quota,
                 )
@@ -266,50 +160,13 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
     async def view(request: Request) -> Response:
         a = live(request)
         if a is None:
-            return _not_found()
-        kind = kinds.get(a.kind)
-        url = f"{config.public_url}/a/{a.id}"
-        raw = f"/a/{a.id}/raw"
-        if kind.sandboxed:
-            content = f'<iframe sandbox="{SANDBOX}" src="{raw}" title="content"></iframe>'
-        elif kind.name == "pdf":
-            # Browsers refuse to run their PDF viewer in a sandboxed frame.
-            content = f'<iframe src="{raw}" title="content"></iframe>'
-        elif kind.viewable:
-            # A click opens it full size in the browser's image viewer.
-            content = (
-                f'<div class="center"><a href="{raw}" target="_blank" rel="noopener">'
-                f'<img src="{raw}" alt="{html.escape(a.name)}"></a></div>'
-            )
-        else:
-            content = '<div class="center">Archive: download it to see the contents.</div>'
-        name = html.escape(a.name)
-        body = (
-            f'<header><div class="name"><h1 title="{name}">{name}</h1>'
-            f'<div class="meta">{_size(a.size)} · expires {iso(a.expires_at, human=True)}'
-            "</div></div>"
-            f'<div class="actions"><a class="btn" href="/a/{a.id}/download" '
-            f'title="Download" aria-label="Download">{_DOWNLOAD_ICON}</a>'
-            f'<input id="url" readonly value="{html.escape(url)}" aria-hidden="true">'
-            f'<button id="copy" type="button" title="Copy link" aria-label="Copy link">'
-            f"{_LINK_ICON}{_CHECK_ICON}</button></div></header>"
-            f"<main>{content}</main><script>{_COPY_JS}</script>"
-        )
-        return HTMLResponse(
-            _PAGE.format(title=html.escape(a.name), body=body),
-            headers={
-                "Content-Security-Policy": VIEWER_CSP,
-                "Cache-Control": "no-store",
-                # Cuts window.opener for pages a sandboxed artifact opens, so
-                # they cannot navigate this tab away.
-                "Cross-Origin-Opener-Policy": "same-origin",
-            },
-        )
+            return pages.not_found()
+        return pages.viewer_page(a, f"{config.public_url}/a/{a.id}")
 
     async def raw(request: Request) -> Response:
         a = live(request)
         if a is None:
-            return _not_found()
+            return pages.not_found()
         kind = kinds.get(a.kind)
         if not kind.viewable:
             return _download(store.path(a.id), a.name)
@@ -318,20 +175,20 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             # show it with the viewer's header instead. Images and PDFs open
             # as they are, in the browser's own viewer.
             return RedirectResponse(f"/a/{a.id}", status_code=303)
-        csp = SANDBOX_CSP if kind.sandboxed else RAW_CSP
+        csp = pages.SANDBOX_CSP if kind.sandboxed else pages.RAW_CSP
         headers = {"Cache-Control": "no-store", "Content-Security-Policy": csp}
         if kind.name in ("md", "txt"):
-            build = _markdown_page if kind.name == "md" else _text_page
+            build = pages.markdown_page if kind.name == "md" else pages.text_page
             try:
                 page = await run_in_threadpool(build, store.path(a.id), a.name)
             except FileNotFoundError:  # purged since the lookup
-                return _not_found()
+                return pages.not_found()
             return HTMLResponse(page, headers=headers)
         return FileResponse(store.path(a.id), media_type=kind.mime, headers=headers)
 
     async def download(request: Request) -> Response:
         a = live(request)
-        return _not_found() if a is None else _download(store.path(a.id), a.name)
+        return pages.not_found() if a is None else _download(store.path(a.id), a.name)
 
     async def join(request: Request) -> Response:
         token = request.path_params["token"]
@@ -340,42 +197,17 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             # checkers open links themselves (GET or HEAD) to build a preview.
             invite = store.invite_for_token(token)
             if invite is None:
-                return _message(404, _INVITE_GONE, csp=JOIN_CSP)
-            body = (
-                f'<main class="join"><h1>An invite for {html.escape(invite.name)}</h1>'
-                "<p>It gives you a key for agent-artifacts: your agents upload files "
-                "there and get links to share. The key is shown once, on the next "
-                "page.</p>"
-                '<form method="post"><button type="submit">Get my key</button></form>'
-                f'<p class="meta">This invite works once, until '
-                f"{iso(invite.expires_at, human=True)}.</p></main>"
-            )
-            return _join_page(200, f"Invite for {invite.name}", body)
+                return pages.message(404, pages.INVITE_GONE, csp=pages.JOIN_CSP)
+            return pages.invite_page(invite)
         try:
             claimed = await run_in_threadpool(store.claim_invite, token)
         except NameTaken:
-            return _message(409, "This name is already taken. Ask for a new invite.", csp=JOIN_CSP)
+            text = "This name is already taken. Ask for a new invite."
+            return pages.message(409, text, csp=pages.JOIN_CSP)
         if claimed is None:
-            return _message(404, _INVITE_GONE, csp=JOIN_CSP)
+            return pages.message(404, pages.INVITE_GONE, csp=pages.JOIN_CSP)
         name, key = claimed
-        # One text to paste into any agent: what to do, then the two settings.
-        setup = (
-            f"Set up agent-artifacts for me: follow {SETUP_URL}\n"
-            f"AGENT_ARTIFACTS_URL={config.public_url}\nAGENT_ARTIFACTS_KEY={key}"
-        )
-        body = (
-            f'<main class="join"><h1>Your key, {html.escape(name)}</h1>'
-            "<p>Copy it now: this page is not shown again.</p>"
-            f'<textarea id="setup" readonly aria-label="setup">{html.escape(setup)}</textarea>'
-            '<p><button id="copy" type="button">Copy</button></p>'
-            "<p>Paste the text into your agent: Claude Code, Codex or any other that "
-            "runs shell commands. It installs the skill and saves the key. To do it by "
-            f'hand, see the <a href="{USER_GUIDE_URL}" target="_blank" rel="noopener">'
-            "user guide</a>.</p>"
-            "<p>Keep the key secret. If it leaks, ask your agent for a new one.</p>"
-            f"<script>{_SETUP_JS}</script></main>"
-        )
-        return _join_page(200, "Your key", body)
+        return pages.key_page(name, key, config.public_url)
 
     async def health(request: Request) -> Response:
         return Response("ok", media_type="text/plain")
@@ -401,6 +233,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             Route("/a/{id:artifact_id}/raw", raw),
             Route("/a/{id:artifact_id}/download", download),
             Route("/join/{token:invite_token}", join, methods=["GET", "POST"]),
+            Mount("/static", StaticFiles(directory=pages.STATIC_DIR), name="static"),
             *admin_routes(store, config.public_url),
         ],
         middleware=[Middleware(_CommonHeaders)],
@@ -453,88 +286,3 @@ def _download(path: Path, name: str, media_type: str = "application/octet-stream
         media_type=media_type,
         headers={"Content-Disposition": disposition, "Cache-Control": "no-store"},
     )
-
-
-def _not_found() -> HTMLResponse:
-    return _message(404, "This link has expired or never existed.")
-
-
-def _message(status: int, text: str, *, csp: str = VIEWER_CSP) -> HTMLResponse:
-    body = f'<main><div class="center">{text}</div></main>'
-    return HTMLResponse(
-        _PAGE.format(title=text, body=body),
-        status_code=status,
-        headers={"Content-Security-Policy": csp, "Cache-Control": "no-store"},
-    )
-
-
-_INVITE_GONE = "This invite was used, has expired or never existed. Ask for a new one."
-
-
-def _join_page(status: int, title: str, body: str) -> HTMLResponse:
-    return HTMLResponse(
-        _PAGE.format(title=html.escape(title), body=body),
-        status_code=status,
-        headers={"Content-Security-Policy": JOIN_CSP, "Cache-Control": "no-store"},
-    )
-
-
-_MARKED_JS = (Path(__file__).parent / "static" / "marked.umd.js").read_text(encoding="utf-8")
-
-# Runs in the viewer's browser, inside the sandbox: heading ids for #anchor
-# links, and links to other sites in a new tab (the only way out of it).
-_MARKDOWN_JS = """
-document.body.innerHTML = marked.parse(SOURCE);
-const seen = {};
-for (const h of document.querySelectorAll("h1,h2,h3,h4,h5,h6")) {
-  const slug = h.textContent.toLowerCase().trim()
-    .replace(/[^\\p{L}\\p{N}\\- ]/gu, "").replace(/ /g, "-") || "section";
-  const n = seen[slug] = (seen[slug] || 0) + 1;
-  h.id = n > 1 ? `${slug}-${n - 1}` : slug;
-}
-for (const a of document.querySelectorAll("a[href]")) {
-  if (!a.getAttribute("href").startsWith("#")) { a.target = "_blank"; a.rel = "noopener"; }
-}
-"""
-
-
-def _text_page(path: Path, title: str) -> str:
-    """Plain text in a page with fixed colours: a bare text/plain document
-    follows the browser's dark mode and turns white-on-white in the frame."""
-    text = html.escape(path.read_bytes().decode("utf-8", "replace"))
-    return (
-        '<!doctype html><html><head><meta charset="utf-8">'
-        '<meta name="viewport" content="width=device-width, initial-scale=1">'
-        f"<title>{html.escape(title)}</title><style>"
-        "body{margin:0;padding:16px;color:#1d1d1f;background:#fff}"
-        "pre{margin:0;font:14px/1.5 ui-monospace,monospace;white-space:pre-wrap;"
-        "overflow-wrap:anywhere}"
-        f"</style></head><body><pre>{text}</pre></body></html>"
-    )
-
-
-def _markdown_page(path: Path, title: str) -> str:
-    """The Markdown source and a renderer; the viewer's browser does the work."""
-    # "<" escaped so the text cannot close the <script> it sits in.
-    source = json.dumps(path.read_bytes().decode("utf-8", "replace")).replace("<", "\\u003c")
-    return (
-        '<!doctype html><html><head><meta charset="utf-8">'
-        '<meta name="viewport" content="width=device-width, initial-scale=1">'
-        f"<title>{html.escape(title)}</title><style>"
-        "body{max-width:820px;margin:0 auto;padding:24px 16px;"
-        "font:16px/1.6 system-ui,sans-serif;color:#1d1d1f;background:#fff}"
-        "pre,code{background:#f2f2f4;border-radius:4px}pre{padding:12px;overflow:auto}"
-        "code{padding:1px 4px}pre code{padding:0}table{border-collapse:collapse}"
-        "th,td{border:1px solid #d2d2d7;padding:4px 8px}img{max-width:100%}"
-        "blockquote{margin:0;padding-left:12px;border-left:3px solid #d2d2d7;color:#6e6e73}"
-        f"</style></head><body><script>{_MARKED_JS}</script>"
-        f"<script>const SOURCE = {source};{_MARKDOWN_JS}</script></body></html>"
-    )
-
-
-def _size(n: int) -> str:
-    if n < 1024:
-        return f"{n} B"
-    if n < 1024 * 1024:
-        return f"{n / 1024:.1f} KB"
-    return f"{n / 1024 / 1024:.1f} MB"

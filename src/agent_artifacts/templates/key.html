@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% import "icons.html" as icon %}
+{% block body %}
+<main class="join">
+  <h1>Your key, {{ name }}</h1>
+  <p>Copy it now: this page is not shown again.</p>
+  <textarea id="setup" readonly aria-label="setup">{{ setup }}</textarea>
+  <p><button type="button" data-copy="setup"><span>Copy</span>{{ icon.check() }}</button></p>
+  <p>Paste the text into your agent: Claude Code, Codex or any other that runs
+  shell commands. It installs the skill and saves the key. To do it by hand, see
+  the <a href="{{ user_guide }}" target="_blank" rel="noopener">user guide</a>.</p>
+  <p>Keep the key secret. If it leaks, ask your agent for a new one.</p>
+</main>
+{% endblock %}
