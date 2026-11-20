@@ -69,7 +69,7 @@ def test_setup_upload_and_new_key(server):
     assert code == 0 and "saved" in out and key not in env_file.read_text()
     assert json.loads(cli(home, "me")[1])["name"] == "alice"
     assert cli(home, "replace", art["id"], str(page))[0] == 0
-    assert cli(home, "rm", art["id"])[1].strip() == "deleted"
+    assert cli(home, "delete", art["id"])[1].strip() == "deleted"
 
     code, _, err = cli(home, "me", env={"AGENT_ARTIFACTS_KEY": key})  # the old key, from env
     assert code == 1 and "unauthorized" in err
@@ -90,9 +90,16 @@ def test_help_admin_and_env_key(server):
     root = store.add_agent("root", admin=True)
     env = {"AGENT_ARTIFACTS_URL": url, "AGENT_ARTIFACTS_KEY": root}
     code, out, _ = cli(home, "invite", "petrov", "2", env=env)
+    assert (
+        json.loads(out)["expires_at"]
+        < json.loads(cli(home, "invite", "ivanov", env=env)[1])["expires_at"]
+    )
     assert code == 0 and json.loads(out)["url"].startswith(f"{url}/join/")
-    assert cli(home, "quota", "root", "10", env=env)[1].strip() == "done"
-    assert json.loads(cli(home, "settings", '{"ttl_hours": 24}', env=env)[1])["ttl_hours"] == 24
+    assert json.loads(cli(home, "quota", "root", "10", env=env)[1])["quota_bytes"] == 10 * 1024**2
+    out = json.loads(cli(home, "settings", "ttl-hours", "24", env=env)[1])
+    assert out["ttl_seconds"] == 86400
+    assert json.loads(cli(home, "settings", env=env)[1]) == out
+    assert cli(home, "settings", "ttl", "24", env=env)[0] == 2
     code, out, _ = cli(home, "new-key", env=env)  # from the environment: printed, not saved
     assert code == 0 and out.splitlines()[-1].startswith("aa_")
     assert not (home / ".config" / "agent-artifacts" / "env").exists()

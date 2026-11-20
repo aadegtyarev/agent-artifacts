@@ -32,22 +32,34 @@ USAGE = """usage: artifacts_cli.py <command> [args]
   upload FILE [NAME]        upload a file, print the artifact JSON (url, id, expires_at)
   replace ID FILE [NAME]    replace the file behind an existing link
   list                      your live files
-  rm ID                     delete one now
+  delete ID                 delete one now
   me                        your name, space used and quota, admin or not
   new-key                   replace your key (after a leak) and save the new one
 
 admin keys only:
   users                     people with their space and last upload
-  stats                     totals, free disk, limits
+  stats                     totals and free disk
+  settings                  the service settings
+  settings ttl-hours N      keep new uploads N hours
+  settings user-quota-mb N  everyone's space, unless set per person
+  settings max-total-mb N   all files together
   invite NAME [DAYS]        a one-time link that gives NAME a key (7 days by default)
   invites                   open invites
   cancel-invite ID          cancel one
   quota NAME MB|null        NAME's own quota, or back to the common one
   remove NAME               revoke NAME's key and delete their files
-  settings JSON             change limits, e.g. '{"ttl_hours": 24}'
+
+Answers are JSON as the service sends them: sizes in bytes, times in seconds.
 """
 
 URL_VAR, KEY_VAR = "AGENT_ARTIFACTS_URL", "AGENT_ARTIFACTS_KEY"
+MB, HOUR, DAY = 1024 * 1024, 3600, 86400
+# settings NAME -> (API field, unit it is given in)
+SETTINGS = {
+    "ttl-hours": ("ttl_seconds", HOUR),
+    "user-quota-mb": ("user_quota_bytes", MB),
+    "max-total-mb": ("max_total_bytes", MB),
+}
 
 
 class Usage(Exception):
@@ -100,7 +112,7 @@ _opener = urllib.request.build_opener(_NoRedirect)
 class Client:
     def __init__(self, url: str, key: str) -> None:
         if not url.startswith(("https://", "http://")):
-            raise Usage(f"{URL_VAR} must start with https://, got {url!r}")
+            raise Usage(f"{URL_VAR} must start with https:// or http://, got {url!r}")
         self.url = url.rstrip("/")
         self.key = key
 
@@ -114,10 +126,12 @@ class Client:
             with _opener.open(req, timeout=120) as r:
                 return r.read().decode()
         except urllib.error.HTTPError as e:
-            body = e.read().decode() if e.fp else ""
+            body = e.read().decode(errors="replace") if e.fp else ""
+            # JSON errors name their code; anything else (a proxy's 429 or 502
+            # page) gets the HTTP status instead.
             print(body if body.startswith("{") else f"HTTP {e.code}: {e.reason}", file=sys.stderr)
             sys.exit(1)
-        except (urllib.error.URLError, OSError) as e:
+        except OSError as e:
             sys.exit(f"artifacts_cli: cannot reach {self.url}: {e}")
 
     def json(self, method: str, path: str, data: object) -> str:
@@ -186,7 +200,7 @@ def run(argv: list[str]) -> str | None:
             return c.upload("PUT", f"{api}/{args[0]}", args[1], args[2] if len(args) > 2 else None)
         case "list":
             return c.call("GET", api)
-        case "rm":
+        case "delete":
             need(1, "ID")
             c.call("DELETE", f"{api}/{args[0]}")
             return "deleted"
@@ -204,8 +218,10 @@ def run(argv: list[str]) -> str | None:
             return c.call("GET", f"{admin}/stats")
         case "invite":
             need(1, "NAME [DAYS]", 2)
-            days = float(args[1]) if len(args) > 1 else 7
-            return c.json("POST", f"{admin}/invites", {"name": args[0], "days": days})
+            body = {"name": args[0]}
+            if len(args) > 1:
+                body["ttl_seconds"] = round(float(args[1]) * DAY)
+            return c.json("POST", f"{admin}/invites", body)
         case "invites":
             return c.call("GET", f"{admin}/invites")
         case "cancel-invite":
@@ -214,16 +230,20 @@ def run(argv: list[str]) -> str | None:
             return "cancelled"
         case "quota":
             need(2, "NAME MB|null")
-            mb = None if args[1] == "null" else float(args[1])
-            c.json("PATCH", f"{admin}/users/{args[0]}", {"quota_mb": mb})
-            return "done"
+            quota = None if args[1] == "null" else round(float(args[1]) * MB)
+            return c.json("PATCH", f"{admin}/users/{args[0]}", {"quota_bytes": quota})
         case "remove":
             need(1, "NAME")
             c.call("DELETE", f"{admin}/users/{args[0]}")
             return "removed"
         case "settings":
-            need(1, "JSON")
-            return c.json("PATCH", f"{admin}/settings", json.loads(args[0]))
+            if not args:
+                return c.call("GET", f"{admin}/settings")
+            need(2, "|".join(SETTINGS) + " N")
+            if args[0] not in SETTINGS:
+                raise Usage(f"settings: one of {', '.join(SETTINGS)}")
+            field, unit = SETTINGS[args[0]]
+            return c.json("PATCH", f"{admin}/settings", {field: round(float(args[1]) * unit)})
     raise Usage(USAGE)
 
 
@@ -233,7 +253,7 @@ def main() -> None:
     except Usage as e:
         print(str(e).rstrip(), file=sys.stderr)
         sys.exit(2)
-    except ValueError as e:  # a number or JSON argument that does not parse
+    except (ValueError, OverflowError) as e:  # a number argument that does not parse
         print(f"artifacts_cli: {e}", file=sys.stderr)
         sys.exit(2)
     if out:

@@ -43,6 +43,13 @@ Windows. Below, `run` means `uv run` if uv is installed, otherwise `python3`
      | run <skills folder>/agent-artifacts/scripts/artifacts_cli.py setup
    ```
 
+   In PowerShell:
+
+   ```powershell
+   "AGENT_ARTIFACTS_URL=<url>`nAGENT_ARTIFACTS_KEY=<key>" |
+     run <skills folder>\agent-artifacts\scripts\artifacts_cli.py setup
+   ```
+
    It checks the key against the service, then writes it to
    `~/.config/agent-artifacts/env` (`%APPDATA%\agent-artifacts\env` on
    Windows) and prints `saved to …`. A wrong key prints

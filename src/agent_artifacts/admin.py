@@ -1,164 +1,127 @@
-"""Admin API: people, their space, the common limits. Admin keys only."""
+"""Admin API: people, their space, the service settings. Admin keys only.
+
+Sizes are bytes and times are seconds, as everywhere in the API.
+"""
 
 from __future__ import annotations
 
 import re
 import shutil
-from collections.abc import Callable
-from datetime import UTC, datetime
 
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
+from .api import ApiError, iso, json_body, require_admin, user_json
 from .config import MB
 from .store import NAME_RE, Invite, NameTaken, Store
 
 HOUR = 3600
 DAY = 24 * HOUR
-MAX_TTL_HOURS = 30 * 24
-INVITE_DAYS = 7
+# Lower bounds, so no setting rounds down to nothing; upper bounds on time.
+MIN_BYTES, MIN_SECONDS = MB, HOUR
+MAX_BYTES = 2**50  # a petabyte; SQLite integers end at 2**63
+MAX_TTL_SECONDS = 30 * DAY
+INVITE_TTL_SECONDS = 7 * DAY
+# Left free on the disk for the database and its journal: on a full disk even
+# the cleanup could not write.
+RESERVE_BYTES = 256 * MB
 
 
-def admin_routes(
-    store: Store,
-    agent_of: Callable[[Request], str | None],
-    error: Callable[..., JSONResponse],
-    public_url: str,
-) -> list[Route]:
-    def admin_of(request: Request) -> tuple[str | None, Response | None]:
-        agent = agent_of(request)
-        if agent is None:
-            return None, error(401, "unauthorized", "missing or unknown agent key")
-        if not store.is_admin(agent):
-            return None, error(403, "forbidden", "this needs an admin key")
-        return agent, None
+def admin_routes(store: Store, public_url: str) -> list[Route]:
+    def common_quota() -> int | None:
+        return store.settings()["user_quota_bytes"]
 
-    async def body(request: Request) -> dict | None:
-        try:
-            data = await request.json()
-        except ValueError:
-            return None
-        return data if isinstance(data, dict) else None
-
-    def stats() -> dict:
-        people = store.agent_infos()
-        limits = store.limits()
-        used = sum(p.used_bytes for p in people)
-        quota = limits["user_quota_bytes"]
-        return {
-            "users": len(people),
-            "files": sum(p.files for p in people),
-            "used_bytes": used,
-            "disk_free_bytes": shutil.disk_usage(store.files).free,
-            "limits": {
-                "user_quota_mb": None if quota is None else quota / MB,
-                "max_total_mb": limits["max_total_bytes"] / MB,
-                "ttl_hours": limits["ttl_seconds"] / HOUR,
-            },
-        }
+    def person(name: str) -> dict:
+        info = store.agent_info(name) if re.fullmatch(NAME_RE, name) else None
+        if info is None:
+            raise ApiError(404, "not_found", "no such user")
+        return user_json(info, common_quota())
 
     async def users(request: Request) -> Response:
-        _, denied = admin_of(request)
-        if denied:
-            return denied
-        common = store.limits()["user_quota_bytes"]
-        return JSONResponse(
-            [
-                {
-                    "name": p.name,
-                    "admin": p.admin,
-                    "used_bytes": p.used_bytes,
-                    "files": p.files,
-                    "quota_bytes": common if p.quota_bytes is None else p.quota_bytes,
-                    "own_quota": p.quota_bytes is not None,
-                    "last_upload_at": _iso(p.last_upload_at),
-                }
-                for p in store.agent_infos()
-            ]
-        )
+        require_admin(store, request)
+        common = common_quota()
+        infos = await run_in_threadpool(store.agent_infos)
+        return JSONResponse([user_json(i, common) for i in infos])
 
     async def user(request: Request) -> Response:
-        agent, denied = admin_of(request)
-        if denied:
-            return denied
+        admin = require_admin(store, request)
         name = request.path_params["name"]
-        if not re.fullmatch(NAME_RE, name):
-            return error(404, "not_found", "no such user")
+        await run_in_threadpool(person, name)  # 404 for an unknown name
         if request.method == "DELETE":
-            if name == agent:
-                return error(400, "bad_request", "an admin cannot remove its own key")
-            if not await run_in_threadpool(store.remove_agent, name):
-                return error(404, "not_found", "no such user")
+            if name == admin:
+                raise ApiError(400, "bad_request", "an admin cannot remove its own key")
+            await run_in_threadpool(store.remove_agent, name)
             return Response(status_code=204)
-        data = await body(request)
-        if data is None or set(data) != {"quota_mb"}:
-            return error(400, "bad_request", 'expected {"quota_mb": <MB> or null}')
-        quota = data["quota_mb"]
-        if quota is not None and not _positive(quota):
-            return error(400, "bad_request", "quota_mb must be a number of MB, at least 1, or null")
-        quota_bytes = None if quota is None else int(quota * MB)
-        if not await run_in_threadpool(store.set_quota, name, quota_bytes):
-            return error(404, "not_found", "no such user")
-        return Response(status_code=204)
+        data = await json_body(request, {"quota_bytes"}, {"quota_bytes"})
+        quota = data["quota_bytes"]
+        if quota is not None:
+            quota = _int(quota, "quota_bytes", MIN_BYTES, MAX_BYTES)
+        await run_in_threadpool(store.set_quota, name, quota)
+        return JSONResponse(await run_in_threadpool(person, name))
 
-    async def get_stats(request: Request) -> Response:
-        _, denied = admin_of(request)
-        return denied or JSONResponse(await run_in_threadpool(stats))
+    def disk_free() -> int:
+        return shutil.disk_usage(store.files).free
+
+    async def stats(request: Request) -> Response:
+        require_admin(store, request)
+        infos = await run_in_threadpool(store.agent_infos)
+        return JSONResponse(
+            {
+                "users": len(infos),
+                "files": sum(i.files for i in infos),
+                "used_bytes": sum(i.used_bytes for i in infos),
+                "disk_free_bytes": await run_in_threadpool(disk_free),
+            }
+        )
 
     async def settings(request: Request) -> Response:
-        _, denied = admin_of(request)
-        if denied:
-            return denied
-        data = await body(request)
-        allowed = {"user_quota_mb", "max_total_mb", "ttl_hours"}
-        if not data or not set(data) <= allowed or not all(map(_positive, data.values())):
-            return error(400, "bad_request", f"expected numbers, at least 1, for {sorted(allowed)}")
-        values = {}
-        if "user_quota_mb" in data:
-            values["user_quota_bytes"] = int(data["user_quota_mb"] * MB)
-        if "max_total_mb" in data:
-            total = int(data["max_total_mb"] * MB)
-            current = await run_in_threadpool(stats)
-            # Leave the database and its journal room to write, or a full
-            # disk would stop even the cleanup.
-            free = current["disk_free_bytes"]
-            room = current["used_bytes"] + free - max(256 * MB, free // 20)
-            if total > room:
-                return error(400, "bad_request", f"the disk has room for {room // MB} MB at most")
-            values["max_total_bytes"] = total
-        if "ttl_hours" in data:
-            if data["ttl_hours"] > MAX_TTL_HOURS:
-                return error(400, "bad_request", f"ttl_hours is at most {MAX_TTL_HOURS}")
-            values["ttl_seconds"] = int(data["ttl_hours"] * HOUR)
-        await run_in_threadpool(lambda: store.set_limits(**values))
-        return JSONResponse((await run_in_threadpool(stats))["limits"])
+        require_admin(store, request)
+        if request.method == "PATCH":
+            data = await json_body(request, {"user_quota_bytes", "max_total_bytes", "ttl_seconds"})
+            values = {}
+            if "user_quota_bytes" in data:
+                values["user_quota_bytes"] = _int(
+                    data["user_quota_bytes"], "user_quota_bytes", MIN_BYTES
+                )
+            if "max_total_bytes" in data:
+                total = _int(data["max_total_bytes"], "max_total_bytes", MIN_BYTES, MAX_BYTES)
+                infos = await run_in_threadpool(store.agent_infos)
+                free = await run_in_threadpool(disk_free)
+                room = sum(i.used_bytes for i in infos) + free - max(RESERVE_BYTES, free // 20)
+                if total > room:
+                    raise ApiError(
+                        400, "bad_request", f"the disk has room for {room} bytes at most"
+                    )
+                values["max_total_bytes"] = total
+            if "ttl_seconds" in data:
+                values["ttl_seconds"] = _int(
+                    data["ttl_seconds"], "ttl_seconds", MIN_SECONDS, MAX_TTL_SECONDS
+                )
+            await run_in_threadpool(lambda: store.set_settings(**values))
+        return JSONResponse(await run_in_threadpool(store.settings))
 
     async def invites(request: Request) -> Response:
-        agent, denied = admin_of(request)
-        if denied:
-            return denied
+        admin = require_admin(store, request)
         if request.method == "GET":
-            return JSONResponse([_invite_json(i) for i in store.invites()])
-        data = await body(request)
-        if data is None or not {"name"} <= set(data) <= {"name", "days"}:
-            return error(400, "bad_request", 'expected {"name": "<name>", "days": <1-30>}')
-        name, days = data["name"], data.get("days", INVITE_DAYS)
+            found = await run_in_threadpool(store.invites)
+            return JSONResponse([_invite_json(i) for i in found])
+        data = await json_body(request, {"name", "ttl_seconds"}, {"name"})
+        name = data["name"]
         if not isinstance(name, str) or not re.fullmatch(NAME_RE, name):
-            return error(
+            raise ApiError(
                 400,
                 "bad_request",
                 "name may use letters, digits, '.', '_', '-', and not start with '.'",
             )
-        if not _positive(days) or days > 30:
-            return error(400, "bad_request", "days must be from 1 to 30")
+        ttl = _int(
+            data.get("ttl_seconds", INVITE_TTL_SECONDS), "ttl_seconds", MIN_SECONDS, MAX_TTL_SECONDS
+        )
         try:
-            invite, token = await run_in_threadpool(
-                store.add_invite, name, by=agent, ttl=int(days * DAY)
-            )
+            invite, token = await run_in_threadpool(store.add_invite, name, by=admin, ttl=ttl)
         except NameTaken:
-            return error(409, "name_taken", f"{name!r} already has a key or an invite")
+            raise ApiError(409, "name_taken", f"{name!r} already has a key or an invite") from None
         return JSONResponse(
             _invite_json(invite) | {"url": f"{public_url}/join/{token}"},
             status_code=201,
@@ -166,36 +129,28 @@ def admin_routes(
         )
 
     async def invite(request: Request) -> Response:
-        _, denied = admin_of(request)
-        if denied:
-            return denied
+        require_admin(store, request)
         if not await run_in_threadpool(store.cancel_invite, request.path_params["id"]):
-            return error(404, "not_found", "no such invite")
+            raise ApiError(404, "not_found", "no such invite")
         return Response(status_code=204)
 
     return [
-        Route("/api/v1/admin/invites", invites, methods=["GET", "POST"]),
-        Route("/api/v1/admin/invites/{id}", invite, methods=["DELETE"]),
         Route("/api/v1/admin/users", users),
         Route("/api/v1/admin/users/{name}", user, methods=["PATCH", "DELETE"]),
-        Route("/api/v1/admin/stats", get_stats),
-        Route("/api/v1/admin/settings", settings, methods=["PATCH"]),
+        Route("/api/v1/admin/stats", stats),
+        Route("/api/v1/admin/settings", settings, methods=["GET", "PATCH"]),
+        Route("/api/v1/admin/invites", invites, methods=["GET", "POST"]),
+        Route("/api/v1/admin/invites/{id}", invite, methods=["DELETE"]),
     ]
 
 
 def _invite_json(i: Invite) -> dict:
-    return {
-        "id": i.id,
-        "name": i.name,
-        "created_by": i.created_by,
-        "expires_at": _iso(i.expires_at),
-    }
+    return {"id": i.id, "name": i.name, "created_by": i.created_by, "expires_at": iso(i.expires_at)}
 
 
-def _positive(v: object) -> bool:
-    """At least 1 (MB or hour), so no limit rounds down to nothing."""
-    return isinstance(v, int | float) and not isinstance(v, bool) and 1 <= v < 1e9
-
-
-def _iso(ts: float | None) -> str | None:
-    return None if ts is None else datetime.fromtimestamp(ts, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+def _int(v: object, field: str, low: int, high: int | None = None) -> int:
+    """A whole number, at least ``low`` and at most ``high``, or 400."""
+    if isinstance(v, bool) or not isinstance(v, int) or v < low or (high and v > high):
+        upto = f" and at most {high}" if high else ""
+        raise ApiError(400, "bad_request", f"{field} must be a whole number, at least {low}{upto}")
+    return v

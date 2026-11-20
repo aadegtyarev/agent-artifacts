@@ -2,6 +2,10 @@
 
 Every call opens its own connection, so the store is safe to use from the
 thread pool without a lock; SQLite serialises the writes.
+
+For async callers: short indexed reads (a key, an artifact, an invite) may run
+on the event loop; writes, aggregates and anything touching files go to the
+thread pool, since a write may wait for another one's lock.
 """
 
 from __future__ import annotations
@@ -26,7 +30,10 @@ TOKEN_RE = r"[A-Za-z0-9_-]{43}"  # noqa: S105 (a pattern, not a secret)
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS agents (
     name TEXT PRIMARY KEY,
-    key_hash TEXT NOT NULL UNIQUE
+    key_hash TEXT NOT NULL UNIQUE,
+    admin INTEGER NOT NULL DEFAULT 0,
+    quota_bytes INTEGER,  -- NULL: the common quota
+    last_upload_at REAL
 );
 CREATE TABLE IF NOT EXISTS artifacts (
     id TEXT PRIMARY KEY,
@@ -52,14 +59,14 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 """
 
-# Columns added after the first release, for databases created before them.
+# Columns of agents added after the first release, for databases made before.
 _AGENT_COLUMNS = {
     "admin": "INTEGER NOT NULL DEFAULT 0",
-    "quota_bytes": "INTEGER",  # NULL: the common quota
+    "quota_bytes": "INTEGER",
     "last_upload_at": "REAL",
 }
 
-LIMITS = ("user_quota_bytes", "max_total_bytes", "ttl_seconds")
+SETTINGS = ("user_quota_bytes", "max_total_bytes", "ttl_seconds")
 
 
 @dataclass(frozen=True)
@@ -98,6 +105,10 @@ class QuotaExceeded(Exception):
         self.quota = quota
 
 
+def _new_key() -> str:
+    return "aa_" + secrets.token_urlsafe(32)
+
+
 def hash_key(key: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
 
@@ -123,7 +134,7 @@ class Store:
     ) -> None:
         self.files = data_dir / "files"
         self.files.mkdir(parents=True, exist_ok=True)
-        # Starting values; an admin can override them, see set_limits().
+        # Starting values; an admin can override them, see set_settings().
         self.defaults = {
             "user_quota_bytes": user_quota_bytes,
             "max_total_bytes": max_total_bytes,
@@ -150,14 +161,14 @@ class Store:
 
     # Limits
 
-    def limits(self, db: sqlite3.Connection | None = None) -> dict[str, int | None]:
+    def settings(self, db: sqlite3.Connection | None = None) -> dict[str, int | None]:
         if db is None:
             with self._conn() as db:
-                return self.limits(db)
+                return self.settings(db)
         return self.defaults | dict(db.execute("SELECT key, value FROM settings").fetchall())
 
-    def set_limits(self, **values: int) -> None:
-        assert set(values) <= set(LIMITS), values
+    def set_settings(self, **values: int) -> None:
+        assert set(values) <= set(SETTINGS), values
         with self._conn() as db:
             db.executemany(
                 "INSERT INTO settings VALUES (?, ?) "
@@ -165,19 +176,16 @@ class Store:
                 values.items(),
             )
 
-    def quota_for(self, name: str, db: sqlite3.Connection | None = None) -> int | None:
-        if db is None:
-            with self._conn() as db:
-                return self.quota_for(name, db)
+    def _quota_for(self, name: str, db: sqlite3.Connection) -> int | None:
         row = db.execute("SELECT quota_bytes FROM agents WHERE name = ?", (name,)).fetchone()
         own = row[0] if row else None
-        return own if own is not None else self.limits(db)["user_quota_bytes"]
+        return own if own is not None else self.settings(db)["user_quota_bytes"]
 
     # Agents
 
     def add_agent(self, name: str, *, admin: bool = False) -> str:
         """Create an agent and return its key; only the hash is kept."""
-        key = "aa_" + secrets.token_urlsafe(32)
+        key = _new_key()
         with self._conn() as db:
             db.execute(
                 "INSERT INTO agents (name, key_hash, admin) VALUES (?, ?, ?)",
@@ -201,20 +209,25 @@ class Store:
             row = db.execute("SELECT admin FROM agents WHERE name = ?", (name,)).fetchone()
         return bool(row and row[0])
 
-    def agent_infos(self) -> list[AgentInfo]:
+    def agent_infos(self, name: str | None = None) -> list[AgentInfo]:
+        """Every agent with its space in use, or only ``name``."""
         with self._conn() as db:
             rows = db.execute(
                 "SELECT a.name, a.admin, a.quota_bytes, a.last_upload_at, "
                 "COALESCE(SUM(f.size), 0), COUNT(f.id) FROM agents a "
-                "LEFT JOIN artifacts f ON f.owner = a.name AND f.expires_at > ? "
-                "GROUP BY a.name ORDER BY a.name",
-                (time.time(),),
+                "LEFT JOIN artifacts f ON f.owner = a.name AND f.expires_at > :now "
+                "WHERE :name IS NULL OR a.name = :name GROUP BY a.name ORDER BY a.name",
+                {"now": time.time(), "name": name},
             ).fetchall()
         return [AgentInfo(r[0], bool(r[1]), *r[2:]) for r in rows]
 
+    def agent_info(self, name: str) -> AgentInfo | None:
+        found = self.agent_infos(name)
+        return found[0] if found else None
+
     def new_key(self, name: str) -> str:
         """Give ``name`` a new key; the old one stops working at once."""
-        key = "aa_" + secrets.token_urlsafe(32)
+        key = _new_key()
         with self._conn() as db:
             db.execute("UPDATE agents SET key_hash = ? WHERE name = ?", (hash_key(key), name))
         return key
@@ -281,7 +294,7 @@ class Store:
     def claim_invite(self, token: str) -> tuple[str, str] | None:
         """Use up the invite: create its agent and return (name, key). None if
         the token is unknown, used or expired; NameTaken if the name is in use."""
-        key = "aa_" + secrets.token_urlsafe(32)
+        key = _new_key()
         with self._conn() as db:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute(
@@ -319,15 +332,6 @@ class Store:
             ).fetchall()
         return [Artifact(*r) for r in rows]
 
-    def usage(self, owner: str) -> tuple[int, int]:
-        """Bytes and number of ``owner``'s live artifacts."""
-        with self._conn() as db:
-            return db.execute(
-                "SELECT COALESCE(SUM(size), 0), COUNT(*) FROM artifacts "
-                "WHERE owner = ? AND expires_at > ?",
-                (owner, time.time()),
-            ).fetchone()
-
     def put(
         self,
         src: BinaryIO,
@@ -350,9 +354,9 @@ class Store:
                 # Hold the write lock from the size checks to the insert, so two
                 # uploads cannot both fit into the same free space.
                 db.execute("BEGIN IMMEDIATE")
-                limits = self.limits(db)
-                ttl = limits["ttl_seconds"]
-                quota = self.quota_for(owner, db)
+                settings = self.settings(db)
+                ttl = settings["ttl_seconds"]
+                quota = self._quota_for(owner, db)
                 if quota is not None:
                     own = db.execute(
                         "SELECT COALESCE(SUM(size), 0) FROM artifacts "
@@ -365,7 +369,7 @@ class Store:
                     "SELECT COALESCE(SUM(size), 0) FROM artifacts WHERE id != ? AND expires_at > ?",
                     (new_id, now),
                 ).fetchone()[0]
-                if used + size > limits["max_total_bytes"]:
+                if used + size > settings["max_total_bytes"]:
                     raise StorageFull
                 if artifact_id is None:
                     db.execute(
