@@ -22,7 +22,9 @@ def main(argv: list[str] | None = None) -> int:
     add = agent_sub.add_parser("add", help="create an agent and print its key")
     add.add_argument("name")
     add.add_argument("--admin", action="store_true", help="may manage users and limits")
-    agent_sub.add_parser("admin", help="make an existing agent an admin").add_argument("name")
+    admin = agent_sub.add_parser("admin", help="make an existing agent an admin")
+    admin.add_argument("name")
+    admin.add_argument("--revoke", action="store_true", help="take the admin role away")
     agent_sub.add_parser("remove", help="revoke an agent and delete its files").add_argument("name")
     agent_sub.add_parser("list", help="list agents")
     args = parser.parse_args(argv)
@@ -53,7 +55,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: agent {args.name!r} already exists", file=sys.stderr)
             return 1
     elif args.action == "admin":
-        if not store.set_admin(args.name, True):
+        if not store.set_admin(args.name, not args.revoke):
             print(f"error: no agent {args.name!r}", file=sys.stderr)
             return 1
     elif args.action == "remove":
@@ -61,7 +63,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: no agent {args.name!r}", file=sys.stderr)
             return 1
     else:
-        print("\n".join(store.agents()))
+        for a in store.agent_infos():
+            print(a.name + (" (admin)" if a.admin else ""))
     return 0
 
 

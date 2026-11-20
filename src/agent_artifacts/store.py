@@ -206,10 +206,6 @@ class Store:
             self._unlink(artifact_id)
         return gone
 
-    def agents(self) -> list[str]:
-        with self._conn() as db:
-            return [r[0] for r in db.execute("SELECT name FROM agents ORDER BY name")]
-
     def agent_for_key(self, key: str) -> str | None:
         # Looked up by hash, so the key itself is never compared byte by byte.
         with self._conn() as db:

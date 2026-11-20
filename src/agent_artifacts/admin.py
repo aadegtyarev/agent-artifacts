@@ -94,7 +94,7 @@ def admin_routes(
             return error(400, "bad_request", 'expected {"quota_mb": <MB> or null}')
         quota = data["quota_mb"]
         if quota is not None and not _positive(quota):
-            return error(400, "bad_request", "quota_mb must be a positive number or null")
+            return error(400, "bad_request", "quota_mb must be a number of MB, at least 1, or null")
         if not store.set_quota(name, None if quota is None else int(quota * MB)):
             return error(404, "not_found", "no such user")
         return Response(status_code=204)
@@ -110,7 +110,7 @@ def admin_routes(
         data = await body(request)
         allowed = {"user_quota_mb", "max_total_mb", "ttl_hours"}
         if not data or not set(data) <= allowed or not all(map(_positive, data.values())):
-            return error(400, "bad_request", f"expected positive numbers for {sorted(allowed)}")
+            return error(400, "bad_request", f"expected numbers, at least 1, for {sorted(allowed)}")
         values = {}
         if "user_quota_mb" in data:
             values["user_quota_bytes"] = int(data["user_quota_mb"] * MB)
@@ -137,7 +137,8 @@ def admin_routes(
 
 
 def _positive(v: object) -> bool:
-    return isinstance(v, int | float) and not isinstance(v, bool) and 0 < v < 1e9
+    """At least 1 (MB or hour), so no limit rounds down to nothing."""
+    return isinstance(v, int | float) and not isinstance(v, bool) and 1 <= v < 1e9
 
 
 def _iso(ts: float | None) -> str | None:

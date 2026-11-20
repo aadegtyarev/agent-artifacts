@@ -362,17 +362,35 @@ def test_admin_api(env):
     assert (stats["users"], stats["files"], stats["used_bytes"]) == (3, 1, 100)
 
     # Her own quota, then back to the common one.
-    r = client.patch("/api/v1/admin/users/alice", headers=auth(root), json={"quota_mb": 0.0001})
-    assert r.status_code == 204
-    assert upload(client, keys["alice"], "b.txt", b"x" * 100).json()["error"] == "quota_exceeded"
+    r = client.patch("/api/v1/admin/users/alice", headers=auth(root), json={"quota_mb": 2})
+    assert r.status_code == 204 and store.quota_for("alice") == 2 * 1024 * 1024
     client.patch("/api/v1/admin/users/alice", headers=auth(root), json={"quota_mb": None})
-    assert upload(client, keys["alice"], "b.txt", b"x" * 100).status_code == 201
+    assert store.quota_for("alice") is None
+    for bad in ({"quota_mb": 0.5}, {"quota_mb": True}, {"quota_mb": 1, "admin": True}, [1]):
+        r = client.patch("/api/v1/admin/users/alice", headers=auth(root), json=bad)
+        assert r.status_code == 400, bad
+    r = client.patch("/api/v1/admin/users/alice", headers=auth(root), content=b"{not json")
+    assert r.status_code == 400
+    assert (
+        client.patch(
+            "/api/v1/admin/users/nobody", headers=auth(root), json={"quota_mb": 1}
+        ).status_code
+        == 404
+    )
+    for method, path in (
+        ("PATCH", "/api/v1/admin/users/bob"),
+        ("DELETE", "/api/v1/admin/users/bob"),
+        ("PATCH", "/api/v1/admin/settings"),
+    ):
+        for headers in (auth(keys["alice"]), {}):
+            r = client.request(method, path, headers=headers, json={"quota_mb": 1})
+            assert r.status_code in (401, 403), (method, path)
 
     r = client.patch("/api/v1/admin/settings", headers=auth(root), json={"ttl_hours": 24})
     assert r.json()["ttl_hours"] == 24
     art = upload(client, keys["bob"], "c.txt", b"x").json()
     assert store.get(art["id"]).expires_at - store.get(art["id"]).created_at == 24 * 3600
-    for bad in ({"ttl_hours": 0}, {"ttl_hours": 10_000}, {"max_total_mb": 1e8}, {"x": 1}, {}):
+    for bad in ({"ttl_hours": 0.0001}, {"ttl_hours": 10_000}, {"max_total_mb": 1e8}, {"x": 1}, {}):
         r = client.patch("/api/v1/admin/settings", headers=auth(root), json=bad)
         assert r.status_code == 400, bad
 
@@ -392,3 +410,16 @@ def test_old_database_gets_the_new_columns(tmp_path):
     db.close()
     store = Store(tmp_path, max_total_bytes=1000)
     assert not store.is_admin("old") and store.set_admin("old", True) and store.is_admin("old")
+
+
+def test_cli_admin_role(tmp_path, monkeypatch, capsys):
+    from agent_artifacts.cli import main
+
+    monkeypatch.setenv("AA_DATA_DIR", str(tmp_path))
+    assert main(["agent", "add", "me", "--admin"]) == 0
+    assert main(["agent", "add", "you"]) == 0
+    assert main(["agent", "admin", "me", "--revoke"]) == 0
+    assert main(["agent", "admin", "you"]) == 0
+    capsys.readouterr()
+    assert main(["agent", "list"]) == 0
+    assert capsys.readouterr().out.split("\n")[:2] == ["me", "you (admin)"]
