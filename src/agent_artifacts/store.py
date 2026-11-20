@@ -99,6 +99,13 @@ class Store:
             db.execute("INSERT INTO agents VALUES (?, ?)", (name, hash_key(key)))
         return key
 
+    def new_key(self, name: str) -> str:
+        """Give ``name`` a new key; the old one stops working at once."""
+        key = "aa_" + secrets.token_urlsafe(32)
+        with self._conn() as db:
+            db.execute("UPDATE agents SET key_hash = ? WHERE name = ?", (hash_key(key), name))
+        return key
+
     def remove_agent(self, name: str) -> bool:
         with self._conn() as db:
             ids = [r[0] for r in db.execute("SELECT id FROM artifacts WHERE owner = ?", (name,))]

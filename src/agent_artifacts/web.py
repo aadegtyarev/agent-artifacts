@@ -225,6 +225,13 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             }
         )
 
+    async def new_key(request: Request) -> Response:
+        agent = agent_of(request)
+        if agent is None:
+            return _error(401, "unauthorized", "missing or unknown agent key")
+        key = await run_in_threadpool(store.new_key, agent)
+        return JSONResponse({"name": agent, "key": key}, headers={"Cache-Control": "no-store"})
+
     async def item(request: Request) -> Response:
         agent = agent_of(request)
         if agent is None:
@@ -329,6 +336,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         routes=[
             Route("/health", health),
             Route("/api/v1/me", me),
+            Route("/api/v1/me/key", new_key, methods=["POST"]),
             Route("/api/v1/artifacts", collection, methods=["GET", "POST"]),
             Route("/api/v1/artifacts/{id:artifact_id}", item, methods=["PUT", "DELETE"]),
             Route("/a/{id:artifact_id}", view),

@@ -318,3 +318,17 @@ def test_quota_per_agent_and_me(tmp_path):
         me = client.get("/api/v1/me", headers=auth(keys["alice"])).json()
         assert me == {"name": "alice", "used_bytes": 1400, "quota_bytes": 1500, "files": 1}
         assert client.get("/api/v1/me").status_code == 401
+
+
+def test_new_key_replaces_the_old_one(env):
+    client, _, keys = env
+    art = upload(client, keys["alice"], "a.txt", b"hi").json()
+    r = client.post("/api/v1/me/key", headers=auth(keys["alice"]))
+    assert r.status_code == 200 and r.json()["name"] == "alice"
+    assert r.headers["cache-control"] == "no-store"
+    new = r.json()["key"]
+    assert client.get("/api/v1/me", headers=auth(keys["alice"])).status_code == 401
+    assert [a["id"] for a in client.get("/api/v1/artifacts", headers=auth(new)).json()] == [
+        art["id"]
+    ]
+    assert client.post("/api/v1/me/key").status_code == 401

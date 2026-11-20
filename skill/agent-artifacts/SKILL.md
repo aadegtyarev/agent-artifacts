@@ -77,6 +77,19 @@ Don't delete anything on your own. List the files (`GET $API`), show the user
 each one's name, size and `expires_at`, and ask which to delete. Delete those,
 then upload again.
 
+## If the key leaked
+
+When the user says the key leaked or asks for a new one:
+
+```bash
+curl -sS --fail-with-body -X POST -H "$AUTH" "$AGENT_ARTIFACTS_URL/api/v1/me/key"
+```
+
+The answer is `{"name": "…", "key": "aa_…"}`. The old key stops working at
+once; the files stay. Tell the user to put the new key into
+`AGENT_ARTIFACTS_KEY` wherever it is set. Don't write it into files you
+upload or into logs.
+
 ## Writing HTML that works there
 
 The page is shown in a sandbox that blocks every network request. What is not
