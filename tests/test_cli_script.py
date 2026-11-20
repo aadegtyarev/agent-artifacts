@@ -126,3 +126,9 @@ def test_a_redirect_is_an_error_and_keeps_the_key(tmp_path):
     code, _, err = cli(tmp_path, "me", env=env)
     srv.server_close()
     assert code == 1 and "301" in err and len(seen) == 1
+
+
+def test_plain_http_only_for_a_local_server(tmp_path):
+    env = {"AGENT_ARTIFACTS_URL": "http://art.example.org", "AGENT_ARTIFACTS_KEY": "k"}
+    code, _, err = cli(tmp_path, "me", env=env)
+    assert code == 2 and "https://" in err

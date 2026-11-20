@@ -16,12 +16,14 @@ AGENT_ARTIFACTS_ENV points to another file.
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import mimetypes
 import os
 import secrets
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -111,8 +113,11 @@ _opener = urllib.request.build_opener(_NoRedirect)
 
 class Client:
     def __init__(self, url: str, key: str) -> None:
-        if not url.startswith(("https://", "http://")):
-            raise Usage(f"{URL_VAR} must start with https:// or http://, got {url!r}")
+        parts = urllib.parse.urlsplit(url)
+        # Plain http:// would send the key in the clear before any redirect
+        # to https:// could be refused; only a local test server may use it.
+        if not (parts.scheme == "https" or parts.scheme == "http" and _is_local(parts.hostname)):
+            raise Usage(f"{URL_VAR} must start with https:// (http:// only for a local server)")
         self.url = url.rstrip("/")
         self.key = key
 
@@ -156,6 +161,19 @@ class Client:
             )
         parts.append(f"--{boundary}--\r\n".encode())
         return self.call(method, path, b"".join(parts), f"multipart/form-data; boundary={boundary}")
+
+
+def _is_local(host: str | None) -> bool:
+    """The same rule the server uses for a plain-HTTP public URL."""
+    if not host:
+        return False
+    if host == "localhost" or host.endswith((".local", ".lan", ".localhost")):
+        return True
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return addr.is_loopback or addr.is_private
 
 
 def _quote(name: str) -> str:
