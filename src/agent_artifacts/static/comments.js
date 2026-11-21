@@ -592,6 +592,8 @@
   }
 
   function openComposer(anchor) {
+    // A new draft makes an older discarded one's Undo meaningless.
+    if (undoAction && undoAction.discarded) hideToast();
     // On a phone the composer takes the bottom; the sheet folds to the strip.
     if (phone.matches && !panel.hidden) closePanel();
     const wasOpen = !composer.hidden;
@@ -632,11 +634,13 @@
     const kept = { anchor: draft, text: $("composer-text").value };
     closeComposer();
     if (!kept.text.trim()) return;
+    const restore = () => {
+      openComposer(kept.anchor);
+      $("composer-text").value = kept.text;
+    };
+    restore.discarded = true;
     toast("Comment discarded", {
-      undo: () => {
-        openComposer(kept.anchor);
-        $("composer-text").value = kept.text;
-      },
+      undo: restore,
       ms: UNDO_MS,
       back: "image-box",
     });
