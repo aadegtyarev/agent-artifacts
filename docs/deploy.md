@@ -50,8 +50,8 @@ Besides proxying, the vhost:
   `crit`. An app outage then does not show in nginx's log; watch `/health`
   instead.
 - limits each client IP: 10 requests a second for pages (bursts of 40), 2 a
-  second for the API (bursts of 10), 10 comments posted, edited or deleted a
-  minute (bursts of 5), 20 connections. Above that nginx answers `429`.
+  second for the API (bursts of 10), 10 comment, draft or review writes a minute
+  (bursts of 5), 20 connections. Above that nginx answers `429`.
 - accepts uploads a little above the 25 MB file limit.
 
 The rate limits stop a single noisy client. A distributed flood needs
@@ -59,6 +59,23 @@ protection from the hosting provider or a CDN.
 
 On nginx older than 1.25.1, replace `http2 on;` with `listen 443 ssl http2;`
 as the comment in the file says.
+
+### The raw origin (optional)
+
+"Open separately" in the viewer's menu opens a file on a host of its own,
+[the raw origin](contract.md#the-raw-origin). To offer it:
+
+1. Point a second name at the same server, for example
+   `raw.art.example.org`. A subdomain is same-site with the main name: if the
+   parent domain hosts apps with logins, use a host on another registrable
+   domain instead.
+2. Get a certificate for it, the same way as for the main name.
+3. Uncomment the raw origin server block at the end of
+   [deploy/nginx.conf](../deploy/nginx.conf), set its name and certificate
+   paths, and add the name to the port 80 block's `server_name` for the
+   redirect to HTTPS. Reload nginx.
+4. Add `AA_RAW_URL=https://raw.art.example.org` to `.env` and run
+   `docker compose up -d`.
 
 ## 3. Block the container's outbound connections
 
@@ -121,14 +138,15 @@ docker compose exec app agent-artifacts agent remove ci-bot   # also deletes its
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `AA_PUBLIC_URL` | required by `compose.yaml` | base of the links handed out |
+| `AA_RAW_URL` | empty | [the raw origin](#the-raw-origin-optional) for "Open separately"; empty hides that menu item |
 | `AA_TTL_HOURS` | `48` | lifetime of a file after its last upload |
 | `AA_MAX_FILE_MB` | `25` | size limit of one file |
 | `AA_MAX_TOTAL_MB` | `2048` | size limit of all stored files |
 | `AA_USER_QUOTA_MB` | `500` | size limit of one key's live files |
 | `AA_PORT` | `8090` | host port on `127.0.0.1` |
 
-`compose.yaml` passes only `AA_PUBLIC_URL` into the container. To change
-another one, add it under `environment:` in `compose.override.yaml`:
+`compose.yaml` passes `AA_PUBLIC_URL` and `AA_RAW_URL` into the container.
+To change another one, add it under `environment:` in `compose.override.yaml`:
 
 ```yaml
 services:
