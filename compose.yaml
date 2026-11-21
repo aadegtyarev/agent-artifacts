@@ -7,6 +7,7 @@ services:
       - "127.0.0.1:${AA_PORT:-8090}:8090"
     environment:
       AA_PUBLIC_URL: ${AA_PUBLIC_URL:?set AA_PUBLIC_URL, e.g. https://art.example.org}
+      AA_RAW_URL: ${AA_RAW_URL:-}
     volumes:
       - data:/data
     read_only: true

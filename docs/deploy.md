@@ -62,33 +62,20 @@ as the comment in the file says.
 
 ### The raw origin (optional)
 
-"Open separately" in the viewer's menu opens a file on a host of its own, so
-that a page opened that way is not on the service's origin. To offer it:
+"Open separately" in the viewer's menu opens a file on a host of its own,
+[the raw origin](contract.md#the-raw-origin). To offer it:
 
 1. Point a second name at the same server, for example
-   `raw.art.example.org`. Use a separate name, not a path: the point is a
-   different origin.
+   `raw.art.example.org`. A subdomain is same-site with the main name: if the
+   parent domain hosts apps with logins, use a host on another registrable
+   domain instead.
 2. Get a certificate for it, the same way as for the main name.
-3. Add a server block for it next to the main one: the same `listen`,
-   logging, TLS and `limit_req zone=aa_view` lines, `server_name
-   raw.art.example.org`, its own certificate paths, and a single location
-   that passes only the raw content to the app:
-
-   ```nginx
-   location ~ ^/a/[A-Za-z0-9_-]{22}/raw$ {
-       limit_except GET HEAD { deny all; }
-       proxy_set_header Host $host;
-       proxy_pass http://127.0.0.1:8090;
-   }
-   location / { return 404; }
-   ```
-
-   Add the name to the port 80 block's `server_name` too, for the redirect
-   to HTTPS.
-4. Set `AA_RAW_URL=https://raw.art.example.org` and restart the container.
-
-The app also answers `404` there for any other path, so the location is a
-second guard, not the only one.
+3. Uncomment the raw origin server block at the end of
+   [deploy/nginx.conf](../deploy/nginx.conf), set its name and certificate
+   paths, and add the name to the port 80 block's `server_name` for the
+   redirect to HTTPS. Reload nginx.
+4. Add `AA_RAW_URL=https://raw.art.example.org` to `.env` and run
+   `docker compose up -d`.
 
 ## 3. Block the container's outbound connections
 
@@ -151,15 +138,15 @@ docker compose exec app agent-artifacts agent remove ci-bot   # also deletes its
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `AA_PUBLIC_URL` | required by `compose.yaml` | base of the links handed out |
-| `AA_RAW_URL` | unset | the separate origin for "Open separately", e.g. `https://raw.art.example.org`; unset hides that menu item |
+| `AA_RAW_URL` | empty | [the raw origin](#the-raw-origin-optional) for "Open separately"; empty hides that menu item |
 | `AA_TTL_HOURS` | `48` | lifetime of a file after its last upload |
 | `AA_MAX_FILE_MB` | `25` | size limit of one file |
 | `AA_MAX_TOTAL_MB` | `2048` | size limit of all stored files |
 | `AA_USER_QUOTA_MB` | `500` | size limit of one key's live files |
 | `AA_PORT` | `8090` | host port on `127.0.0.1` |
 
-`compose.yaml` passes `AA_PUBLIC_URL` and `AA_RAW_URL` into the container. To change
-another one, add it under `environment:` in `compose.override.yaml`:
+`compose.yaml` passes `AA_PUBLIC_URL` and `AA_RAW_URL` into the container.
+To change another one, add it under `environment:` in `compose.override.yaml`:
 
 ```yaml
 services:
