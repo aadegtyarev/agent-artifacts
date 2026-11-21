@@ -35,7 +35,12 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
 
 /* Comments: a panel at the side, a bottom sheet on a phone. */
 .stage { flex: 1; min-height: 0; display: flex; }
-.stage > main { height: 100%; }
+/* The content fills main by absolute position, not height: 100%, which
+   older WebViews (Telegram's, for one) leave at the 150 px iframe default
+   inside a flex item. */
+.stage > main { position: relative; }
+.stage > main > iframe, .stage > main > .center { position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%; }
 #comments-toggle[aria-expanded="true"] { border-color: var(--accent); }
 .comments { width: 340px; flex: none; display: flex; flex-direction: column;
   border-left: 1px solid var(--line); background: var(--bg); }
@@ -43,7 +48,6 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
    it, so the whole image stays in view to place a pin on. */
 @media (max-width: 640px) {
   .stage { flex-direction: column; }
-  .stage > main { height: auto; }
   .comments { width: auto; height: 60%; border-left: 0; border-top: 1px solid var(--line);
     border-radius: 12px 12px 0 0; box-shadow: 0 -4px 16px rgb(0 0 0 / 0.15); }
   #comment-hint { visibility: hidden; }
@@ -90,7 +94,7 @@ button.text:disabled { color: var(--muted); cursor: default; }
 
 /* Pins over an image: a layer the size of the image, pins placed in %. */
 /* Clipped, so a pin at an edge never widens the page. */
-#image-box { position: relative; overflow: hidden; }
+#image-box { overflow: hidden; }  /* positioned by the rule above */
 .pins { position: absolute; pointer-events: none; }
 .waiting-spot img { cursor: crosshair; }
 .pin { position: absolute; transform: translateY(-100%); pointer-events: auto;
