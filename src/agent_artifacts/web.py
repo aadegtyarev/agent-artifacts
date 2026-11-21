@@ -32,7 +32,7 @@ from . import kinds, pages
 from .admin import admin_routes
 from .api import ApiError, error, iso, on_api_error, require_agent, user_json
 from .comments import comment_routes
-from .config import Config
+from .config import Config, normal_host
 from .store import ID_RE, TOKEN_RE, Artifact, NameTaken, QuotaExceeded, StorageFull, Store
 
 PURGE_INTERVAL_SECONDS = 600
@@ -189,7 +189,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
     async def raw_origin(request: Request) -> Response:
         """Every request to the raw origin: /a/{id}/raw of a file that can be
         shown, as it is, and 404 for anything else."""
-        match = _RAW_PATH.fullmatch(request.url.path)
+        match = _RAW_PATH.fullmatch(request.scope["path"])
         if request.method not in ("GET", "HEAD") or match is None:
             return _raw_origin_not_found()
         a = store.get(match[1])
@@ -292,7 +292,7 @@ class _RawOrigin:
 
     def __init__(self, app, host: str | None, app_there) -> None:  # noqa: ANN001
         self.app = app
-        self.host = host.lower() if host else None
+        self.host = normal_host(host) if host else None
         self.there = request_response(app_there)
 
     async def __call__(self, scope, receive, send) -> None:  # noqa: ANN001
@@ -303,11 +303,12 @@ class _RawOrigin:
 
 
 def _host(scope) -> str:  # noqa: ANN001
-    """The Host header's name, without the port."""
+    """The Host header's name, without the port, as normal_host() puts it."""
     for name, value in scope["headers"]:
         if name == b"host":
-            host = value.decode("latin-1").lower()
-            return host[1:].split("]")[0] if host.startswith("[") else host.rsplit(":", 1)[0]
+            host = value.decode("latin-1")
+            host = host[1:].split("]")[0] if host.startswith("[") else host.rsplit(":", 1)[0]
+            return normal_host(host)
     return ""
 
 

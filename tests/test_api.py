@@ -3,6 +3,7 @@ import json
 import os
 import re
 import time
+from pathlib import Path
 
 import pytest
 from starlette.testclient import TestClient
@@ -333,6 +334,24 @@ def test_image_opens_full_size_on_its_own(env):
         ("https://ART.example.org:8443", "https://art.example.org", None),
         ("http://raw.example.net", "https://art.example.org", None),
         ("raw.example.net", "https://art.example.org", None),
+        # Kept as scheme://host[:port], the host as it is compared.
+        ("https://Raw.Example.NET.:443/", "https://art.example.org", "https://raw.example.net:443"),
+        ("https://art.example.org.", "https://art.example.org", None),
+        ("https://raw.example.net", "https://ART.example.org.", "https://raw.example.net"),
+        ("https://rаw.example.net", "https://art.example.org", None),  # Cyrillic "а"
+        (
+            "https://xn--rw-8kc.example.net",
+            "https://art.example.org",
+            "https://xn--rw-8kc.example.net",
+        ),
+        ("https://raw.example.net#", "https://art.example.org", None),
+        ("https://raw.example.net?", "https://art.example.org", None),
+        ("https://raw.example.net:abc", "https://art.example.org", None),
+        ("https://raw.example.net:", "https://art.example.org", None),
+        ("https://raw.example.net:99999", "https://art.example.org", None),
+        ('https://"x', "https://art.example.org", None),
+        ("https://user@raw.example.net", "https://art.example.org", None),
+        ("https://raw_x.example.net", "https://art.example.org", None),
     ],
 )
 def test_raw_url_checks(url, public, result):
@@ -387,9 +406,12 @@ def test_raw_origin_serves_only_raw(raw_env):
     assert "set-cookie" not in r.headers
     assert raw.head(f"/a/{art['id']}/raw").status_code == 200
     assert raw.get(f"/a/{img['id']}/raw").headers["content-type"] == "image/png"
-    # Host names are case-insensitive and may carry the port.
-    port = raw.get(f"/a/{art['id']}/raw", headers={"Host": "RAW.example.net:443"})
-    assert port.status_code == 200
+    # Host names are case-insensitive and may carry the port and the root's
+    # trailing dot: every spelling of the raw host gets only the raw origin.
+    for host in ("RAW.example.net:443", "raw.example.net.", "raw.example.net.:443"):
+        r = raw.get(f"/a/{art['id']}/raw", headers={"Host": host})
+        assert (host, r.status_code) == (host, 200)
+        assert raw.get("/health", headers={"Host": host}).status_code == 404, host
     for method, path in [
         ("GET", f"/a/{zipped['id']}/raw"),
         ("GET", "/a/AAAAAAAAAAAAAAAAAAAAAA/raw"),
@@ -410,6 +432,28 @@ def test_raw_origin_serves_only_raw(raw_env):
         f"/a/{art['id']}/raw", headers={"Sec-Fetch-Dest": "document"}, follow_redirects=False
     )
     assert r.status_code == 303
+
+
+def test_viewer_page_has_every_element_its_scripts_use(env):
+    client, _, keys = env
+    static = Path(__file__).parent.parent / "src" / "agent_artifacts" / "static"
+    used = {
+        name: set(re.findall(r'\$\("([\w-]+)"\)', (static / name).read_text()))
+        for name in ("comments.js", "viewer.js")
+    }
+    # Shown only for images, or only for pages in a frame.
+    image_only = {"image", "image-box", "image-link", "pins"}
+    for filename, data, missing in (
+        ("a.html", b"<p>x", image_only),
+        ("b.png", PNG, {"frame"}),
+    ):
+        art = upload(client, keys["alice"], filename, data).json()
+        page = client.get(f"/a/{art['id']}").text
+        ids = set(re.findall(r'\bid="([\w-]+)"', page))
+        for name, wanted in used.items():
+            assert wanted - missing - ids == set(), (filename, name)
+        # comments.js reads the page's link from the panel.
+        assert f'data-url="https://art.example.org/a/{art["id"]}"' in page
 
 
 def test_quota_per_agent_and_me(tmp_path):

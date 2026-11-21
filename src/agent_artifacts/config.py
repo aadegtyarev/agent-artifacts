@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ipaddress
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -52,18 +53,36 @@ def check_public_url(url: str, name: str = "AA_PUBLIC_URL") -> str:
 
 
 def check_raw_url(url: str, public_url: str) -> str:
-    """The raw origin: "" when unset, else a bare origin on a host other than
-    the public URL's, as checked for the public URL itself."""
+    """The raw origin: "" when unset, else ``scheme://host[:port]`` on a host
+    other than the public URL's, as checked for the public URL itself."""
     url = url.strip()
     if not url:
         return ""
-    url = check_public_url(url, "AA_RAW_URL")
+    if not url.isascii():
+        raise ValueError(f"AA_RAW_URL {url!r}: write a non-ASCII host name in its xn-- form")
+    check_public_url(url, "AA_RAW_URL")
     parts = urlsplit(url)
-    if parts.path or parts.query or parts.fragment or parts.username or parts.password:
+    try:
+        port = parts.port
+    except ValueError:
+        raise ValueError(f"AA_RAW_URL {url!r} has a bad port") from None
+    if any(c in url for c in "?#@") or parts.path not in ("", "/") or parts.netloc.endswith(":"):
         raise ValueError(f"AA_RAW_URL must be an origin with no path: {url!r}")
-    if parts.hostname == urlsplit(public_url).hostname:
+    host = normal_host(parts.hostname or "")
+    if not _HOST_RE.fullmatch(host):
+        raise ValueError(f"AA_RAW_URL {url!r} has a bad host name")
+    if host == normal_host(urlsplit(public_url).hostname or ""):
         raise ValueError(f"AA_RAW_URL {url!r} needs a host name of its own")
-    return url
+    return f"{parts.scheme}://{host}" + (f":{port}" if port is not None else "")
+
+
+def normal_host(host: str) -> str:
+    """A host name as compared: lower case, without the root's trailing dot."""
+    return host.lower().removesuffix(".")
+
+
+# Letters, digits and hyphens in dot-separated labels (IPv4 included).
+_HOST_RE = re.compile(r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*")
 
 
 def _is_local(host: str) -> bool:

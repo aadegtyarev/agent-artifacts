@@ -23,7 +23,6 @@
     opener = from;
     fan.hidden = false;
     from.setAttribute("aria-expanded", "true");
-    document.body.classList.add("fan-open");
     place(from);
     items()[0].focus({ preventScroll: true });
   }
@@ -32,7 +31,6 @@
     if (fan.hidden) return;
     const inside = fan.contains(document.activeElement);
     fan.hidden = true;
-    document.body.classList.remove("fan-open");
     opener.setAttribute("aria-expanded", "false");
     if (restore && inside) opener.focus({ preventScroll: true });
     opener = null;
@@ -67,7 +65,10 @@
 
   menuButton.addEventListener("click", () => (fan.hidden ? openFan(menuButton) : closeFan()));
   fan.querySelector(".fan-scrim").addEventListener("click", () => closeFan());
-  window.addEventListener("resize", () => { if (!fan.hidden) place(opener); });
+  // After the new layout, so the button's box is where it now is.
+  window.addEventListener("resize", () => requestAnimationFrame(() => {
+    if (!fan.hidden) place(opener);
+  }));
 
   list.addEventListener("click", (e) => {
     const item = e.target.closest(".fan-item");
@@ -88,12 +89,18 @@
       e.preventDefault();
       e.stopImmediatePropagation();
       closeFan();
-    } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
       e.preventDefault();
       const all = items();
       const at = all.indexOf(document.activeElement);
-      const step = e.key === "ArrowDown" ? 1 : -1;
-      all[(at + step + all.length) % all.length].focus();
+      let next;
+      if (e.key === "Home") next = 0;
+      else if (e.key === "End") next = all.length - 1;
+      // From outside the menu (its button), Down goes to the first item and
+      // Up to the last.
+      else if (at < 0) next = e.key === "ArrowDown" ? 0 : all.length - 1;
+      else next = (at + (e.key === "ArrowDown" ? 1 : -1) + all.length) % all.length;
+      all[next].focus();
     } else if (e.key === "Tab" && !fan.contains(document.activeElement)) {
       closeFan(false);
     }
@@ -103,16 +110,10 @@
   });
 
   // --- Copy link --------------------------------------------------------------
-  const toastBox = $("toast");
-  let toastTimer = 0;
-  function toast(text, error = false) {
-    clearTimeout(toastTimer);
-    $("toast-text").textContent = text;
-    $("toast-undo").hidden = true;
-    toastBox.classList.toggle("error", error);
-    toastBox.classList.add("on");
-    toastTimer = setTimeout(() => toastBox.classList.remove("on"), error ? 10000 : 2500);
-  }
+  // Shown by the comments script's toast (see comments.js), the page's one.
+  const toast = (message, error = false) => document.dispatchEvent(
+    new CustomEvent("aa:toast", { detail: { message, error } }),
+  );
 
   function copyLink(url) {
     const copied = navigator.clipboard
@@ -145,6 +146,7 @@
   // Leaving the browser's full screen by itself (Escape, a system gesture)
   // keeps the viewer's: only Exit full screen ends it.
   function exitFull() {
+    cancelDrag();
     document.body.classList.remove("full");
     floatButton.hidden = true;
     const current = document.fullscreenElement || document.webkitFullscreenElement;
@@ -228,6 +230,15 @@
   }
   floatButton.addEventListener("pointerup", endDrag);
   floatButton.addEventListener("pointercancel", endDrag);
+  floatButton.addEventListener("lostpointercapture", endDrag);
+  // Never leave the content's frame without pointer events.
+  function cancelDrag() {
+    if (drag && drag.moved && !floatButton.hidden) applyPlace(); // back where it was
+    drag = null;
+    floatButton.classList.remove("dragging");
+    document.body.classList.remove("float-pressed");
+  }
+  window.addEventListener("blur", cancelDrag);
   // A drag ends in a click on some browsers; that one does not open the menu.
   floatButton.addEventListener("click", () => {
     if (performance.now() - draggedAt < 400) return;
