@@ -467,29 +467,29 @@ whether or not the agent has read the comment. Errors are JSON, never a page:
 **Pins on pages.** The content runs in a sandbox the viewer page cannot look
 into, so `/a/{id}/raw` appends a small inline script to the end of HTML, and
 includes it in its Markdown and text pages. The file itself and its download
-are not changed. The script draws pins in its own absolutely positioned layer
-on top of the page and does not touch the page's elements. The script and the
-viewer page talk only through `postMessage`:
+are not changed. The script draws pins in its own fixed layer on top of the
+page and does not touch the page's elements. The script and the viewer page
+talk only through `postMessage`:
 
-- the script reports when it is ready, and the viewer sends nothing before
-  that but one request to report it (the frame may be ready before the
-  viewer listens). If it never does, for example because the page's own
-  `<meta>` CSP blocks inline scripts or the page leaves a tag unclosed, the
-  viewer offers comments without pins: no hint, no pin placement, and a
+- the script reports when it is ready. Before that the viewer only asks it
+  to report, when the viewer starts and each time the frame loads (the frame
+  may be ready before the viewer listens, and a link or a refresh can load
+  another document). If it never answers, for example because the page's
+  own `<meta>` CSP blocks inline scripts or the page leaves a tag unclosed,
+  the viewer offers comments without pins: no hint, no pin placement, and a
   comment with an anchor shows its anchor's text;
 - the viewer turns pin mode on while its panel is open and off when it
-  closes, and sends the pins to draw: numbers, anchors and resolved flags,
-  never comment texts or names;
+  closes, and sends the pins to draw: numbers, anchors, resolved and lit
+  flags, and the anchor of the draft, never comment texts or names;
 - the script answers with the anchor of the clicked spot. In pin mode it
   takes each click in the capture phase and cancels it, so a link or a
-  button under it does not fire;
-- outside pin mode, the script sends the path and fragment of a clicked link
-  to another file, see [Links between files](#projects).
+  button under it does not fire.
 
 A pin is placed by its selector; if that matches nothing, by the first
 element whose visible text starts with the anchor's `text`; if neither, it is
 not drawn, and the panel marks the comment "spot not found" and shows the
 anchor's text. Pins are placed again when the page's size or content changes.
+Showing a pin scrolls its point, not just its element, to the middle.
 
 The sandboxed frame's origin is opaque (`null`), so both sides check the
 sender's window instead: the viewer accepts messages only when `event.source`

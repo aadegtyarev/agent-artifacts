@@ -46,6 +46,11 @@
   // Elements found for anchors, kept while scrolling; dropped when the
   // page's size or content changes.
   let found = new Map();
+  // The pin buttons drawn, by comment number (0: the draft), kept across
+  // layouts so a pin under the pointer stays the same node.
+  const drawn = new Map();
+  // Code points, as the server counts them.
+  const length = (s) => [...s].length;
 
   // The element a person points at: the nearest link, button or field, an
   // <svg> as a whole, else the nearest box that is not inline text.
@@ -80,11 +85,12 @@
   const uniqueId = (el) => goodId(el.id) && only(`#${esc(el.id)}`, el);
 
   function step(el) {
-    let s = el.localName;
+    let s = esc(el.localName);
     const classes = [...el.classList].filter(goodClass).slice(0, 2).map(esc);
     if (classes.length) s += `.${classes.join(".")}`;
     const siblings = el.parentElement ? [...el.parentElement.children] : [];
-    if (siblings.some((x) => x !== el && x.matches(s))) {
+    const matches = (x) => { try { return x.matches(s); } catch { return true; } };
+    if (siblings.some((x) => x !== el && matches(x))) {
       s += `:nth-of-type(${siblings.filter((x) => x.localName === el.localName).indexOf(el) + 1})`;
     }
     return s;
@@ -103,7 +109,7 @@
       best = parts.slice(i).join(" > ");
     }
     // Too long to keep: the text alone finds it again.
-    return best.length <= 512 ? best : "";
+    return length(best) <= 512 ? best : "";
   }
 
   // One line without control or bidi characters, at most `n` code points.
@@ -149,39 +155,49 @@
     box.style.height = `${r.height + 6}px`;
   }
 
-  function pinAt(label, x, y, className, key) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = `pin ${className}`;
-    b.textContent = label;
-    b.dataset.key = key;
-    if (x + 26 > window.innerWidth) b.classList.add("left");
-    if (y < 26) b.classList.add("down");
-    b.style.left = `${x}px`;
-    b.style.top = `${y}px`;
-    return b;
+  // The pin `key` at (x, y): an existing button is moved, and only what
+  // changed is set, so a lit pin's pulse does not start over.
+  function pinAt(key, label, x, y, ...classes) {
+    let b = drawn.get(key);
+    if (!b) {
+      b = document.createElement("button");
+      b.type = "button";
+      b.dataset.key = key;
+      layer.append(b);
+      drawn.set(key, b);
+    }
+    if (x + 26 > window.innerWidth) classes.push("left");
+    if (y < 26) classes.push("down");
+    const className = ["pin", ...classes].filter(Boolean).join(" ");
+    if (b.className !== className) b.className = className;
+    if (b.textContent !== label) b.textContent = label;
+    if (b.style.left !== `${x}px`) b.style.left = `${x}px`;
+    if (b.style.top !== `${y}px`) b.style.top = `${y}px`;
   }
 
   // Draws the pins where their elements are now and tells the viewer which
   // were not found and where the draft pin is.
   function layout() {
-    const drawn = [];
+    const shown = new Set();
     const missing = [];
     for (const p of pins) {
       const at = located(p.anchor, p.n);
       if (!at) { missing.push(p.n); continue; }
-      const kind = `${p.resolved ? "resolved" : ""}${p.lit ? " lit" : ""}`;
-      drawn.push(pinAt(String(p.n), at.x, at.y, kind, p.n));
+      pinAt(p.n, String(p.n), at.x, at.y, p.resolved && "resolved", p.lit && "lit");
+      shown.add(p.n);
     }
     let spot = null;
     const d = draft && located(draft, "draft");
     if (d) {
-      drawn.push(pinAt("+", d.x, d.y, "new", 0));
+      pinAt(0, "+", d.x, d.y, "new");
+      shown.add(0);
       spot = { x: Math.round(d.x), y: Math.round(d.y) };
+    }
+    for (const [key, b] of drawn) {
+      if (!shown.has(key)) { b.remove(); drawn.delete(key); }
     }
     outline(draftBox, d && d.el);
     outline(hoverBox, picking && hovered);
-    layer.replaceChildren(...drawn);
     const report = JSON.stringify({ missing, spot });
     if (report !== reported) {
       reported = report;
@@ -248,7 +264,7 @@
     e.stopPropagation();
     let best = hit;
     let distance = Infinity;
-    for (const pin of e.detail ? layer.children : []) {
+    for (const pin of e.detail ? drawn.values() : []) {
       const r = pin.getBoundingClientRect();
       const d = (r.left + r.width / 2 - e.clientX) ** 2 + (r.top + r.height / 2 - e.clientY) ** 2;
       if (d < distance) { distance = d; best = pin; }
@@ -261,16 +277,39 @@
     if (e.key === "Escape" && picking) tell({ type: "escape" });
   }, true);
 
+  // Scrolls the pin's point, not just its element, to the middle: inside
+  // any scrolling box around it, then in the window.
+  function reveal(anchor) {
+    const el = find(anchor);
+    if (!el) return;
+    const point = (box) => {
+      const r = el.getBoundingClientRect();
+      return { top: r.top + anchor.y * r.height - box.top - box.height / 2,
+        left: r.left + anchor.x * r.width - box.left - box.width / 2 };
+    };
+    for (let box = el.parentElement; box && box !== document.body; box = box.parentElement) {
+      const scrolls = box.scrollHeight > box.clientHeight || box.scrollWidth > box.clientWidth;
+      if (scrolls && /auto|scroll/.test(getComputedStyle(box).overflow)) box.scrollBy(point(box.getBoundingClientRect()));
+    }
+    const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollBy({
+      ...point({ top: 0, left: 0, height: window.innerHeight, width: window.innerWidth }),
+      behavior: smooth ? "smooth" : "auto",
+    });
+  }
+
   // What the viewer sends is checked like anything from outside.
   const isAnchor = (a) => a && typeof a === "object" && a.type === "element"
-    && typeof a.selector === "string" && a.selector.length <= 512
-    && typeof a.text === "string" && a.text.length <= 200
+    && typeof a.selector === "string" && length(a.selector) <= 512
+    && typeof a.text === "string" && length(a.text) <= 200
     && [a.x, a.y].every((v) => typeof v === "number" && v >= 0 && v <= 1);
   window.addEventListener("message", (e) => {
     if (e.source !== viewer) return;
     const m = e.data;
     if (!m || typeof m !== "object") return;
     if (m.type === "hello") {
+      // The viewer starts over: it gets the next report even if unchanged.
+      reported = "";
       tell({ type: "ready" });
     } else if (m.type === "mode") {
       picking = m.on === true;
@@ -284,9 +323,7 @@
     } else if (m.type === "show" && Number.isInteger(m.n)) {
       // 0 is the draft pin.
       const anchor = m.n === 0 ? draft : (pins.find((p) => p.n === m.n) || {}).anchor;
-      const el = anchor && find(anchor);
-      const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      if (el) el.scrollIntoView({ block: "center", inline: "nearest", behavior: smooth ? "smooth" : "auto" });
+      if (anchor) reveal(anchor);
     }
   });
   window.addEventListener("scroll", () => schedule(), { capture: true, passive: true });

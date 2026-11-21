@@ -898,8 +898,8 @@
 
   // Messages from the frame: only from its window, checked like any input.
   const isAnchor = (a) => a && typeof a === "object" && a.type === "element"
-    && typeof a.selector === "string" && a.selector.length <= 512
-    && typeof a.text === "string" && a.text.length <= 200
+    && typeof a.selector === "string" && [...a.selector].length <= 512
+    && typeof a.text === "string" && [...a.text].length <= 200
     && [a.x, a.y].every((v) => typeof v === "number" && v >= 0 && v <= 1)
     && Number.isInteger(a.width) && a.width > 0 && a.width <= 100000;
   const isSpot = (p) => p && typeof p === "object"
@@ -933,13 +933,15 @@
       page.missing = missing;
       render();
     } else if (m.type === "pin" && Number.isInteger(m.n)) {
-      if (m.n === 0) {
+      // Only a pin this page has asked to draw.
+      const c = comments.find((x) => x.n === m.n);
+      if (m.n === 0 && draft) {
         if (minimized) closePanel(); // brings the composer back
         else if (!composer.hidden) $("composer-text").focus();
-      } else if (comments.some((c) => c.n === m.n)) {
+      } else if (c && hasPin(c)) {
         showComment(m.n);
       }
-    } else if (m.type === "escape") {
+    } else if (m.type === "escape" && (page.picking || !composer.hidden)) {
       escape();
     }
   }
@@ -959,6 +961,12 @@
   if (mode === "element") {
     window.addEventListener("message", onFrameMessage);
     frame.addEventListener("load", () => {
+      // Another document may be in the frame now (a link, a refresh): it
+      // has pins only once its script says so.
+      page.ready = false;
+      page.picking = false;
+      page.missing = new Set();
+      render();
       tell({ type: "hello" });
       waitForScript(2000);
     });
