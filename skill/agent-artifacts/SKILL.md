@@ -29,6 +29,9 @@ printf 'AGENT_ARTIFACTS_URL=%s\nAGENT_ARTIFACTS_KEY=%s\n' "<url>" "<key>" | arti
 
 In PowerShell: `"AGENT_ARTIFACTS_URL=<url>`nAGENT_ARTIFACTS_KEY=<key>" | artifacts_cli.py setup`.
 
+If the file already held a different key, `setup` keeps the old file as
+`env.bak-<date>-<time>` and says so; tell the user where it is.
+
 ## Rules
 
 - **One link per piece of work.** Upload once, keep the `id`, and replace the

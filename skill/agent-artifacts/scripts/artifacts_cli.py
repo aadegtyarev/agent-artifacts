@@ -24,6 +24,7 @@ import mimetypes
 import os
 import secrets
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -32,7 +33,8 @@ from pathlib import Path
 USAGE = """usage: artifacts_cli.py <command> [args]
 
   setup                     read AGENT_ARTIFACTS_URL=... and AGENT_ARTIFACTS_KEY=...
-                            lines from stdin and save them for later calls
+                            lines from stdin and save them for later calls;
+                            a different key already there is copied to env.bak-*
   upload FILE [NAME]        upload a file, print the artifact JSON (url, id, expires_at)
   replace ID FILE [NAME]    replace the file behind an existing link
   list                      your live files
@@ -98,6 +100,23 @@ def write_settings(path: Path, url: str, key: str) -> None:
     with os.fdopen(fd, "w") as f:
         f.write(f"{URL_VAR}={url}\n{KEY_VAR}={key}\n")
     os.replace(tmp, path)
+
+
+def back_up(path: Path) -> Path:
+    """Copy the env file aside before setup overwrites a different key."""
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    for n in range(1, 100):
+        backup = path.with_name(f"{path.name}.bak-{stamp}" + (f"-{n}" if n > 1 else ""))
+        try:
+            fd = os.open(backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            break
+        except FileExistsError:
+            continue
+    else:
+        raise Usage(f"too many backups of {path} this second")
+    with os.fdopen(fd, "wb") as f:
+        f.write(path.read_bytes())
+    return backup
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -196,8 +215,10 @@ def run(argv: list[str]) -> str | None:
             raise Usage(f"expected {URL_VAR}=... and {KEY_VAR}=... on stdin")
         # A wrong key or URL stops here, before anything is saved.
         Client(found[URL_VAR], found[KEY_VAR]).call("GET", "/api/v1/me")
+        old = parse_settings(path.read_text()) if path.is_file() else {}
+        backup = back_up(path) if old and old != found else None
         write_settings(path, found[URL_VAR], found[KEY_VAR])
-        return f"saved to {path}"
+        return f"saved to {path}" + (f"; the previous one is kept in {backup}" if backup else "")
 
     from_file = parse_settings(path.read_text()) if path.is_file() else {}
     url = os.environ.get(URL_VAR) or from_file.get(URL_VAR)

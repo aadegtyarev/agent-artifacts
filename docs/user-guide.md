@@ -53,7 +53,8 @@ uv run ~/.claude/skills/agent-artifacts/scripts/artifacts_cli.py setup
 
 Paste the two `AGENT_ARTIFACTS_` lines and press Ctrl-D (on Windows Ctrl-Z,
 then Enter). Without uv, use `python3` (`python` on Windows) instead of `uv run`. `setup` checks the
-key with the service and prints where it saved it.
+key with the service and prints where it saved it. If the file already held a
+different key, the old file is kept next to it as `env.bak-<date>-<time>`.
 
 You can also keep the key in the environment variables `AGENT_ARTIFACTS_URL`
 and `AGENT_ARTIFACTS_KEY`. They win over the file.
