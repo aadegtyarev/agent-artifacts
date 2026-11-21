@@ -1,8 +1,8 @@
 // Comments on the viewer page: the header button, the panel (a bottom sheet
-// on a phone) with the list and a form for the whole file, the composer at a
-// spot clicked on an image, pins, and the toasts with Undo. Names and texts
-// come from anyone with the link, so they go in as text nodes only, never as
-// HTML.
+// over a strip on a phone) with the list and a form for the whole file, the
+// composer at a spot clicked on an image, pins, a comment's action menu,
+// typing mode on a phone, and the toasts with Undo. Names and texts come from
+// anyone with the link, so they go in as text nodes only, never as HTML.
 (() => {
   const panel = document.getElementById("comments");
   if (!panel) return;
@@ -70,6 +70,8 @@
   let generation = 0;
   const timers = {};
   const phone = window.matchMedia("(max-width: 640px)");
+  // A finger, not a mouse: typing mode is for an on-screen keyboard.
+  const touch = window.matchMedia("(pointer: coarse)");
   const UNDO_MS = 6000;
 
   class ApiError extends Error {
@@ -203,6 +205,8 @@
     delete: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13",
     up: "m6 15 6-6 6 6",
     down: "m6 9 6 6 6-6",
+    more: "M5 12h.01M12 12h.01M19 12h.01",
+    link: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1",
   };
   function icon(name) {
     const ns = "http://www.w3.org/2000/svg";
@@ -260,6 +264,17 @@
     say("comments-status", "");
     dropStaleTokens();
     render();
+    showLinked();
+  }
+
+  // A link copied from a comment's menu ends in #comment-N: the first load
+  // shows that comment.
+  let linkShown = false;
+  function showLinked() {
+    if (linkShown) return;
+    linkShown = true;
+    const match = /^#comment-(\d+)$/.exec(window.location.hash);
+    if (match && visible().some((c) => c.n === Number(match[1]))) showComment(Number(match[1]));
   }
 
   // Tokens of this file's comments that are gone, deleted by the agent.
@@ -297,7 +312,12 @@
     const resolved = shown.filter((c) => c.resolved);
     count.textContent = open.length;
     toggle.setAttribute("aria-label", `Comments, ${open.length} open`);
-    stripText.textContent = `Comments · ${open.length} open`;
+    // The strip: all comments and the resolved ones. The agent's status
+    // will go next to it (#strip-agent) once the server reports one.
+    stripText.textContent = shown.length ? `${shown.length} · ${resolved.length} resolved` : "No comments yet";
+    strip.setAttribute("aria-label", shown.length
+      ? `Comments: ${shown.length}, ${resolved.length} resolved. Open`
+      : "No comments yet. Open comments");
     $("comments-title").textContent = `Comments · ${open.length} open`;
     $("comments-empty").hidden = shown.length > 0;
     if (!resolved.length) resolvedShown = false;
@@ -312,7 +332,11 @@
     resolvedList.hidden = !resolvedShown;
     drawPins();
     if (editing && editorFocused) {
-      const area = $(`comment-${editing.n}`).querySelector("textarea");
+      const box = $(`comment-${editing.n}`).querySelector(".comment-edit");
+      // In typing mode the new editor takes the old one's place first, or
+      // it is hidden and cannot take the focus.
+      if (typingHost && !typingHost.isConnected) enterTyping(box);
+      const area = box.querySelector("textarea");
       area.focus({ preventScroll: true });
       area.setSelectionRange(editing.start, editing.end);
     } else if (focusedItem && $(focusedItem)) {
@@ -371,7 +395,12 @@
       return li;
     }
     const actions = el("div", "comment-actions");
-    actions.append(c.resolved
+    // On a phone the ⋯ button stands in for the icon buttons; the same menu
+    // opens on a long press, and on a computer on a right click.
+    const more = iconButton("more", `Actions for comment ${c.n}`, (e) => openMenu(c, e.currentTarget));
+    more.classList.add("more");
+    more.setAttribute("aria-haspopup", "menu");
+    actions.append(more, c.resolved
       ? iconButton("reopen", `Reopen comment ${c.n}`, (e) => resolve(c, e.currentTarget))
       : iconButton("check", `Resolve comment ${c.n}`, (e) => resolve(c, e.currentTarget)));
     if (token && !c.read) {
@@ -385,20 +414,30 @@
 
   function editor(c, token) {
     const box = el("div", "comment-edit");
+    box.dataset.n = c.n;
     const area = el("textarea");
     area.value = editing.draft;
     area.maxLength = 2000;
     area.rows = 3;
     area.setAttribute("aria-label", `Text of comment ${c.n}`);
     area.addEventListener("input", () => { editing.draft = area.value; });
-    const save = button("Save", () => saveEdit(c, token, save));
+    const save = button("Save", () => saveEdit(c, token, save), "text typing-send");
     area.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save.click(); }
       if (e.key === "Escape") { e.stopPropagation(); cancelEdit(c.n); }
     });
+    // In typing mode Cancel goes back to the page with a changed text kept.
+    const cancel = button("Cancel", () => {
+      if (typingHost === box && editing.draft !== c.text) leaveTyping();
+      else cancelEdit(c.n);
+    }, "text typing-cancel");
     const tools = el("div", "comment-tools");
-    tools.append(save, button("Cancel", () => cancelEdit(c.n)));
-    box.append(area, tools);
+    tools.append(save, cancel);
+    const status = el("p", "note");
+    status.id = "edit-status";
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+    box.append(area, tools, status);
     return box;
   }
 
@@ -541,15 +580,14 @@
   function placeComposer() {
     if (!mode || composer.hidden) return;
     if (phone.matches) {
-      // Docked to the bottom of the visual viewport: the top of the keyboard.
+      // Docked to the bottom of the page by the style sheet; while it is
+      // typed in on a touch screen it is at the top instead (typing mode).
       composer.classList.add("dock");
       composer.style.left = "";
-      const vv = window.visualViewport;
-      const bottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
-      const top = bottom - composer.offsetHeight;
-      composer.style.top = `${top}px`;
+      composer.style.top = "";
+      if (typingHost === composer) return;
       // Room under the image, so the pin can scroll up above the composer.
-      const covered = imageBox.getBoundingClientRect().bottom - top;
+      const covered = imageBox.getBoundingClientRect().bottom - composer.getBoundingClientRect().top;
       imageBox.style.paddingBottom = covered > 0 ? `${covered + 8}px` : "";
       dockToast();
       return;
@@ -608,8 +646,7 @@
     drawPins();
     placeComposer();
     $("composer-text").focus({ preventScroll: true });
-    if (phone.matches) {
-      // Again once the keyboard is up, which resizes the visual viewport.
+    if (phone.matches && !typingHost) {
       requestAnimationFrame(() => centerPin(pins.querySelector(".pin.new")));
     }
   }
@@ -617,6 +654,7 @@
   // Closes the composer; focus goes to the content unless the caller moves it.
   function closeComposer() {
     const inside = composer.contains(document.activeElement);
+    if (typingHost === composer) exitTyping();
     composer.hidden = true;
     minimized = false;
     if (inside) imageBox.focus({ preventScroll: true });
@@ -705,7 +743,12 @@
         composer.requestSubmit();
       }
     });
-    $("composer-cancel").addEventListener("click", cancelComposer);
+    // In typing mode Cancel goes back to the page with typed text kept; an
+    // empty composer closes.
+    $("composer-cancel").addEventListener("click", () => {
+      if (typingHost === composer && composerText.value.trim()) leaveTyping();
+      else cancelComposer();
+    });
 
     // A click places the spot (or moves it while writing); a Ctrl/Cmd or
     // middle click still opens the image full size.
@@ -722,7 +765,12 @@
       });
     });
     image.addEventListener("load", fitPins);
-    if (window.ResizeObserver) new ResizeObserver(() => { fitPins(); placeComposer(); }).observe(image);
+    // The box too: as the sheet grows or shrinks, the image moves in it.
+    if (window.ResizeObserver) {
+      const watch = new ResizeObserver(() => { fitPins(); placeComposer(); });
+      watch.observe(image);
+      watch.observe(imageBox);
+    }
     window.addEventListener("resize", () => { fitPins(); placeComposer(); });
     imageBox.addEventListener("scroll", () => { if (!phone.matches) placeComposer(); });
     phone.addEventListener("change", () => {
@@ -730,13 +778,6 @@
       if (minimized && !phone.matches) restoreComposer();
       placeComposer();
     });
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener("resize", () => {
-        placeComposer();
-        if (!composer.hidden && phone.matches) centerPin(pins.querySelector(".pin.new"));
-      });
-      window.visualViewport.addEventListener("scroll", placeComposer);
-    }
     $("form-note").hidden = false;
   }
 
@@ -770,6 +811,7 @@
       try {
         const { c, kept } = await post(body);
         text.value = "";
+        if (typingHost === form) exitTyping();
         fold(true);
         light("comment", c.n);
         render();
@@ -787,6 +829,15 @@
       form.requestSubmit();
     }
   });
+  // Shown in typing mode only: back to the sheet, the typed text kept.
+  $("comment-cancel").addEventListener("click", () => {
+    if (!typingHost) return;
+    leaveTyping();
+    if (!text.value.trim()) {
+      fold(true);
+      $("comment-open").focus({ preventScroll: true });
+    }
+  });
 
   // --- Actions --------------------------------------------------------------
 
@@ -799,6 +850,7 @@
   async function lostToken(c, e) {
     storage.remove(tokenKey(c.n));
     editing = null;
+    exitTyping();
     await load();
     const why = lostReason(c.n, e);
     say("comments-status", `${why.charAt(0).toUpperCase()}${why.slice(1)}; it can no longer be changed.`, true);
@@ -872,6 +924,7 @@
 
   function cancelEdit(n) {
     editing = null;
+    exitTyping();
     render();
     const li = $(`comment-${n}`);
     if (li) li.focus();
@@ -879,7 +932,7 @@
 
   async function saveEdit(c, token, b) {
     if (!editing.draft.trim()) {
-      say("comments-status", "The text is empty. Write something, or delete the comment.", true);
+      say("edit-status", "The text is empty. Write something, or delete the comment.", true);
       return;
     }
     flushPending();
@@ -887,13 +940,20 @@
       try {
         replace(await call("PATCH", `${base}/${c.n}`, { edit_token: token, text: editing.draft }));
         editing = null;
+        exitTyping();
         render();
         say("comments-status", `Comment ${c.n} saved.`);
         $(`comment-${c.n}`).focus();
       } catch (e) {
         if (e.status === 403 || e.status === 409) return lostToken(c, e);
-        if (e.status === 404) { editing = null; await load(); }
-        say("comments-status", e.status === 404 ? `Comment ${c.n} was deleted.` : e.message, true);
+        if (e.status === 404) {
+          editing = null;
+          exitTyping();
+          await load();
+          say("comments-status", `Comment ${c.n} was deleted.`, true);
+        } else {
+          say("edit-status", e.message, true);
+        }
       }
     });
   }
@@ -960,7 +1020,50 @@
   // tab does not: the Undo stays possible until its time is over.
   window.addEventListener("pagehide", flushPending);
 
-  // --- The panel, a bottom sheet with a strip on a phone ---------------------
+  // --- The panel, a bottom sheet over a strip on a phone ---------------------
+  // Folded, the sheet leaves a one-line strip with the counts. Open, it takes
+  // 25 %, 50 % or 100 % of the height: dragging the head or the strip snaps
+  // to the nearest (or folds it), a tap on the head steps through them. The
+  // height last chosen is kept for the session.
+
+  const SIZES = ["25", "50", "100"];
+  const SIZE_KEY = "agent-artifacts:sheet";
+  const STRIP_H = 48;
+  // A 25 % sheet still shows its head, a comment and the folded form.
+  const SHEET_MIN = 200;
+  let sheetSize = "25";
+  try {
+    const kept = sessionStorage.getItem(SIZE_KEY);
+    if (SIZES.includes(kept)) sheetSize = kept;
+  } catch { /* no storage: 25 % each time */ }
+  const head = panel.querySelector(".comments-head");
+  const grip = $("comments-grip");
+
+  function chooseSize(size) {
+    sheetSize = size;
+    try { sessionStorage.setItem(SIZE_KEY, size); } catch { /* kept for this page only */ }
+    applySize();
+  }
+
+  const stageHeight = () => panel.parentElement.clientHeight;
+
+  function sizePx(size) {
+    const stage = stageHeight();
+    if (size === "100") return stage;
+    const share = size === "50" ? 0.5 : 0.25;
+    return Math.min(stage, Math.max(Math.round(window.innerHeight * share), SHEET_MIN));
+  }
+
+  function applySize() {
+    grip.setAttribute("aria-label", `Sheet height ${sheetSize}%. Change`);
+    if (!phone.matches) {
+      panel.style.height = "";
+      return;
+    }
+    if (panel.hidden || panel.classList.contains("dragging")) return;
+    panel.style.height = `${sizePx(sheetSize)}px`;
+    fitPins();
+  }
 
   function setExpanded(open) {
     toggle.setAttribute("aria-expanded", String(open));
@@ -971,16 +1074,17 @@
     if (mode && phone.matches && !composer.hidden) minimizeComposer();
     panel.hidden = false;
     setExpanded(true);
+    applySize();
     fitPins();
     dockToast();
     load();
-    if (focus) $("comments-title").focus();
+    if (focus) $("comments-title").focus({ preventScroll: true });
   }
 
   function closePanel() {
     const inside = panel.contains(document.activeElement);
+    closeMenu(false);
     panel.hidden = true;
-    panel.style.transform = "";
     setExpanded(false);
     if (!text.value.trim()) fold(true);
     fitPins();
@@ -989,45 +1093,390 @@
     dockToast();
   }
 
+  // A drag ends in a click on some browsers; that click must not also open
+  // the sheet or step its height.
+  let draggedAt = -Infinity;
+  const justDragged = () => performance.now() - draggedAt < 400;
+
   toggle.addEventListener("click", () => (panel.hidden ? openPanel() : closePanel()));
-  strip.addEventListener("click", () => openPanel());
+  strip.addEventListener("click", () => { if (!justDragged()) openPanel(); });
   $("comments-close").addEventListener("click", closePanel);
+  // A tap on the head (the grip, the title) steps 25 → 50 → 100 → 25 %.
+  head.addEventListener("click", (e) => {
+    if (!phone.matches || justDragged() || e.target.closest("button:not(.grip)")) return;
+    chooseSize(SIZES[(SIZES.indexOf(sheetSize) + 1) % SIZES.length]);
+  });
   showResolved.addEventListener("click", () => {
     resolvedShown = !resolvedShown;
     render();
     if (resolvedShown) resolvedList.scrollIntoView({ block: "nearest" });
   });
-  window.addEventListener("resize", dockToast);
-  phone.addEventListener("change", dockToast);
+  window.addEventListener("resize", () => { applySize(); dockToast(); });
+  phone.addEventListener("change", () => { closeMenu(false); applySize(); dockToast(); });
 
-  // A swipe down on the sheet's grip or head folds it to the strip.
-  let swipeFrom = null;
-  for (const handle of [panel.querySelector(".comments-head")]) {
-    handle.addEventListener("touchstart", (e) => {
-      if (!phone.matches) return;
-      swipeFrom = e.touches[0].clientY;
-      panel.classList.add("dragging");
-    }, { passive: true });
-    handle.addEventListener("touchmove", (e) => {
-      if (swipeFrom === null) return;
-      const d = Math.max(0, e.touches[0].clientY - swipeFrom);
-      panel.style.transform = d ? `translateY(${d}px)` : "";
-    }, { passive: true });
-    const end = (e) => {
-      if (swipeFrom === null) return;
-      const d = e.changedTouches.length ? e.changedTouches[0].clientY - swipeFrom : 0;
-      swipeFrom = null;
-      panel.classList.remove("dragging");
-      panel.style.transform = "";
-      if (d > 60) closePanel();
+  // Dragging the head or the strip: the sheet follows the finger, then
+  // snaps, preferring a height in the direction of the drag.
+  let drag = null;
+
+  function startDrag(e) {
+    if (!phone.matches || e.button > 0 || drag) return;
+    if (e.target.closest("button:not(.grip):not(.strip)")) return;
+    drag = {
+      id: e.pointerId,
+      y: e.clientY,
+      from: panel.hidden ? STRIP_H : panel.offsetHeight,
+      moved: false,
     };
-    handle.addEventListener("touchend", end);
-    handle.addEventListener("touchcancel", end);
+    window.addEventListener("pointermove", moveDrag);
+    window.addEventListener("pointerup", endDrag);
+    window.addEventListener("pointercancel", endDrag);
   }
+
+  function moveDrag(e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    const dy = e.clientY - drag.y;
+    if (!drag.moved) {
+      if (Math.abs(dy) < 8) return;
+      drag.moved = true;
+      panel.classList.add("dragging");
+      if (panel.hidden) openPanel(false);
+    }
+    panel.style.height = `${Math.min(stageHeight(), Math.max(STRIP_H, drag.from - dy))}px`;
+  }
+
+  function endDrag(e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    window.removeEventListener("pointermove", moveDrag);
+    window.removeEventListener("pointerup", endDrag);
+    window.removeEventListener("pointercancel", endDrag);
+    const { moved, y } = drag;
+    drag = null;
+    if (!moved) return; // a tap: the click handlers above take it
+    draggedAt = performance.now();
+    panel.classList.remove("dragging");
+    const height = panel.offsetHeight;
+    const up = e.clientY < y;
+    let best = null;
+    let distance = Infinity;
+    for (const size of ["closed", ...SIZES]) {
+      const h = size === "closed" ? STRIP_H : sizePx(size);
+      const ahead = up ? h > height : h < height;
+      const d = Math.abs(h - height) - (ahead ? 40 : 0);
+      if (d < distance) { distance = d; best = size; }
+    }
+    if (best === "closed") closePanel();
+    else chooseSize(best);
+  }
+
+  head.addEventListener("pointerdown", startDrag);
+  strip.addEventListener("pointerdown", startDrag);
+
+  // --- A comment's actions: a sheet on a phone, a menu on a computer ---------
+
+  const menu = $("card-menu");
+  const menuList = $("card-menu-list");
+  // {n, opener}: the comment the menu is for and where focus goes back.
+  let menuFor = null;
+  // A long press opens the menu under the finger: the release of that same
+  // press must not pick an item. Only a press that starts in the open menu,
+  // or a keyboard, does.
+  let menuArmed = true;
+
+  function menuItems(c) {
+    const token = storage.get(tokenKey(c.n));
+    const card = () => $(`comment-${c.n}`);
+    // The card's ⋯ button stands for the busy state of a resolve.
+    const busyButton = () => (card() && card().querySelector(".more")) || el("button");
+    const items = [c.resolved
+      ? { icon: "reopen", label: "Reopen", run: () => resolve(c, busyButton()) }
+      : { icon: "check", label: "Resolve", run: () => resolve(c, busyButton()) }];
+    if (token && !c.read) {
+      items.push({ icon: "edit", label: "Edit", run: () => startEdit(c) });
+      items.push({ icon: "delete", label: "Delete", danger: true, run: () => remove(c, token) });
+    }
+    items.push({ icon: "link", label: "Copy link", run: () => copyLink(c.n) });
+    return items;
+  }
+
+  // `point` places the menu at the pointer (a right click); without it, on
+  // a phone, the menu is a sheet at the bottom.
+  function openMenu(c, opener, { point = null, armed = true } = {}) {
+    closeMenu(false);
+    menuFor = { n: c.n, opener };
+    menuArmed = armed;
+    $("card-menu-title").textContent = `#${c.n} · ${c.author}: ${c.text}`;
+    menuList.replaceChildren(...menuItems(c).map((item) => {
+      const b = el("button", item.danger ? "danger" : "");
+      b.type = "button";
+      b.setAttribute("role", "menuitem");
+      b.append(icon(item.icon), el("span", "", item.label));
+      b.addEventListener("click", (e) => {
+        if (!menuArmed && e.detail !== 0) return;
+        closeMenu();
+        item.run();
+      });
+      return b;
+    }));
+    const card = $(`comment-${c.n}`);
+    if (card) card.classList.add("pressed");
+    menu.classList.toggle("popover", Boolean(point));
+    const box = menu.querySelector(".menu-box");
+    box.style.left = "";
+    box.style.top = "";
+    menu.hidden = false;
+    if (point) {
+      const w = box.offsetWidth;
+      const h = box.offsetHeight;
+      const vw = document.documentElement.clientWidth;
+      const vh = window.innerHeight;
+      box.style.left = `${Math.max(8, Math.min(point.x, vw - w - 8))}px`;
+      box.style.top = `${Math.max(8, point.y + h > vh - 8 ? point.y - h : point.y)}px`;
+    }
+    menuList.firstChild.focus({ preventScroll: true });
+  }
+
+  // Closes the menu; focus goes back to what opened it unless `restore` is false.
+  function closeMenu(restore = true) {
+    if (menu.hidden) return;
+    menu.hidden = true;
+    const { n, opener } = menuFor;
+    menuFor = null;
+    const card = $(`comment-${n}`);
+    if (card) card.classList.remove("pressed");
+    if (!restore) return;
+    if (opener && opener.isConnected) opener.focus({ preventScroll: true });
+    else if (card) card.focus({ preventScroll: true });
+  }
+
+  menu.addEventListener("pointerdown", () => { menuArmed = true; });
+  menu.querySelector(".menu-scrim").addEventListener("click", (e) => {
+    if (menuArmed || e.detail === 0) closeMenu();
+  });
+  menu.addEventListener("keydown", (e) => {
+    const items = [...menuList.children];
+    const at = items.indexOf(document.activeElement);
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const step = e.key === "ArrowDown" ? 1 : -1;
+      items[(at + step + items.length) % items.length].focus();
+    } else if (e.key === "Tab") {
+      e.preventDefault();
+      closeMenu();
+    }
+  });
+  window.addEventListener("resize", () => closeMenu(false));
+
+  // The link of the page with the comment's number; opening it shows the comment.
+  async function copyLink(n) {
+    const link = `${$("url").value.split("#")[0]}#comment-${n}`;
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(link);
+      copied = true;
+    } catch {
+      // No clipboard access (an insecure page, a frame): the old way.
+      const area = el("textarea", "copy-source");
+      area.value = link;
+      area.readOnly = true;
+      document.body.append(area);
+      area.select();
+      try { copied = document.execCommand("copy"); } catch { /* not allowed */ }
+      area.remove();
+      focusBack(`comment-${n}`);
+    }
+    if (copied) toast(`Link to ${named(n)} copied`);
+    else toast(`Could not copy. The link: ${link}`, { error: true, ms: 10000 });
+  }
+
+  // A long press on a comment (a phone) or a right click (a computer).
+  const listBox = panel.querySelector(".comments-body");
+  const cardOf = (target) => {
+    const li = target.closest(".comment");
+    if (!li || target.closest("button, textarea, input, a, .comment-edit")) return null;
+    const c = comments.find((x) => `comment-${x.n}` === li.id);
+    return c ? { li, c } : null;
+  };
+  let press = null;
+  let pressedAt = -Infinity;
+
+  function endPress() {
+    if (!press) return;
+    clearTimeout(press.timer);
+    if (press.fired) pressedAt = performance.now();
+    press = null;
+  }
+
+  listBox.addEventListener("pointerdown", (e) => {
+    endPress();
+    if (!phone.matches || e.button > 0) return;
+    const hit = cardOf(e.target);
+    if (!hit) return;
+    press = { id: e.pointerId, x: e.clientX, y: e.clientY, fired: false };
+    press.timer = setTimeout(() => {
+      press.fired = true;
+      try { if (navigator.vibrate) navigator.vibrate(10); } catch { /* not allowed */ }
+      openMenu(hit.c, hit.li, { armed: false });
+    }, 450);
+  });
+  listBox.addEventListener("pointermove", (e) => {
+    if (press && !press.fired && e.pointerId === press.id
+      && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 10) endPress();
+  });
+  for (const type of ["pointerup", "pointercancel"]) {
+    window.addEventListener(type, (e) => { if (press && e.pointerId === press.id) endPress(); });
+  }
+  listBox.addEventListener("scroll", endPress, { passive: true });
+  // The release of a long press is not a tap on the comment.
+  listBox.addEventListener("click", (e) => {
+    if (performance.now() - pressedAt < 600) {
+      pressedAt = -Infinity;
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, true);
+  listBox.addEventListener("contextmenu", (e) => {
+    const hit = cardOf(e.target);
+    if (!hit) return;
+    // A phone's own long-press menu would cover ours.
+    e.preventDefault();
+    if (!phone.matches) openMenu(hit.c, hit.li, { point: { x: e.clientX, y: e.clientY } });
+  });
+
+  // --- Typing mode on a phone ------------------------------------------------
+  // While a comment field has the focus on a touch screen, the header, the
+  // content and the sheet step aside: the form being typed in sits at the
+  // top, under a line saying what is written and, for a comment with a pin,
+  // a strip of the image around it. The keyboard covers only the bottom, in
+  // a frame as well as at the top level, with no viewport arithmetic. Leaving
+  // the field brings everything back, the typed text kept.
+
+  const typingContext = $("typing-context");
+  const typingStrip = $("typing-strip");
+  const typingImage = $("typing-image");
+  const STRIP_PX = 96;
+  let typingHost = null;
+
+  const hostOf = (node) => (node && node.matches && node.matches("input, textarea")
+    ? node.closest("#composer, #comment-form, .comment-edit")
+    : null);
+
+  function typingAnchor(host) {
+    if (host === composer) return draft;
+    if (host === form || !mode) return null;
+    const c = comments.find((x) => x.n === Number(host.dataset.n));
+    return c && c.anchor && c.anchor.type === "point" ? c.anchor : null;
+  }
+
+  // The image around the spot, at about its own size, the pin in the middle
+  // unless the edge of the image is nearer.
+  function fillStrip(anchor) {
+    typingStrip.hidden = !anchor || !image || !image.naturalWidth;
+    if (typingStrip.hidden) return;
+    typingImage.src = image.currentSrc || image.src;
+    const sw = typingStrip.clientWidth;
+    const nw = image.naturalWidth;
+    const nh = image.naturalHeight;
+    let w = Math.min(Math.max(nw, sw * 1.5), sw * 2);
+    if ((w * nh) / nw < STRIP_PX) w = (STRIP_PX * nw) / nh;
+    const h = (w * nh) / nw;
+    const place = (size, room, at) => (size <= room
+      ? (room - size) / 2
+      : Math.min(0, Math.max(room - size, room / 2 - at * size)));
+    const left = place(w, sw, anchor.x);
+    const top = place(h, STRIP_PX, anchor.y);
+    typingImage.style.width = `${w}px`;
+    typingImage.style.height = `${h}px`;
+    typingImage.style.left = `${left}px`;
+    typingImage.style.top = `${top}px`;
+    const pin = typingStrip.querySelector(".typing-pin");
+    pin.style.left = `${left + anchor.x * w}px`;
+    pin.style.top = `${top + anchor.y * h}px`;
+  }
+
+  function growField(area) {
+    area.style.height = "auto";
+    area.style.height = `${Math.min(132, Math.max(66, area.scrollHeight + 2))}px`;
+  }
+
+  function enterTyping(host) {
+    if (typingHost === host) return;
+    if (typingHost) clearTyping();
+    typingHost = host;
+    closeMenu(false);
+    host.classList.add("typing-host");
+    // Everything off the way from the page to the form is hidden.
+    for (let node = host.parentElement; node && node !== document.body; node = node.parentElement) {
+      node.classList.add("typing-path");
+    }
+    document.body.classList.add("typing");
+    if (mode) imageBox.style.paddingBottom = "";
+    $("typing-title").textContent = host === composer
+      ? "New comment on the image"
+      : host === form ? "New comment on the whole file" : `Editing #${host.dataset.n}`;
+    host.prepend(typingContext);
+    typingContext.hidden = false;
+    fillStrip(typingAnchor(host));
+    const area = host.querySelector("textarea");
+    if (area) growField(area);
+  }
+
+  function clearTyping() {
+    typingHost.classList.remove("typing-host");
+    for (const node of document.querySelectorAll(".typing-path")) node.classList.remove("typing-path");
+    document.body.classList.remove("typing");
+    const area = typingHost.querySelector("textarea");
+    if (area) area.style.height = "";
+    typingContext.hidden = true;
+    document.body.append(typingContext);
+    typingHost = null;
+  }
+
+  function exitTyping() {
+    if (!typingHost) return;
+    clearTyping();
+    applySize();
+    fitPins();
+    placeComposer();
+    dockToast();
+    if (mode && !composer.hidden) requestAnimationFrame(() => centerPin(pins.querySelector(".pin.new")));
+  }
+
+  // Cancel in typing mode: back to the page, focus on the form or comment.
+  function leaveTyping() {
+    const host = typingHost;
+    if (!host) return;
+    exitTyping();
+    const target = host.matches(".comment-edit") ? host.closest(".comment") : host;
+    if (!target) return;
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({ block: "nearest" });
+  }
+
+  document.addEventListener("focusin", (e) => {
+    const host = hostOf(e.target);
+    if (host && phone.matches && touch.matches) enterTyping(host);
+  });
+  // A moment later, so a tap on Send or Cancel lands before the layout moves.
+  document.addEventListener("focusout", () => {
+    if (!typingHost) return;
+    setTimeout(() => {
+      if (typingHost && !hostOf(document.activeElement)) exitTyping();
+    }, 150);
+  });
+  // The field keeps the focus (and the keyboard stays up) while a button of
+  // the form is pressed.
+  document.addEventListener("pointerdown", (e) => {
+    if (typingHost && typingHost.contains(e.target) && e.target.closest("button")) e.preventDefault();
+  });
+  document.addEventListener("input", (e) => {
+    if (typingHost && e.target.matches("textarea") && typingHost.contains(e.target)) growField(e.target);
+  });
+  phone.addEventListener("change", () => { if (!phone.matches) exitTyping(); });
 
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
-    if (mode && !composer.hidden) cancelComposer();
+    if (!menu.hidden) closeMenu();
+    else if (mode && !composer.hidden) cancelComposer();
     else if (!panel.hidden) closePanel();
   });
   // Others may have commented while this tab was in the background.

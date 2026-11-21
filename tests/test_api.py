@@ -535,7 +535,10 @@ def test_viewer_page_has_comments_on_every_type(env):
         page = client.get(f"/a/{art['id']}")
         assert 'id="comments-toggle"' in page.text, name
         assert '<span id="comments-count">1</span>' in page.text, name
-        assert '<span id="strip-text">Comments · 1 open</span>' in page.text, name
+        assert '<span id="strip-text">2 · 1 resolved</span>' in page.text, name
+        assert 'aria-label="Comments: 2, 1 resolved. Open"' in page.text, name
+        assert 'id="card-menu" class="card-menu" hidden' in page.text, name
+        assert 'id="typing-context" class="typing-context" hidden' in page.text, name
         assert ('id="composer"' in page.text) == (name == "b.png"), name
         assert 'id="toast" class="toast" role="status"' in page.text, name
         assert re.search(
