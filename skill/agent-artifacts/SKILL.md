@@ -1,6 +1,6 @@
 ---
 name: agent-artifacts
-description: Share a file with a person as a link — an HTML page, report, prototype, Markdown note, text, PDF, image or archive — through the agent-artifacts service. Use when the result is better opened in a browser than read in the chat, when the user asks for a link, a page, a report, a prototype or a file to download, or to update a file already shared in this task.
+description: Share a file with a person as a link — an HTML page, report, prototype, Markdown note, text, PDF, image or archive — through the agent-artifacts service. Use when the result is better opened in a browser than read in the chat, when the user asks for a link, a page, a report, a prototype or a file to download, or to update a file already shared in this task. Also use when the user asks to update agent-artifacts itself.
 ---
 
 # agent-artifacts
@@ -126,3 +126,10 @@ Markdown (GitHub style, tables included) is rendered in the browser; headings
 get ids, so `[see](#heading-text)`
 links work, and links to other sites open in a new tab. For anything richer,
 write HTML.
+
+## Updating this skill
+
+When the person asks to update agent-artifacts, its skill or its CLI, follow
+the Update section of
+<https://raw.githubusercontent.com/aadegtyarev/agent-artifacts/main/docs/agent-setup.md>.
+It replaces this folder and keeps the saved key.

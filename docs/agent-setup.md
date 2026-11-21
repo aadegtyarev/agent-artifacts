@@ -5,6 +5,8 @@ agent-artifacts. There are two jobs; do the one you were asked for.
 
 - **Connect**: the person gave you two lines, `AGENT_ARTIFACTS_URL=…` and
   `AGENT_ARTIFACTS_KEY=…`. Install the skill and save the key.
+- **Update**: the skill is already installed and the person asks to update
+  it. Replace the skill folder; the key stays.
 - **Deploy**: the person wants to run the service on their own server.
 
 ## Connect
@@ -71,6 +73,45 @@ Windows. Below, `run` means `uv run` if uv is installed, otherwise `python3`
 
 Do not repeat the key in your answer, and do not write it anywhere except
 through `setup`.
+
+## Update
+
+The key is not in the skill folder, so replacing the folder keeps it. Do not
+run `setup` again.
+
+1. Note the version you have:
+
+   ```bash
+   run <skills folder>/agent-artifacts/scripts/artifacts_cli.py version
+   ```
+
+   A version without this command prints a usage error; call it "older".
+
+2. Get the new files:
+
+   - If `<skills folder>/agent-artifacts` is a symlink into a clone of the
+     repository, run `git -C <clone> pull --ff-only` and go to step 3.
+   - Otherwise clone into a temporary folder, as in [Connect](#connect) step
+     1, delete `<skills folder>/agent-artifacts` and copy the new
+     `skill/agent-artifacts` in its place. If the skill is installed in more
+     than one skills folder, do each of them.
+
+3. Check it:
+
+   ```bash
+   run <skills folder>/agent-artifacts/scripts/artifacts_cli.py version
+   run <skills folder>/agent-artifacts/scripts/artifacts_cli.py me
+   ```
+
+   `version` prints the new date, and `me` answers with the same name as
+   before. An `unauthorized` error means the key file was lost: ask the person
+   for their key again instead of guessing.
+
+4. Tell the person the old and new versions and what changed for them. The
+   repository's history of the skill shows it:
+   `git -C <clone> log --oneline --since=<old version> -- skill/`.
+   Delete the temporary clone. Some harnesses load a changed skill only after
+   a restart; say so if yours does.
 
 ## Deploy
 
