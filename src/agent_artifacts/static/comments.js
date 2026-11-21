@@ -184,7 +184,14 @@
   function focusBack(id) {
     const target = id && $(id);
     if (target && target.getClientRects().length) target.focus({ preventScroll: true });
-    else (panel.hidden ? (phone.matches ? strip : toggle) : $("comments-title")).focus({ preventScroll: true });
+    else (panel.hidden ? panelOpener() : $("comments-title")).focus({ preventScroll: true });
+  }
+
+  // What opens the panel: the strip on a phone, else the header's button;
+  // in full screen, where both are hidden, the floating menu button.
+  function panelOpener() {
+    const shown = phone.matches ? strip : toggle;
+    return shown.getClientRects().length ? shown : $("float-button") || shown;
   }
 
   // The comment row next to `n` (or before it), where focus goes when `n`
@@ -194,6 +201,13 @@
     const next = li && (li.nextElementSibling || li.previousElementSibling);
     return next ? next.id : null;
   }
+
+  // The viewer's menu (viewer.js) shows its messages through this toast too,
+  // so the two never fight over the same box.
+  document.addEventListener("aa:toast", (e) => {
+    const { message, error = false } = e.detail || {};
+    if (typeof message === "string") toast(message, { error, ms: error ? 10000 : 2500 });
+  });
 
   toastUndo.addEventListener("click", () => {
     const action = undoAction;
@@ -1255,6 +1269,7 @@
 
   function setExpanded(open) {
     toggle.setAttribute("aria-expanded", String(open));
+    toggle.setAttribute("aria-pressed", String(open));
     strip.setAttribute("aria-expanded", String(open));
   }
 
@@ -1280,7 +1295,7 @@
     if (!text.value.trim()) fold(true);
     fitPins();
     if (minimized) restoreComposer();
-    else if (inside) (phone.matches ? strip : toggle).focus();
+    else if (inside) panelOpener().focus();
     dockToast();
   }
 
@@ -1502,7 +1517,7 @@
 
   // The link of the page with the comment's number; opening it shows the comment.
   async function copyLink(n) {
-    const link = `${$("url").value.split("#")[0]}#comment-${n}`;
+    const link = `${panel.dataset.url.split("#")[0]}#comment-${n}`;
     if (await copy(link, n)) toast(`Link to ${named(n)} copied`);
     else toast(`Could not copy. The link: ${link}`, { error: true, ms: 10000 });
   }

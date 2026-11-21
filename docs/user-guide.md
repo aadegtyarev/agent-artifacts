@@ -67,7 +67,8 @@ Ask the agent:
 
 It answers with a link like `https://art.example.org/a/dqzQi3GkThdt_QSnKh4Dkg`
 and says until when it works. Open it on your phone: you see the page under a
-one-line header with a download button and a copy-link button.
+one-line header. Its "≡" button opens the menu: full screen, download, copy
+link and, where the service offers it, open the file on its own.
 
 If the agent says there is no key, it did not run step 2 or 3: paste the text
 again.

@@ -17,7 +17,7 @@ header { display: flex; gap: 8px; align-items: center; padding: 4px 8px 4px 12px
 h1, .meta { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 h1 { font-size: 14px; }
 .meta { color: var(--muted); font-size: 12px; }
-.actions { display: flex; gap: 4px; }
+.actions { display: flex; gap: 12px; padding-right: 4px; }
 a.btn, button { display: flex; align-items: center; justify-content: center; gap: 6px;
   min-width: 32px; height: 32px; padding: 0 6px; font: 13px system-ui, sans-serif;
   color: inherit; background: var(--btn); border: 1px solid var(--line);
@@ -43,7 +43,6 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
 .stage > main { position: relative; }
 .stage > main > iframe, .stage > main > .center { position: absolute;
   top: 0; left: 0; width: 100%; height: 100%; }
-#comments-toggle[aria-expanded="true"] { border-color: var(--accent); }
 /* The element a page's composer is about. */
 .composer-on { margin: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .comments { width: 340px; flex: none; display: flex; flex-direction: column;
@@ -83,11 +82,10 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
     text-overflow: ellipsis; }
   .strip .chevron { flex: none; width: 44px; color: var(--muted); }
   .hint { visibility: hidden; }
-  /* The header: finger-sized buttons, readable name and details. */
-  header { padding: 2px 4px 2px 12px; }
+  /* The header: readable name and details. */
+  header { min-height: 52px; padding: 2px 8px 2px 12px; }
   h1 { font-size: 16px; }
   .meta { font-size: 15px; }
-  .actions a.btn, .actions button { min-width: 44px; height: 44px; font-size: 15px; }
   /* The number of a comment with a pin shows the pin; a finger-sized area. */
   .comment-meta button.badge { position: relative; }
   .comment-meta button.badge::before { content: ""; position: absolute; inset: -10px -9px; }
@@ -158,6 +156,67 @@ button.primary:disabled { opacity: 0.6; cursor: default; }
 .composer.dock { top: auto; bottom: 0; left: 0; right: 0; width: auto; border-bottom: 0;
   border-radius: 12px 12px 0 0; }
 .composer:focus, .comment-form:focus { outline: none; }
+
+/* The header's square buttons: soft fills, no outlines; 32px to the eye,
+   44px to a finger. On, the comment bubble is blue and pressed. */
+.actions .sq { position: relative; flex: none; width: 32px; min-width: 32px; height: 32px;
+  padding: 0; color: var(--fg); background: var(--btn); border: 0; border-radius: 9px;
+  -webkit-tap-highlight-color: transparent; transition: background 0.15s, box-shadow 0.15s; }
+.actions .sq::before { content: ""; position: absolute; inset: -6px; }
+.actions .sq svg { width: 19px; height: 19px; }
+.actions .sq:active { transform: scale(0.95); }
+.actions .sq[aria-pressed="true"] { color: #fff; background: #0a84ff;
+  box-shadow: inset 0 1.5px 3px rgb(0 0 0 / 0.28); }
+.actions .sq[aria-expanded="true"]#menu-button { background: var(--line); }
+.actions .sq:focus-visible, .float-button:focus-visible { outline: 2px solid #0a84ff;
+  outline-offset: 2px; }
+
+/* The menu: a column of square buttons with labels over the dimmed page. */
+.fan { position: fixed; z-index: 40; inset: 0; }
+.fan-scrim { position: absolute; inset: 0; background: rgb(0 0 0 / 0.28);
+  animation: fan-fade 0.18s ease; }
+.fan-list { position: fixed; display: flex; flex-direction: column; align-items: flex-end;
+  gap: 10px; pointer-events: none; }
+.fan-list.scroll { overflow-y: auto; pointer-events: auto; }
+.fan-list.left { align-items: flex-start; }
+.fan-item { pointer-events: auto; display: flex; align-items: center; gap: 10px; flex: none;
+  min-width: 0; height: 44px; padding: 0; color: inherit; background: none; border: 0;
+  border-radius: 0; text-decoration: none; font: 14px system-ui, sans-serif; outline: none;
+  -webkit-tap-highlight-color: transparent; animation: fan-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
+.fan-list.left .fan-item { flex-direction: row-reverse; }
+.fan-item:nth-child(2) { animation-delay: 0.03s; }
+.fan-item:nth-child(3) { animation-delay: 0.06s; }
+.fan-item:nth-child(n+4) { animation-delay: 0.09s; }
+.fan-label { padding: 7px 11px; color: #fff; background: rgb(28 28 30 / 0.92);
+  border-radius: 10px; white-space: nowrap; box-shadow: 0 2px 10px rgb(0 0 0 / 0.18); }
+.fan-sq { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px;
+  color: var(--fg); background: var(--bg); border-radius: 12px;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 0.16); }
+.fan-sq svg { width: 20px; height: 20px; }
+.fan-item:active .fan-sq { background: var(--btn); }
+.fan-item:focus-visible .fan-sq { outline: 2px solid #0a84ff; outline-offset: 2px; }
+body.full .fan-item[data-when="normal"], body:not(.full) .fan-item[data-when="full"] { display: none; }
+@keyframes fan-in { from { opacity: 0; transform: translateY(-8px) scale(0.96); } }
+@keyframes fan-fade { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .fan-item, .fan-scrim { animation: none; } }
+@media (prefers-color-scheme: dark) { .fan-sq { background: #2c2c2e; }
+  .fan-label { background: #48484a; } }
+@media (max-width: 640px) { .fan-item { font-size: 15px; } }
+
+/* Full screen: no header; the floating ≡ in its place, translucent until
+   its menu is open. Dragged anywhere, it snaps to the nearer side edge. */
+body.full > header, body.full .strip { display: none !important; }
+.float-button { position: fixed; z-index: 45; width: 44px; min-width: 44px; height: 44px;
+  padding: 0; color: #fff; background: rgb(28 28 30 / 0.55); border: 0; border-radius: 12px;
+  box-shadow: 0 2px 12px rgb(0 0 0 / 0.25); -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px); touch-action: none; -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none; user-select: none; transition: background 0.15s, transform 0.1s; }
+.float-button svg { width: 22px; height: 22px; }
+body.float-pressed iframe { pointer-events: none; }
+.float-button.dragging { transform: scale(1.08); background: rgb(28 28 30 / 0.75); }
+.float-button[aria-expanded="true"] { background: #1c1c1e; }
+.float-button svg:last-child, .float-button[aria-expanded="true"] .menu-icon { display: none; }
+.float-button[aria-expanded="true"] svg:last-child { display: block; }
 
 /* Brief messages, some with Undo, over the bottom of the page. */
 .toast { position: fixed; z-index: 20; left: 50%; bottom: 24px; transform: translateX(-50%);

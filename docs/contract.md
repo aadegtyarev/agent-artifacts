@@ -187,7 +187,9 @@ no-referrer`.
 
 ### The viewer page
 
-Not built yet: this section is the approved design.
+Until comment mode is built (see [Comments](#comments)), the speech bubble
+opens and closes the comments panel, and a click on an image still places a
+comment.
 
 The header is one bar: the file name with its size and expiry on a second line
 under it, and two square buttons. The speech bubble switches comment mode (see
@@ -221,8 +223,6 @@ full screen. Outside comment mode the content works as usual; a tap on an
 image does nothing.
 
 ### The raw origin
-
-Not built yet: this section is the approved design.
 
 With `AA_RAW_URL` set to a host name of its own (for example
 `https://raw.art.example.org`), that origin serves `/a/{id}/raw` with the

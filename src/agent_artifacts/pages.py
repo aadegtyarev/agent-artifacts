@@ -35,7 +35,9 @@ def _static_url(name: str) -> str:
     return f"/static/{name}?v={digest}"
 
 
-_env.globals["static"] = {n: _static_url(n) for n in ("site.css", "copy.js", "comments.js")}
+_env.globals["static"] = {
+    n: _static_url(n) for n in ("site.css", "copy.js", "comments.js", "viewer.js")
+}
 
 SANDBOX = (
     "allow-scripts allow-forms allow-modals allow-popups "
@@ -87,14 +89,16 @@ def _page(template: str, csp: str, status: int = 200, **context: object) -> HTML
     )
 
 
-def viewer_page(a: Artifact, url: str) -> HTMLResponse:
-    """The page at /a/{id}: a one-line header and the content below."""
+def viewer_page(a: Artifact, url: str, separate: str | None = None) -> HTMLResponse:
+    """The page at /a/{id}: a one-line header and the content below.
+    ``separate`` is the file at the raw origin, for "Open separately"."""
     page = _page(
         "viewer.html",
         VIEWER_CSP,
         title=a.name,
-        copy=True,
         comments=True,
+        viewer=True,
+        separate=separate,
         a=a,
         url=url,
         raw=f"/a/{a.id}/raw",
