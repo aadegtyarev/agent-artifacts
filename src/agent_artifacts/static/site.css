@@ -46,8 +46,13 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
 #comments-toggle[aria-expanded="true"] { border-color: var(--accent); }
 .comments { width: 340px; flex: none; display: flex; flex-direction: column;
   border-left: 1px solid var(--line); background: var(--bg); }
-.grip, .strip, .comment-actions .more, #comments-close .chevron, .comment-form .typing-cancel {
-  display: none; }
+.grip, .strip, #comments-close .chevron, .comment-form .typing-cancel { display: none; }
+/* On a computer a comment's ⋯ (Copy text, Copy link) shows on hover or
+   keyboard focus. */
+@media (hover: hover) and (min-width: 641px) {
+  .comment:not(:hover):not(:focus-within) .comment-actions .more:not([aria-expanded="true"]) {
+    visibility: hidden; }
+}
 /* On a phone the sheet takes the bottom part (its height is set by the
    script: 25, 50 or 100 %) and the content shrinks above it, so a pin can
    always be scrolled into view over the sheet. Folded, the sheet leaves a
@@ -227,15 +232,17 @@ button.primary:disabled { opacity: 0.6; cursor: default; }
   body:not(.typing) .comment-form:not(.folded) > #form-note,
   body:not(.typing) .comment-form:not(.folded) .hint { display: none; }
   body:not(.typing) .comment-form:not(.folded) .form-row { display: contents; }
-  body:not(.typing) .comment-form:not(.folded) textarea { height: 44px; min-height: 0;
-    padding: 10px 8px; white-space: nowrap; overflow: hidden; resize: none; }
+  /* Two whole lines of the text, the rest cut at a line's edge (no bottom
+     padding for a third line to show in); all of it shows in typing mode. */
+  body:not(.typing) .comment-form:not(.folded) textarea { height: calc(2.8em + 10px); min-height: 0;
+    padding: 8px 8px 0; overflow: hidden; resize: none; }
   body:not(.typing) .comment-form:not(.folded) .note { grid-column: 1 / -1; }
 }
 
 /* Typing mode (a touch screen): everything off the way from the page to the
    form being typed in is hidden, and the form sits at the top of the page
    (see the script), so the keyboard covers only what is below it. */
-body.typing > :not(.typing-path):not(.typing-host),
+body.typing > :not(.typing-path):not(.typing-host):not(.toast),
 body.typing .typing-path > :not(.typing-path):not(.typing-host) { display: none !important; }
 body.typing .typing-path { border: 0 !important; box-shadow: none !important;
   background: none !important; }

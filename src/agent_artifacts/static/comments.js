@@ -140,6 +140,14 @@
   // On a phone a toast sits right above whatever holds the bottom: the
   // docked composer, the form of the open sheet, or the strip.
   function dockToast() {
+    toastBox.style.top = "";
+    if (typingHost) {
+      // In typing mode the bottom may be under the keyboard: right below
+      // the form at the top instead.
+      toastBox.style.bottom = "auto";
+      toastBox.style.top = `${typingHost.getBoundingClientRect().bottom + 8}px`;
+      return;
+    }
     if (!phone.matches) {
       toastBox.style.bottom = "";
       return;
@@ -340,8 +348,12 @@
       const area = box.querySelector("textarea");
       area.focus({ preventScroll: true });
       area.setSelectionRange(editing.start, editing.end);
-    } else if (focusedItem && $(focusedItem)) {
-      $(focusedItem).focus({ preventScroll: true });
+    } else {
+      // The edit typed in is gone (the comment deleted or read meanwhile).
+      // Not every browser sends focusout for a removed field, so typing
+      // mode does not wait for one.
+      if (typingHost && !typingHost.isConnected) exitTyping();
+      if (focusedItem && $(focusedItem)) $(focusedItem).focus({ preventScroll: true });
     }
   }
 
@@ -398,16 +410,20 @@
     const actions = el("div", "comment-actions");
     // On a phone the ⋯ button stands in for the icon buttons; the same menu
     // opens on a long press, and on a computer on a right click.
+    // On a computer it comes last and shows on hover or keyboard focus,
+    // for Copy text and Copy link.
     const more = iconButton("more", `Actions for comment ${c.n}`, (e) => openMenu(c, e.currentTarget));
     more.classList.add("more");
     more.setAttribute("aria-haspopup", "menu");
-    actions.append(more, c.resolved
+    more.setAttribute("aria-expanded", "false");
+    actions.append(c.resolved
       ? iconButton("reopen", `Reopen comment ${c.n}`, (e) => resolve(c, e.currentTarget))
       : iconButton("check", `Resolve comment ${c.n}`, (e) => resolve(c, e.currentTarget)));
     if (token && !c.read) {
       actions.append(iconButton("edit", `Edit comment ${c.n}`, () => startEdit(c)));
       actions.append(iconButton("delete", `Delete comment ${c.n}`, () => remove(c, token)));
     }
+    actions.append(more);
     head.append(actions);
     li.append(head, el("p", "comment-text", c.text));
     return li;
@@ -831,14 +847,7 @@
     }
   });
   // Shown in typing mode only: back to the sheet, the typed text kept.
-  $("comment-cancel").addEventListener("click", () => {
-    if (!typingHost) return;
-    leaveTyping();
-    if (!text.value.trim()) {
-      fold(true);
-      $("comment-open").focus({ preventScroll: true });
-    }
-  });
+  $("comment-cancel").addEventListener("click", () => { if (typingHost) leaveTyping(); });
 
   // --- Actions --------------------------------------------------------------
 
@@ -1085,6 +1094,7 @@
   function closePanel() {
     const inside = panel.contains(document.activeElement);
     closeMenu(false);
+    if (typingHost && panel.contains(typingHost)) exitTyping();
     panel.hidden = true;
     setExpanded(false);
     if (!text.value.trim()) fold(true);
@@ -1126,6 +1136,7 @@
       id: e.pointerId,
       y: e.clientY,
       from: panel.hidden ? STRIP_H : panel.offsetHeight,
+      closed: panel.hidden,
       moved: false,
     };
     window.addEventListener("pointermove", moveDrag);
@@ -1150,7 +1161,7 @@
     window.removeEventListener("pointermove", moveDrag);
     window.removeEventListener("pointerup", endDrag);
     window.removeEventListener("pointercancel", endDrag);
-    const { moved, y } = drag;
+    const { moved, y, closed } = drag;
     drag = null;
     if (!moved) return; // a tap: the click handlers above take it
     draggedAt = performance.now();
@@ -1159,7 +1170,8 @@
     const up = e.clientY < y;
     let best = null;
     let distance = Infinity;
-    for (const size of ["closed", ...SIZES]) {
+    // Pulled up from the strip, the sheet opens, however short the pull.
+    for (const size of closed && up ? SIZES : ["closed", ...SIZES]) {
       const h = size === "closed" ? STRIP_H : sizePx(size);
       const ahead = up ? h > height : h < height;
       const d = Math.abs(h - height) - (ahead ? 40 : 0);
@@ -1192,7 +1204,8 @@
       ? { icon: "reopen", label: "Reopen", run: () => resolve(c, busyButton()) }
       : { icon: "check", label: "Resolve", run: () => resolve(c, busyButton()) }];
     if (token && !c.read) {
-      items.push({ icon: "edit", label: "Edit", run: () => startEdit(c) });
+      // Not while it is being edited: that would start over and drop the draft.
+      if (!(editing && editing.n === c.n)) items.push({ icon: "edit", label: "Edit", run: () => startEdit(c) });
       items.push({ icon: "delete", label: "Delete", danger: true, run: () => remove(c, token) });
     }
     // Comments cannot be selected on a phone (a long press opens this menu).
@@ -1205,7 +1218,13 @@
   // a phone, the menu is a sheet at the bottom.
   function openMenu(c, opener, { point = null, armed = true } = {}) {
     closeMenu(false);
+    // A menu sheet is for a phone; elsewhere the ⋯ button opens it under itself.
+    if (!point && !phone.matches && opener) {
+      const r = opener.getBoundingClientRect();
+      point = { x: r.left, y: r.bottom + 4 };
+    }
     menuFor = { n: c.n, opener };
+    if (opener && opener.matches(".more")) opener.setAttribute("aria-expanded", "true");
     menuArmed = armed;
     $("card-menu-title").textContent = `#${c.n} · ${c.author}: ${c.text}`;
     menuList.replaceChildren(...menuItems(c).map((item) => {
@@ -1246,12 +1265,22 @@
     menuFor = null;
     const card = $(`comment-${n}`);
     if (card) card.classList.remove("pressed");
-    if (!restore) return;
-    if (opener && opener.isConnected) opener.focus({ preventScroll: true });
-    else if (card) card.focus({ preventScroll: true });
+    // Focus first: a computer's ⋯ shows only while expanded, hovered or focused.
+    if (restore && opener && opener.isConnected) opener.focus({ preventScroll: true });
+    else if (restore && card) card.focus({ preventScroll: true });
+    if (opener && opener.matches(".more")) opener.setAttribute("aria-expanded", "false");
   }
 
   menu.addEventListener("pointerdown", () => { menuArmed = true; });
+  // A right click elsewhere with the menu open moves the menu there.
+  menu.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    if (!e.target.closest(".menu-scrim")) return;
+    closeMenu(false);
+    const under = document.elementFromPoint(e.clientX, e.clientY);
+    const hit = under && listBox.contains(under) ? cardOf(under) : null;
+    if (hit) openMenu(hit.c, hit.li, { point: { x: e.clientX, y: e.clientY } });
+  });
   menu.querySelector(".menu-scrim").addEventListener("click", (e) => {
     if (menuArmed || e.detail === 0) closeMenu();
   });
@@ -1323,6 +1352,7 @@
 
   listBox.addEventListener("pointerdown", (e) => {
     endPress();
+    pressedAt = -Infinity; // a new press: its click is a real one
     if (!phone.matches || e.button > 0) return;
     const hit = cardOf(e.target);
     if (!hit) return;
@@ -1352,9 +1382,11 @@
   listBox.addEventListener("contextmenu", (e) => {
     const hit = cardOf(e.target);
     if (!hit) return;
-    // A phone's own long-press menu would cover ours.
+    // A phone's own long-press menu would cover ours; a long press there
+    // opens the sheet (above). A mouse, in a window of any width, gets the
+    // menu at the pointer.
     e.preventDefault();
-    if (!phone.matches) openMenu(hit.c, hit.li, { point: { x: e.clientX, y: e.clientY } });
+    if (!phone.matches || !touch.matches) openMenu(hit.c, hit.li, { point: { x: e.clientX, y: e.clientY } });
   });
 
   // --- Typing mode on a phone ------------------------------------------------
@@ -1440,6 +1472,7 @@
     fillStrip(typingAnchor(host));
     const area = host.querySelector("textarea");
     if (area) growField(area);
+    dockToast();
   }
 
   function clearTyping() {
@@ -1469,6 +1502,12 @@
     const host = typingHost;
     if (!host) return;
     exitTyping();
+    // The form left empty folds back to its one button.
+    if (host === form && !text.value.trim()) {
+      fold(true);
+      $("comment-open").focus({ preventScroll: true });
+      return;
+    }
     const target = host.matches(".comment-edit") ? host.closest(".comment") : host;
     if (!target) return;
     target.focus({ preventScroll: true });
@@ -1492,7 +1531,10 @@
     if (typingHost && typingHost.contains(e.target) && e.target.closest("button")) e.preventDefault();
   });
   document.addEventListener("input", (e) => {
-    if (typingHost && e.target.matches("textarea") && typingHost.contains(e.target)) growField(e.target);
+    if (typingHost && e.target.matches("textarea") && typingHost.contains(e.target)) {
+      growField(e.target);
+      dockToast();
+    }
   });
   phone.addEventListener("change", () => { if (!phone.matches) exitTyping(); });
   // Android hides the keyboard (the Back button) but leaves the field
@@ -1500,7 +1542,8 @@
   // keyboard, typing mode ends as on a blur, the text kept.
   if (window.visualViewport) {
     window.visualViewport.addEventListener("resize", () => {
-      if (!typingHost || !typingBase) return;
+      // A pinch zoom changes the height too; only the keyboard counts.
+      if (!typingHost || !typingBase || window.visualViewport.scale !== 1) return;
       const height = window.visualViewport.height;
       if (height < typingBase.height * 0.9) typingBase.keyboard = true;
       else if (typingBase.keyboard) leaveTyping();
