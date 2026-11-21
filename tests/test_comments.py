@@ -477,9 +477,10 @@ def test_head_old_calls_and_other_methods_never_write(env):
     assert (r.status_code, r.json()["error"]) == (405, "bad_request")
     assert r.headers["cache-control"] == "no-store"
     comment(client, art["id"])
-    for method in ("PATCH", "DELETE"):
+    for method in ("GET", "PATCH", "DELETE"):
         r = client.request(method, f"{base}/comments/1", json={"resolved": True})
-        assert r.status_code in (404, 405)
+        assert (r.status_code, r.json()["error"]) == (405, "bad_request"), method
+        assert r.headers["cache-control"] == "no-store"
     [c] = client.get(f"{base}/comments").json()
     assert not c["resolved"] and drafts(client, art["id"]).json() == []
     r = client.head(f"/api/v1/artifacts/{art['id']}/comments", headers=auth(keys["alice"]))
@@ -681,3 +682,31 @@ def test_earlier_databases_open_and_work(tmp_path, schema):
         ]
     assert store.get(ART).comments == (2 if with_comments else 1)
     assert store.drop_drafts(ART, owner="old")
+
+
+def test_a_counter_added_behind_existing_comments_starts_after_them(tmp_path):
+    # Comments in a database whose artifacts have no counter yet: the counter
+    # added on opening starts after the highest number, not at 0.
+    schema = SCHEMA_B249CA8.replace(
+        "    expires_at REAL NOT NULL,\n    comment_seq INTEGER NOT NULL DEFAULT 0,\n"
+        "    replaced_at REAL\n",
+        "    expires_at REAL NOT NULL\n",
+    )
+    assert "comment_seq" not in schema
+    db = sqlite3.connect(tmp_path / "meta.sqlite")
+    db.executescript(schema)
+    db.execute("INSERT INTO agents (name, key_hash) VALUES ('old', 'h')")
+    for art_id in (ART, "b" * 22):
+        db.execute("INSERT INTO artifacts VALUES (?, 'old', 'a.txt', 'txt', 1, 0, 9e9)", (art_id,))
+    for n in (2, 5):
+        db.execute(
+            "INSERT INTO comments (artifact_id, n, author, text, edit_token_hash, created_at) "
+            "VALUES (?, ?, 'p', 'old', 'tokenhash', 50)",
+            (ART, n),
+        )
+    db.commit()
+    db.close()
+    store = Store(tmp_path, max_total_bytes=10**6)
+    for art_id, expected in ((ART, 6), ("b" * 22, 1)):
+        store.add_draft(art_id, "h", author="x", text="new", anchor=None)
+        assert [c.n for c in store.publish(art_id, "h", author="x", text=None)] == [expected]

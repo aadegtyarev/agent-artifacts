@@ -276,6 +276,13 @@ class Store:
                 for column, decl in columns.items():
                     if column not in have:
                         db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+            # A counter behind its comments (added to a database that had
+            # comments) would hand out their numbers again.
+            last = "(SELECT MAX(n) FROM comments WHERE artifact_id = artifacts.id)"
+            db.execute(
+                f"UPDATE artifacts SET comment_seq = {last} "  # noqa: S608 (a constant)
+                f"WHERE comment_seq < COALESCE({last}, 0)"
+            )
 
     @contextmanager
     def _conn(self) -> Iterator[sqlite3.Connection]:

@@ -147,8 +147,17 @@ def comment_routes(store: Store) -> list[Route]:
             return Response(status_code=204)
         raise _no_artifact()
 
+    async def published_item(request: Request) -> Response:
+        # A published comment cannot be changed from the viewer; earlier
+        # versions could, so the path answers in JSON like the others.
+        response = error(405, "bad_request", "a published comment cannot be changed here")
+        response.headers["Allow"] = ""
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
     return [
         _route("/a/{id:artifact_id}/comments", public_list, "GET"),
+        Route("/a/{id:artifact_id}/comments/{n}", published_item, methods=_ALL_METHODS),
         _route("/a/{id:artifact_id}/drafts", drafts, "GET", "POST"),
         _route("/a/{id:artifact_id}/drafts/{d}", draft_item, "PATCH", "DELETE"),
         _route("/a/{id:artifact_id}/review", review, "POST"),

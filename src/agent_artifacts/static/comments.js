@@ -59,22 +59,13 @@
     },
   };
   const NAME_KEY = "agent-artifacts:name";
-  const tokenKey = (n) => `agent-artifacts:token:${artifact}:${n}`;
 
   let comments = [];
   let resolvedShown = false;
   // The spot of the comment being written in the composer, or null.
   let draft = null;
-  // {n, draft, start, end} while a comment's text is being edited; kept
-  // here so a redraw of the list does not lose the text or the caret.
-  let editing = null;
   // The comment and the pin highlighted for a moment, redrawn lit.
   const lit = { comment: null, pin: null };
-  // A delete waiting out its Undo time: {c, token, timer}. Its DELETE goes
-  // when the time is up, on the next action, or when the page is left.
-  let pending = null;
-  // Numbers whose DELETE is on its way; hidden until the server answers.
-  const deleting = new Set();
   // Every change to `comments` bumps it, so an older GET cannot overwrite it.
   let generation = 0;
   const timers = {};
@@ -284,8 +275,7 @@
   // Resolved comments keep their pins, shown grey only with the resolved list.
   const pinned = (c) => mode && c.anchor && c.anchor.type === mode && (!c.resolved || resolvedShown);
   const hasPin = (c) => pinned(c) && (mode === "point" || (page.ready && !page.missing.has(c.n)));
-  // The list without comments deleted a moment ago (Undo still possible).
-  const visible = () => comments.filter((c) => !deleting.has(c.n) && !(pending && pending.c.n === c.n));
+  const visible = () => comments;
 
   // --- Loading and drawing --------------------------------------------------
 
@@ -302,7 +292,6 @@
     if (mine !== generation) return; // something newer has landed meanwhile
     comments = found;
     say("comments-status", "");
-    dropStaleTokens();
     render();
     showLinked();
   }
@@ -317,37 +306,16 @@
     if (match && visible().some((c) => c.n === Number(match[1]))) showComment(Number(match[1]));
   }
 
-  // Edit tokens of this file's comments: a published comment can no longer
-  // be changed from the viewer, so every one kept from before goes.
-  function dropStaleTokens() {
-    const prefix = tokenKey("");
-    try {
-      const keys = Object.keys(localStorage).filter((k) => k.startsWith(prefix));
-      for (const key of keys) localStorage.removeItem(key);
-    } catch { /* no storage, no tokens */ }
-  }
-
   function changed(next) {
     generation++;
     comments = next;
   }
 
-  // Redraws the list from `comments`, keeping focus on the same comment and
-  // an open editor's text and caret.
+  // Redraws the list from `comments`, keeping focus on the same comment.
   function render() {
     const active = document.activeElement;
-    const editorFocused = active && active.matches(".comment-edit textarea");
-    if (editorFocused && editing) {
-      editing.start = active.selectionStart;
-      editing.end = active.selectionEnd;
-    }
-    let focusedItem = active && active.matches(".comment") ? active.id : null;
-    if (editorFocused && editing) focusedItem = `comment-${editing.n}`;
+    const focusedItem = active && active.matches(".comment") ? active.id : null;
     const shown = visible();
-    if (editing && !shown.some((c) => c.n === editing.n)) {
-      if (!comments.some((c) => c.n === editing.n)) say("comments-status", `Comment ${editing.n} was deleted.`, true);
-      editing = null;
-    }
     const open = shown.filter((c) => !c.resolved);
     const resolved = shown.filter((c) => c.resolved);
     count.textContent = open.length;
@@ -374,22 +342,7 @@
     showResolved.setAttribute("aria-expanded", String(resolvedShown));
     resolvedList.hidden = !resolvedShown;
     drawPins();
-    if (editing && editorFocused) {
-      const box = $(`comment-${editing.n}`).querySelector(".comment-edit");
-      // In typing mode the new editor takes the old one's place first, or
-      // it is hidden and cannot take the focus.
-      if (typingHost && !typingHost.isConnected) enterTyping(box);
-      const area = box.querySelector("textarea");
-      grow(area);
-      area.focus({ preventScroll: true });
-      area.setSelectionRange(editing.start, editing.end);
-    } else {
-      // The edit typed in is gone (the comment deleted or read meanwhile).
-      // Not every browser sends focusout for a removed field, so typing
-      // mode does not wait for one.
-      if (typingHost && !typingHost.isConnected) exitTyping();
-      if (focusedItem && $(focusedItem)) $(focusedItem).focus({ preventScroll: true });
-    }
+    if (focusedItem && $(focusedItem)) $(focusedItem).focus({ preventScroll: true });
   }
 
   function item(c) {
@@ -398,18 +351,6 @@
     li.tabIndex = -1;
     if (c.resolved) li.classList.add("resolved");
     if (lit.comment === c.n) li.classList.add("lit");
-    // A comment the agent has read is final: this browser's token is useless.
-    let token = storage.get(tokenKey(c.n));
-    if (token && c.read) {
-      storage.remove(tokenKey(c.n));
-      token = null;
-    }
-    if (editing && editing.n === c.n && (c.read || !token)) {
-      editing = null;
-      say("comments-status", c.read
-        ? `The agent has already read comment ${c.n}; it can no longer be changed.`
-        : `Comment ${c.n} cannot be changed from this browser.`, true);
-    }
     // A click anywhere on the comment but its buttons and editor shows its pin.
     li.addEventListener("click", (e) => {
       if (e.target.closest("button, textarea, input, a")) return;
@@ -434,14 +375,9 @@
     if (c.resolved) meta.append(el("span", "tag", "resolved"));
     if (c.before_replace) meta.append(el("span", "tag", "before update"));
     if (c.read) meta.append(el("span", "tag", "read by the agent"));
-    if (c.edited_at) meta.append(el("span", "tag", "edited"));
     // The actions sit at the right of the meta line, as icon buttons.
     const head = el("div", "comment-head");
     head.append(meta);
-    if (editing && editing.n === c.n) {
-      li.append(head, editor(c, token));
-      return li;
-    }
     const actions = el("div", "comment-actions");
     // On a phone the ⋯ button stands in for the icon buttons; the same menu
     // opens on a long press, and on a computer on a right click.
@@ -451,10 +387,6 @@
     more.classList.add("more");
     more.setAttribute("aria-haspopup", "menu");
     more.setAttribute("aria-expanded", "false");
-    if (token && !c.read) {
-      actions.append(iconButton("edit", `Edit comment ${c.n}`, () => startEdit(c)));
-      actions.append(iconButton("delete", `Delete comment ${c.n}`, () => remove(c, token)));
-    }
     actions.append(more);
     head.append(actions);
     li.append(head, el("p", "comment-text", c.text));
@@ -468,35 +400,6 @@
       li.append(where);
     }
     return li;
-  }
-
-  function editor(c, token) {
-    const box = el("div", "comment-edit");
-    box.dataset.n = c.n;
-    const area = el("textarea");
-    area.value = editing.draft;
-    area.maxLength = 2000;
-    area.rows = 1;
-    area.setAttribute("aria-label", `Text of comment ${c.n}`);
-    area.addEventListener("input", () => { editing.draft = area.value; });
-    const save = button("Save", () => saveEdit(c, token, save), "text typing-send");
-    area.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save.click(); }
-      if (e.key === "Escape") { e.stopPropagation(); cancelEdit(c.n); }
-    });
-    // In typing mode Cancel goes back to the page with a changed text kept.
-    const cancel = button("Cancel", () => {
-      if (typingHost === box && editing.draft !== c.text) leaveTyping();
-      else cancelEdit(c.n);
-    }, "text typing-cancel");
-    const tools = el("div", "comment-tools");
-    tools.append(save, cancel);
-    const status = el("p", "note");
-    status.id = "edit-status";
-    status.setAttribute("role", "status");
-    status.setAttribute("aria-live", "polite");
-    box.append(area, tools, status);
-    return box;
   }
 
   function drawPins() {
@@ -816,14 +719,20 @@
   const asAuthor = { "X-Author-Key": authorKey };
 
   // Until the review panel comes, a comment is one draft published at once.
+  // A draft left by an earlier failed send goes first, or it would be
+  // published again with this one.
   async function post(body) {
-    const draft = await call("POST", `/a/${artifact}/drafts`, body, asAuthor);
+    const drafts = `/a/${artifact}/drafts`;
+    for (const left of await call("GET", drafts, undefined, asAuthor)) {
+      await call("DELETE", `${drafts}/${left.id}`, undefined, asAuthor);
+    }
+    const draft = await call("POST", drafts, body, asAuthor);
     let made;
     try {
       made = await call("POST", `/a/${artifact}/review`, { author: body.author }, asAuthor);
     } catch (e) {
       // Not published: the draft goes too, so it is not published later.
-      call("DELETE", `/a/${artifact}/drafts/${draft.id}`, undefined, asAuthor).catch(() => {});
+      call("DELETE", `${drafts}/${draft.id}`, undefined, asAuthor).catch(() => {});
       throw e;
     }
     changed([...comments, ...made]);
@@ -843,7 +752,6 @@
         composerText.focus();
         return;
       }
-      flushPending();
       const body = { author: takeName($("composer-author")), text: composerText.value, anchor: draft };
       await busy(composerSend, "Sending…", async () => {
         try {
@@ -1025,7 +933,6 @@
       text.focus();
       return;
     }
-    flushPending();
     const body = { author: takeName(author), text: text.value, anchor: null };
     await busy(send, "Sending…", async () => {
       try {
@@ -1055,21 +962,6 @@
 
   // --- Actions --------------------------------------------------------------
 
-  const lostReason = (n, e) => (e.code === "already_read"
-    ? `the agent has already read comment ${n}`
-    : `comment ${n} cannot be changed from this browser`);
-
-  // A token-holder's edit that the server refused for good: the agent has
-  // read the comment, or the token is not this comment's.
-  async function lostToken(c, e) {
-    storage.remove(tokenKey(c.n));
-    editing = null;
-    exitTyping();
-    await load();
-    const why = lostReason(c.n, e);
-    say("comments-status", `${why.charAt(0).toUpperCase()}${why.slice(1)}; it can no longer be changed.`, true);
-  }
-
   // Disables the button while `action` runs; a text button says what is
   // going on, an icon button keeps its icon.
   async function busy(b, label, action) {
@@ -1088,117 +980,6 @@
       }
     }
   }
-
-  function replace(updated) {
-    changed(comments.map((c) => (c.n === updated.n ? updated : c)));
-  }
-
-  function startEdit(c) {
-    editing = { n: c.n, draft: c.text, start: c.text.length, end: c.text.length };
-    render();
-    const area = $(`comment-${c.n}`).querySelector("textarea");
-    grow(area);
-    area.focus();
-    area.setSelectionRange(editing.start, editing.end);
-  }
-
-  function cancelEdit(n) {
-    editing = null;
-    exitTyping();
-    render();
-    const li = $(`comment-${n}`);
-    if (li) li.focus();
-  }
-
-  async function saveEdit(c, token, b) {
-    if (!editing.draft.trim()) {
-      say("edit-status", "The text is empty. Write something, or delete the comment.", true);
-      return;
-    }
-    flushPending();
-    await busy(b, "Saving…", async () => {
-      try {
-        replace(await call("PATCH", `${base}/${c.n}`, { edit_token: token, text: editing.draft }));
-        editing = null;
-        exitTyping();
-        render();
-        say("comments-status", `Comment ${c.n} saved.`);
-        $(`comment-${c.n}`).focus();
-      } catch (e) {
-        if (e.status === 403 || e.status === 409) return lostToken(c, e);
-        if (e.status === 404) {
-          editing = null;
-          exitTyping();
-          await load();
-          say("comments-status", `Comment ${c.n} was deleted.`, true);
-        } else {
-          say("edit-status", e.message, true);
-        }
-      }
-    });
-  }
-
-  // Delete hides the comment at once and offers Undo; the DELETE itself goes
-  // only when the Undo time is over.
-  function remove(c, token) {
-    flushPending();
-    const back = neighbour(c.n);
-    pending = { c, token, timer: setTimeout(flushPending, UNDO_MS) };
-    render();
-    toast(`${named(c.n)} deleted`, { undo: undoDelete, ms: UNDO_MS, back });
-    toastUndo.focus({ preventScroll: true });
-  }
-
-  function undoDelete() {
-    if (!pending) return;
-    clearTimeout(pending.timer);
-    const { n } = pending.c;
-    pending = null;
-    light("comment", n);
-    render();
-    focusBack(`comment-${n}`);
-    toast(`${named(n)} restored`);
-  }
-
-  // Sends the waiting delete, if any. The fetch starts synchronously, with
-  // keepalive, so this also works from pagehide.
-  async function flushPending() {
-    if (!pending) return;
-    const { c, token, timer } = pending;
-    clearTimeout(timer);
-    pending = null;
-    // Its Undo is over: the toast offering it goes.
-    if (undoAction === undoDelete) hideToast();
-    deleting.add(c.n);
-    let failure = null;
-    try {
-      await call("DELETE", `${base}/${c.n}`, undefined, { "X-Edit-Token": token }, true);
-    } catch (e) {
-      if (e.status !== 404) failure = e; // 404: gone already, as wanted
-    }
-    deleting.delete(c.n);
-    if (!failure) {
-      storage.remove(tokenKey(c.n));
-      changed(comments.filter((x) => x.n !== c.n));
-      render();
-      return;
-    }
-    // Not deleted: back in the list, and the person is told why.
-    const lost = failure.status === 403 || failure.status === 409;
-    if (lost) storage.remove(tokenKey(c.n));
-    const message = lost
-      ? `Comment ${c.n} was not deleted: ${lostReason(c.n, failure)}.`
-      : `Comment ${c.n} was not deleted. ${failure.message}`;
-    light("comment", c.n);
-    render();
-    toast(message, { error: true, ms: 10000 });
-    say("comments-status", message, true);
-    if (lost) load();
-  }
-
-  // Leaving the page sends a waiting delete right away. A switch to another
-  // tab does not: the Undo stays possible until its time is over.
-  window.addEventListener("pagehide", flushPending);
 
   // --- The panel, a bottom sheet over a strip on a phone ---------------------
   // Folded, the sheet leaves a one-line strip with the counts. Open, it takes
@@ -1369,13 +1150,7 @@
   let menuArmed = true;
 
   function menuItems(c) {
-    const token = storage.get(tokenKey(c.n));
     const items = [];
-    if (token && !c.read) {
-      // Not while it is being edited: that would start over and drop the draft.
-      if (!(editing && editing.n === c.n)) items.push({ icon: "edit", label: "Edit", run: () => startEdit(c) });
-      items.push({ icon: "delete", label: "Delete", danger: true, run: () => remove(c, token) });
-    }
     // Comments cannot be selected on a phone (a long press opens this menu).
     items.push({ icon: "copy", label: "Copy text", run: () => copyText(c.n) });
     items.push({ icon: "link", label: "Copy link", run: () => copyLink(c.n) });

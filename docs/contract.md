@@ -514,8 +514,9 @@ it tells nothing about other people's drafts.
   `X-Author-Key` sent, false without a key and for the owner.
 - An artifact holds at most 200 comments; a review that would pass that gets
   `409 too_many_comments`. A key holds at most 50 drafts on a file, and a
-  file at most 200 drafts in all; the next gets `409 too_many_drafts`, which
-  reveals only that the file is full. A draft not changed for 7 days is
+  file at most 200 drafts in all; the next gets `409 too_many_drafts`. So
+  the answer tells anyone with the link how many drafts the file holds in
+  all, though never their texts or ids. A draft not changed for 7 days is
   deleted.
 
 The owner agent reads the comments with `GET /api/v1/artifacts/{id}/comments`,
