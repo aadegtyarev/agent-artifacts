@@ -345,14 +345,25 @@ file, but not for anything beyond it.
 
 **On the viewer page.** The header has a Comments button with the number of
 open comments, on every file type. It opens a panel at the side on a
-computer and at the bottom on a phone: the comments, with resolved ones
-hidden behind a toggle, and a form with a name (the browser remembers it) and
-the text. Where a pin is possible, the form starts with "click a spot": the
-next click on the content places a numbered pin there, and the comment is
-tied to it; on an image that click does not open the image full size. Pins
-of open comments show over the content; a click on a pin opens its comment,
-a click on a comment scrolls to its pin. Elsewhere the comment is about the
-whole file. The panel renders texts and names as text nodes, never as HTML.
+computer; on a phone the panel is a bottom sheet, folded to a strip
+"Comments · N open" at the bottom when closed (a tap on the strip opens it,
+a swipe down on its grip or head or the close button folds it). The panel
+lists the comments, resolved ones dimmed with a grey checked number and
+hidden behind "Show resolved (N)", and has a folded form for a comment about
+the whole file. The name is remembered by the browser.
+
+Where a pin is possible, a click on the content places a draft pin and opens
+a composer at that spot: a popover next to the pin on a computer, docked
+above the keyboard on a phone; Ctrl/Cmd+Enter sends, Escape cancels. On an
+image a Ctrl/Cmd or middle click still opens it full size. Pins of open
+comments show over the content, and pins of resolved ones in grey while the
+resolved list is shown. A click on a pin opens the panel at its comment; a
+click on a comment highlights its pin and scrolls it into view, leaving the
+panel or sheet open. Resolve shows a toast with Undo, which reopens the
+comment. Delete by token hides the comment at once with Undo; the DELETE is
+sent when the Undo time ends, with the next action, or when the page is
+left, and if it fails the comment comes back with the reason. The panel
+renders texts and names as text nodes, never as HTML.
 
 | Type | Pin |
 | --- | --- |

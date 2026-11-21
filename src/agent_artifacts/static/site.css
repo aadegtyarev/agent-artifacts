@@ -1,5 +1,6 @@
 :root { color-scheme: light dark; --fg: #1d1d1f; --bg: #fff; --muted: #6e6e73;
-  --line: #d2d2d7; --btn: #f2f2f4; --accent: #0a64d8; --error: #c4281c; }
+  --line: #d2d2d7; --btn: #f2f2f4; --accent: #0a64d8; --error: #c4281c;
+  --hi: #ffb020; --done: #8e8e93; }
 @media (prefers-color-scheme: dark) { :root { --fg: #f2f2f4; --bg: #1c1c1e;
   --muted: #a1a1a6; --line: #3a3a3c; --btn: #2c2c2e; --accent: #4c9bff;
   --error: #ff6b5e; } }
@@ -44,16 +45,25 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
 #comments-toggle[aria-expanded="true"] { border-color: var(--accent); }
 .comments { width: 340px; flex: none; display: flex; flex-direction: column;
   border-left: 1px solid var(--line); background: var(--bg); }
+.grip, .strip { display: none; }
 /* On a phone the sheet takes the bottom part and the content shrinks above
-   it, so the whole image stays in view to place a pin on. */
+   it, so a pin can always be scrolled into view over the sheet. Folded, the
+   sheet leaves a strip with the number of open comments. */
 @media (max-width: 640px) {
   .stage { flex-direction: column; }
   .comments { width: auto; height: 60%; border-left: 0; border-top: 1px solid var(--line);
     border-radius: 12px 12px 0 0; box-shadow: 0 -4px 16px rgb(0 0 0 / 0.15); }
-  #comment-hint { visibility: hidden; }
-  /* The form folds to one button until the person starts writing. */
-  .comment-form.folded > :not(#comment-open):not(#form-status) { display: none; }
-  .comment-form.folded #comment-open { display: flex; }
+  .comments.dragging { transition: none; }
+  .grip { display: block; flex: none; height: 12px; touch-action: none; }
+  .grip::before { content: ""; display: block; width: 40px; height: 4px; margin: 4px auto;
+    border-radius: 2px; background: var(--line); }
+  .comments-head { touch-action: none; }
+  .comments[hidden] + .strip { display: flex; }
+  .strip { flex: none; justify-content: flex-start; gap: 8px; width: 100%; height: 44px;
+    padding: 0 12px; font-size: 15px; background: var(--bg); border: 0;
+    border-top: 1px solid var(--line); border-radius: 0; }
+  .strip .chevron { margin-left: auto; color: var(--muted); }
+  .hint { visibility: hidden; }
 }
 .comments-head { display: flex; align-items: center; padding: 4px 8px 4px 12px;
   border-bottom: 1px solid var(--line); }
@@ -64,8 +74,12 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
 .note:empty { margin: 0; }
 .note.error { color: var(--error); }
 .comment-list { list-style: none; margin: 0; padding: 0; }
-.comment { padding: 8px 0; border-bottom: 1px solid var(--line); outline: none; }
-.comment.lit { background: var(--btn); box-shadow: -12px 0 0 var(--btn), 12px 0 0 var(--btn); }
+/* A click on a comment shows its pin. */
+.comment { padding: 8px 6px; margin: 0 -6px; border-bottom: 1px solid var(--line);
+  outline: none; cursor: pointer; }
+@media (hover: hover) { .comment:hover { background: var(--btn); } }
+.comment.lit { background: rgb(255 176 32 / 0.22); }
+.comment.resolved .comment-text, .comment.resolved .author { opacity: 0.55; }
 .comment-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px;
   font-size: 12px; color: var(--muted); }
 .comment-meta .author { color: var(--fg); font-weight: 600; overflow-wrap: anywhere; }
@@ -75,28 +89,85 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
 button.text { display: inline; min-width: 0; height: auto; padding: 0; border: 0;
   background: none; color: var(--accent); font-size: 12px; }
 button.text:disabled { color: var(--muted); cursor: default; }
+button.primary { color: #fff; background: var(--accent); border-color: var(--accent); }
+button.primary:disabled { opacity: 0.6; cursor: default; }
 #show-resolved { margin: 8px 0; font-size: 13px; }
 .comment-form { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px;
   border-top: 1px solid var(--line); }
-.comment-form input, .comments textarea { width: 100%; color: inherit;
-  font: 14px/1.4 system-ui, sans-serif; background: var(--bg); border: 1px solid var(--line);
-  border-radius: 6px; padding: 6px 8px; }
-.comments textarea { height: auto; min-height: 4.5em; word-break: normal;
+.comment-form input, .comments textarea, .composer input, .composer textarea {
+  width: 100%; color: inherit; font: 14px/1.4 system-ui, sans-serif;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+.comments textarea, .composer textarea { height: auto; min-height: 4.5em; word-break: normal;
   overflow-wrap: anywhere; resize: vertical; }
-/* At least 16px on a phone, or iOS zooms the page in on focus. */
-@media (max-width: 640px) { .comment-form input, .comments textarea { font-size: 16px; } }
-.form-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.form-row .note { margin: 0; }
-.spot { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; font-size: 13px; }
-.spot.waiting { color: var(--accent); }
+.form-row { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.form-row .note { margin: 0 auto 0 0; }
+/* Folded to one button until the person starts writing. */
+.comment-form.folded > :not(#comment-open):not(#form-status) { display: none; }
 #comment-open { display: none; justify-content: flex-start; width: 100%; height: 36px;
-  padding: 0 8px; color: var(--muted); font-size: 16px; }
+  padding: 0 8px; color: var(--muted); font-size: 14px; }
+.comment-form.folded #comment-open { display: flex; }
 
-/* Pins over an image: a layer the size of the image, pins placed in %. */
-/* Clipped, so a pin at an edge never widens the page. */
-#image-box { overflow: hidden; }  /* positioned by the rule above */
-.pins { position: absolute; pointer-events: none; }
-.waiting-spot img { cursor: crosshair; }
+/* The composer at the spot clicked on the image. */
+.composer { position: fixed; z-index: 15; width: min(300px, calc(100vw - 24px));
+  display: flex; flex-direction: column; gap: 6px; padding: 10px; background: var(--bg);
+  border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 24px rgb(0 0 0 / 0.18); }
+.composer.dock { left: 0; right: 0; width: auto; border-bottom: 0; border-radius: 12px 12px 0 0; }
+
+/* Brief messages, some with Undo, over the bottom of the page. */
+.toast { position: fixed; z-index: 20; left: 50%; bottom: 24px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 12px; max-width: calc(100vw - 32px);
+  padding: 8px 14px; font-size: 13px; color: #fff; background: #1d1d1f;
+  border-radius: 18px; box-shadow: 0 4px 16px rgb(0 0 0 / 0.25);
+  visibility: hidden; opacity: 0; transition: opacity 0.2s, visibility 0.2s; }
+.toast.on { visibility: visible; opacity: 0.95; }
+.toast.error { background: var(--error); }
+.toast button.text { color: #8ec5ff; font-size: 13px; font-weight: 600; }
+.toast.error button.text { color: #fff; }
+@media (prefers-color-scheme: dark) { .toast { background: #3a3a3c; } }
+
+/* Big enough to hit with a finger on a phone; 16px inputs, or iOS zooms
+   the page in on focus. */
+@media (max-width: 640px) {
+  .comment-form input, .comments textarea, .composer input, .composer textarea { font-size: 16px; }
+  button.text, .toast button.text { display: inline-flex; align-items: center;
+    min-height: 44px; padding: 0 8px; font-size: 15px; }
+  .comment-tools { gap: 0 12px; margin-left: -8px; }
+  #show-resolved { margin: 4px 0 4px -8px; }
+  .form-row button, #comments-close, #comment-open { min-width: 44px; height: 44px;
+    padding: 0 14px; font-size: 15px; }
+  #comment-open { font-size: 16px; }
+  .toast { bottom: 52px; min-height: 44px; padding: 0 6px 0 14px; font-size: 15px; }
+  .comments-body { padding: 4px 12px; }
+  .comment-meta { font-size: 13px; }
+  .note { font-size: 14px; }
+  .comment-meta .badge { min-width: 24px; height: 22px; padding: 0 6px; font-size: 13px; border-radius: 11px; }
+  .comment-form input, .composer input { height: 44px; }
+  .comments-head { padding: 0 4px 0 12px; }
+  .comments-head h2 { font-size: 15px; }
+  .comment-form, .composer { padding: 8px; }
+  /* The 44px action row gives each comment its bottom spacing. */
+  .comment { padding-bottom: 0; }
+  .comment-text { margin: 2px 0 0; }
+  /* The docked composer: the text on top, the name and the buttons in one
+     row under it, so it covers as little of the image as it can. */
+  .composer { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; }
+  .composer textarea { grid-row: 1; grid-column: 1 / -1; min-height: 4em; }
+  .composer input { grid-row: 2; grid-column: 1; }
+  .composer .form-row { display: contents; }
+  .composer .hint { display: none; }
+  #composer-cancel { grid-row: 2; grid-column: 2; }
+  #composer-send { grid-row: 2; grid-column: 3; }
+  #composer-status { grid-column: 1 / -1; }
+}
+
+/* Pins over an image: a layer the size of the image, pins placed in %.
+   On a phone the image fits the width and scrolls, so a pin can be brought
+   into view above the sheet or the composer. */
+#image-box { overflow: auto; align-items: flex-start; justify-content: flex-start; }
+#image-box img { margin: auto; cursor: crosshair; }
+@media (max-width: 640px) { #image-box { padding: 4px; } #image-box img { max-height: none; } }
+/* Clipped to the image, so a pin at an edge never widens the page. */
+.pins { position: absolute; pointer-events: none; overflow: hidden; }
 .pin { position: absolute; transform: translateY(-100%); pointer-events: auto;
   min-width: 24px; height: 24px; padding: 0 6px; font-size: 12px; font-weight: 600;
   color: #fff; background: var(--accent); border: 2px solid #fff;
@@ -107,11 +178,17 @@ button.text:disabled { color: var(--muted); cursor: default; }
 .pin.down { transform: none; border-radius: 2px 12px 12px 12px; }
 .pin.left.down { transform: translateX(-100%); border-radius: 12px 2px 12px 12px; }
 .pin.new { background: #6e6e73; }
-.pin.lit { outline: 3px solid var(--accent); outline-offset: 2px; }
-button.badge { display: inline-flex; min-width: 20px; height: 18px; padding: 0 5px;
-  font-size: 11px; font-weight: 600; color: #fff; background: var(--accent);
+.pin.resolved { background: var(--done); }
+.pin.lit { z-index: 2; color: #1d1d1f; background: var(--hi); animation: pulse 1s ease-out 2; }
+@keyframes pulse { from { box-shadow: 0 0 0 0 rgb(255 176 32 / 0.8); }
+  to { box-shadow: 0 0 0 14px rgb(255 176 32 / 0); } }
+@media (prefers-reduced-motion: reduce) { .pin.lit { animation: none; } }
+.badge { display: inline-flex; align-items: center; gap: 2px; min-width: 20px; height: 18px;
+  padding: 0 5px; font-size: 11px; font-weight: 600; color: #fff; background: var(--accent);
   border: 0; border-radius: 9px; }
-.number { font-weight: 600; }
+span.badge { color: var(--fg); background: var(--btn); border: 1px solid var(--line); }
+.badge.resolved { color: #fff; background: var(--done); border-color: var(--done); }
+.badge svg { width: 11px; height: 11px; stroke-width: 3; }
 
 /* Invite pages. */
 .join { max-width: 560px; margin: 0 auto; padding: 24px 16px; }

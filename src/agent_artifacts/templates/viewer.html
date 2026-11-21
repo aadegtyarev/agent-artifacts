@@ -21,14 +21,17 @@
   {#- Browsers refuse to run their PDF viewer in a sandboxed frame. #}
   <iframe src="{{ raw }}" title="content"></iframe>
 {%- elif kind.viewable %}
-  {#- A click opens it full size in the browser's image viewer, except while
-      a comment waits for its spot; pins are drawn in the layer on top. #}
+  {#- A click places the spot of a new comment; a Ctrl/Cmd or middle click
+      still opens the image full size. Pins are drawn in the layer on top. #}
   <div class="center" id="image-box"><a id="image-link" href="{{ raw }}" target="_blank" rel="noopener"><img id="image" src="{{ raw }}" alt="{{ a.name }}"></a><div class="pins" id="pins" hidden></div></div>
 {%- else %}
   <div class="center">Archive: download it to see the contents.</div>
 {%- endif %}
 </main>
 <aside id="comments" class="comments" hidden aria-labelledby="comments-title" data-artifact="{{ a.id }}" data-kind="{{ kind.name }}">
+  {#- On a phone the panel is a bottom sheet: a swipe down on the grip or
+      the head folds it back to the strip. #}
+  <div class="grip" aria-hidden="true"></div>
   <div class="comments-head">
     <h2 id="comments-title" tabindex="-1">Comments</h2>
     <button type="button" id="comments-close" title="Close" aria-label="Close comments">{{ icon.close() }}</button>
@@ -40,21 +43,35 @@
     <button type="button" id="show-resolved" class="text" aria-expanded="false" hidden></button>
     <ol id="resolved-list" class="comment-list" hidden></ol>
   </div>
-  {#- On a phone the form stays folded to one button until it is needed. #}
+  {#- A comment about the whole file, folded to one button until needed. #}
   <form id="comment-form" class="comment-form folded" novalidate>
     <button type="button" id="comment-open">Write a comment…</button>
-    <div id="spot" class="spot" hidden>
-      <span id="spot-text"></span>
-      <button type="button" id="spot-action" class="text"></button>
-    </div>
+    <p id="form-note" class="note" hidden>About the whole image. To mark a spot, click the image instead.</p>
     <input id="comment-author" name="author" maxlength="64" autocomplete="name" placeholder="Your name" aria-label="Your name">
     <textarea id="comment-text" name="text" maxlength="2000" rows="3" placeholder="Comment" aria-label="Comment text" aria-describedby="comment-hint"></textarea>
     <div class="form-row">
-      <span id="comment-hint" class="note">Ctrl+Enter to send</span>
-      <button type="submit" id="comment-send">Send</button>
+      <span id="comment-hint" class="note hint">Ctrl+Enter to send</span>
+      <button type="submit" id="comment-send" class="primary">Send</button>
     </div>
     <p id="form-status" class="note" role="status" aria-live="polite"></p>
   </form>
 </aside>
+{#- A phone shows this strip while the sheet is folded. #}
+<button type="button" id="comments-strip" class="strip" aria-controls="comments" aria-expanded="false">{{ icon.comment() }}<span id="strip-text">Comments · {{ a.open_comments }} open</span>{{ icon.chevron_up() }}</button>
 </div>
+{%- if kind.pin == "point" and kind.viewable %}
+{#- The composer at the spot clicked on the image: a popover next to the pin
+    on a computer, docked above the keyboard on a phone. #}
+<form id="composer" class="composer" hidden novalidate aria-label="New comment at the marked spot">
+  <input id="composer-author" name="author" maxlength="64" autocomplete="name" placeholder="Your name" aria-label="Your name">
+  <textarea id="composer-text" name="text" maxlength="2000" rows="3" placeholder="Comment" aria-label="Comment text" aria-describedby="composer-hint"></textarea>
+  <div class="form-row">
+    <span id="composer-hint" class="note hint">Ctrl+Enter to send</span>
+    <button type="button" id="composer-cancel">Cancel</button>
+    <button type="submit" id="composer-send" class="primary">Send</button>
+  </div>
+  <p id="composer-status" class="note" role="status" aria-live="polite"></p>
+</form>
+{%- endif %}
+<div id="toast" class="toast" role="status" aria-live="polite"><span id="toast-text"></span><button type="button" id="toast-undo" class="text" hidden>Undo</button></div>
 {% endblock %}
