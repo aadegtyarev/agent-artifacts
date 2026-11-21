@@ -48,7 +48,7 @@ async def json_body(request: Request, allowed: Set[str], required: Set[str] = fr
     """The request's JSON object, with only ``allowed`` keys and all ``required``."""
     try:
         data = await request.json()
-    except ValueError:
+    except (ValueError, RecursionError):  # RecursionError: nested too deep
         data = None
     if not isinstance(data, dict) or not required <= set(data) <= allowed or not data:
         raise ApiError(400, "bad_request", f"expected a JSON object with {sorted(allowed)}")

@@ -19,18 +19,21 @@ class Kind:
     viewable: bool = True
     magic: tuple[bytes, ...] = ()
     text: bool = False
+    # The anchor type a comment's pin takes: "element" on a page, "point" on
+    # an image; None where comments are about the whole file.
+    pin: str | None = None
 
 
 _KINDS = {
-    "html": Kind("html", "text/html; charset=utf-8", sandboxed=True, text=True),
-    "md": Kind("md", "text/html; charset=utf-8", sandboxed=True, text=True),
-    "txt": Kind("txt", "text/plain; charset=utf-8", sandboxed=True, text=True),
+    "html": Kind("html", "text/html; charset=utf-8", sandboxed=True, text=True, pin="element"),
+    "md": Kind("md", "text/html; charset=utf-8", sandboxed=True, text=True, pin="element"),
+    "txt": Kind("txt", "text/plain; charset=utf-8", sandboxed=True, text=True, pin="element"),
     "svg": Kind("svg", "image/svg+xml", sandboxed=True, text=True),
     "pdf": Kind("pdf", "application/pdf", magic=(b"%PDF-",)),
-    "png": Kind("png", "image/png", magic=(b"\x89PNG\r\n\x1a\n",)),
-    "jpeg": Kind("jpeg", "image/jpeg", magic=(b"\xff\xd8\xff",)),
-    "gif": Kind("gif", "image/gif", magic=(b"GIF87a", b"GIF89a")),
-    "webp": Kind("webp", "image/webp"),
+    "png": Kind("png", "image/png", magic=(b"\x89PNG\r\n\x1a\n",), pin="point"),
+    "jpeg": Kind("jpeg", "image/jpeg", magic=(b"\xff\xd8\xff",), pin="point"),
+    "gif": Kind("gif", "image/gif", magic=(b"GIF87a", b"GIF89a"), pin="point"),
+    "webp": Kind("webp", "image/webp", pin="point"),
     "zip": Kind("zip", "application/zip", viewable=False, magic=(b"PK\x03\x04", b"PK\x05\x06")),
     "tgz": Kind("tgz", "application/gzip", viewable=False, magic=(b"\x1f\x8b",)),
 }

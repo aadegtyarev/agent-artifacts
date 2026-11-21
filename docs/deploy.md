@@ -50,8 +50,8 @@ Besides proxying, the vhost:
   `crit`. An app outage then does not show in nginx's log; watch `/health`
   instead.
 - limits each client IP: 10 requests a second for pages (bursts of 40), 2 a
-  second for the API (bursts of 10), 20 connections. Above that nginx answers
-  `429`.
+  second for the API (bursts of 10), 10 comments posted, edited or deleted a
+  minute (bursts of 5), 20 connections. Above that nginx answers `429`.
 - accepts uploads a little above the 25 MB file limit.
 
 The rate limits stop a single noisy client. A distributed flood needs

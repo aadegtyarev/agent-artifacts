@@ -37,8 +37,12 @@ USAGE = """usage: artifacts_cli.py <command> [args]
                             a different key already there is copied to env.bak-*
   upload FILE [NAME]        upload a file, print the artifact JSON (url, id, expires_at)
   replace ID FILE [NAME]    replace the file behind an existing link
-  list                      your live files
+  list                      your live files, with comments and open_comments counts
   delete ID                 delete one now
+  comments ID               the comments on a file, oldest first; marks them read
+  resolve ID N              mark comment N done
+  reopen ID N               mark comment N open again
+  delete-comment ID N       delete comment N; the other numbers stay
   me                        your name, space used and quota, admin or not
   new-key                   replace your key (after a leak) and save the new one
 
@@ -197,6 +201,12 @@ def _is_local(host: str | None) -> bool:
     return addr.is_loopback or addr.is_private
 
 
+def _number(n: str) -> str:
+    if not n.isdecimal() or not n.isascii():
+        raise Usage(f"not a comment number: {n}")
+    return n
+
+
 def _quote(name: str) -> str:
     return name.replace("\\", "\\\\").replace('"', "%22").replace("\r", "").replace("\n", "")
 
@@ -244,6 +254,20 @@ def run(argv: list[str]) -> str | None:
         case "delete":
             need(1, "ID")
             c.call("DELETE", f"{api}/{args[0]}")
+            return "deleted"
+        case "comments":
+            need(1, "ID")
+            return c.call("GET", f"{api}/{args[0]}/comments")
+        case "resolve" | "reopen":
+            need(2, "ID N")
+            return c.json(
+                "PATCH",
+                f"{api}/{args[0]}/comments/{_number(args[1])}",
+                {"resolved": cmd == "resolve"},
+            )
+        case "delete-comment":
+            need(2, "ID N")
+            c.call("DELETE", f"{api}/{args[0]}/comments/{_number(args[1])}")
             return "deleted"
         case "me":
             return c.call("GET", "/api/v1/me")
