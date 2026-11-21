@@ -7,7 +7,8 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body { margin: 0; font: 15px/1.4 system-ui, sans-serif; color: var(--fg);
-  background: var(--bg); display: flex; flex-direction: column; height: 100vh; }
+  background: var(--bg); display: flex; flex-direction: column; height: 100vh;
+  height: 100dvh; }  /* the visible height: mobile browser bars and keyboards excluded */
 
 /* The viewer: one compact header row, the name and details cut to one line. */
 header { display: flex; gap: 8px; align-items: center; padding: 4px 8px 4px 12px;
