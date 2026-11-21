@@ -287,7 +287,7 @@
       return { top: r.top + anchor.y * r.height - box.top - box.height / 2,
         left: r.left + anchor.x * r.width - box.left - box.width / 2 };
     };
-    for (let box = el.parentElement; box && box !== document.body; box = box.parentElement) {
+    for (let box = el.parentElement; box && box !== document.documentElement; box = box.parentElement) {
       const scrolls = box.scrollHeight > box.clientHeight || box.scrollWidth > box.clientWidth;
       if (scrolls && /auto|scroll/.test(getComputedStyle(box).overflow)) box.scrollBy(point(box.getBoundingClientRect()));
     }

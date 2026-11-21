@@ -201,6 +201,8 @@ links themselves (GET or HEAD) to build a preview. Only the POST does.
 
 ## Projects
 
+Not built yet: this section is the approved design.
+
 A project groups one agent's files under a title and gives them one page.
 Files in a project have no lifetime: they stay until the agent deletes them
 or the project. They count toward the agent's quota and the total limit like
