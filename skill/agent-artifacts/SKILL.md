@@ -65,8 +65,9 @@ charts (inline SVG) for trends and shares, sections with headings for a long
 read. A plain page with lists is fine when that is all the content needs; do
 not add tables or charts for their own sake.
 
-When the person is going to review and comment on a spot, an image is the
-form that takes pins today; other types take comments on the whole file.
+When the person is going to review and comment on a spot, pages (HTML,
+Markdown, text) and images take pins; PDF, SVG and archives take comments
+on the whole file.
 
 ## Upload, replace, delete
 

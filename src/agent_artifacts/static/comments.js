@@ -1,8 +1,8 @@
 // Comments on the viewer page: the header button, the panel (a bottom sheet
 // over a strip on a phone) with the list and a form for the whole file, the
-// composer at a spot clicked on an image, pins, a comment's action menu,
-// typing mode on a phone, and the toasts with Undo. Names and texts come from
-// anyone with the link, so they go in as text nodes only, never as HTML.
+// composer at a spot clicked on an image or a page, pins, a comment's action
+// menu, typing mode on a phone, and the toasts with Undo. Names and texts come
+// from anyone with the link, so they go in as text nodes only, never as HTML.
 (() => {
   const panel = document.getElementById("comments");
   if (!panel) return;
@@ -24,17 +24,26 @@
   const image = $("image");
   const imageBox = $("image-box");
   const pins = $("pins");
+  const frame = $("frame");
   const toastBox = $("toast");
   const toastText = $("toast-text");
   const toastUndo = $("toast-undo");
 
   // How a comment is tied to the content of this kind of file: "point" on an
-  // image, null for a comment about the whole file. Pins on elements of
-  // pages (html, md, txt) need the script inside the sandbox and come later.
+  // image, "element" on a page (html, md, txt), null for a comment about the
+  // whole file.
   function pinMode(kind) {
-    return ["png", "jpeg", "gif", "webp"].includes(kind) && image && composer ? "point" : null;
+    if (!composer) return null;
+    if (["png", "jpeg", "gif", "webp"].includes(kind) && image) return "point";
+    return ["html", "md", "txt"].includes(kind) && frame ? "element" : null;
   }
   const mode = pinMode(panel.dataset.kind);
+  // A page's pins are drawn by the script inside its sandboxed frame (see
+  // pins.js). Until it reports ready the page has comments without pins;
+  // `off` once it is clearly not coming. `missing`: comments whose spot the
+  // script did not find; `spot`: the draft pin, in the frame's pixels;
+  // `picking`: the script was told that a click on the page marks a spot.
+  const page = { ready: false, off: false, missing: new Set(), spot: null, picking: false };
 
   // Browser storage may be missing or refuse; then the name is not
   // remembered and comments cannot be edited from this browser.
@@ -199,6 +208,13 @@
     return node;
   }
 
+  // A comment field is one line while empty and grows with its text, up to
+  // the style sheet's max-height.
+  function grow(area) {
+    area.style.height = "auto";
+    area.style.height = `${area.scrollHeight + 2}px`;
+  }
+
   function button(label, onClick, className = "text") {
     const b = el("button", className, label);
     b.type = "button";
@@ -252,7 +268,8 @@
   }
 
   // Resolved comments keep their pins, shown grey only with the resolved list.
-  const hasPin = (c) => mode && c.anchor && c.anchor.type === "point" && (!c.resolved || resolvedShown);
+  const pinned = (c) => mode && c.anchor && c.anchor.type === mode && (!c.resolved || resolvedShown);
+  const hasPin = (c) => pinned(c) && (mode === "point" || (page.ready && !page.missing.has(c.n)));
   // The list without comments deleted a moment ago (Undo still possible).
   const visible = () => comments.filter((c) => !deleting.has(c.n) && !(pending && pending.c.n === c.n));
 
@@ -329,6 +346,9 @@
       : "No comments yet. Open comments");
     $("comments-title").textContent = `Comments · ${open.length} open`;
     $("comments-empty").hidden = shown.length > 0;
+    const hint = $("pin-hint");
+    hint.hidden = !page.ready;
+    hint.textContent = `${phone.matches ? "Tap" : "Click"} the page to pin a comment`;
     if (!resolved.length) resolvedShown = false;
     list.replaceChildren(...open.map(item));
     resolvedList.replaceChildren(...resolved.map(item));
@@ -346,6 +366,7 @@
       // it is hidden and cannot take the focus.
       if (typingHost && !typingHost.isConnected) enterTyping(box);
       const area = box.querySelector("textarea");
+      grow(area);
       area.focus({ preventScroll: true });
       area.setSelectionRange(editing.start, editing.end);
     } else {
@@ -426,6 +447,15 @@
     actions.append(more);
     head.append(actions);
     li.append(head, el("p", "comment-text", c.text));
+    // On a page without its pin: the text of the element it was about.
+    const lost = page.ready && page.missing.has(c.n);
+    if (mode === "element" && c.anchor && (page.off || lost)) {
+      const where = el("p", "note where");
+      if (lost) where.append(el("span", "lost", "Spot not found"), " · ");
+      else where.append("On ");
+      where.append(c.anchor.text ? `“${c.anchor.text}”` : "an element of the page");
+      li.append(where);
+    }
     return li;
   }
 
@@ -435,7 +465,7 @@
     const area = el("textarea");
     area.value = editing.draft;
     area.maxLength = 2000;
-    area.rows = 3;
+    area.rows = 1;
     area.setAttribute("aria-label", `Text of comment ${c.n}`);
     area.addEventListener("input", () => { editing.draft = area.value; });
     const save = button("Save", () => saveEdit(c, token, save), "text typing-send");
@@ -459,6 +489,10 @@
   }
 
   function drawPins() {
+    if (mode === "element") {
+      sendPins();
+      return;
+    }
     if (!mode) return;
     const shown = visible().filter(hasPin).map((c) => {
       const pin = pinAt(c.anchor, String(c.n));
@@ -493,7 +527,7 @@
     return best;
   }
 
-  if (mode) {
+  if (mode === "point") {
     pins.addEventListener("click", (e) => {
       const hit = e.target.closest(".pin");
       if (!hit) return;
@@ -506,6 +540,21 @@
       else $("composer-text").focus();
     });
   }
+
+  // The script in the frame draws them; it gets numbers, anchors and flags,
+  // never texts or names.
+  function sendPins() {
+    if (!page.ready) return;
+    tell({
+      type: "pins",
+      pins: visible().filter(pinned).map((c) => ({
+        n: c.n, anchor: c.anchor, resolved: c.resolved, lit: lit.pin === c.n,
+      })),
+      draft,
+    });
+  }
+
+  const tell = (m) => frame.contentWindow.postMessage(m, "*");
 
   function pinAt(anchor, label) {
     const pin = el("button", "pin", label);
@@ -520,7 +569,7 @@
   // The pin layer covers exactly the displayed image. A pin too close to
   // the right or top edge turns to the other side to stay on the image.
   function fitPins() {
-    if (!mode) return;
+    if (mode !== "point") return;
     const width = image.offsetWidth;
     const height = image.offsetHeight;
     pins.style.left = `${image.offsetLeft}px`;
@@ -544,7 +593,15 @@
       for (const node of document.querySelectorAll(which === "pin" ? ".pin.lit" : ".comment.lit")) {
         node.classList.remove("lit");
       }
+      if (which === "pin" && mode === "element") sendPins();
     }, 2500);
+  }
+
+  // Brings the pin of comment `n` (null: the draft) into view; on a page
+  // the script in the frame scrolls it.
+  function centerOn(n) {
+    if (mode === "element") tell({ type: "show", n: n === null ? 0 : n });
+    else centerPin(pins.querySelector(n === null ? ".pin.new" : `[data-n="${n}"]`));
   }
 
   // Scrolls the image so the pin sits in the middle of what is visible of
@@ -575,7 +632,7 @@
     }
     light("pin", n);
     render();
-    centerPin(pins.querySelector(`[data-n="${n}"]`));
+    centerOn(n);
   }
 
   // From a pin to its comment, opening the panel or sheet.
@@ -592,10 +649,11 @@
     li.focus({ preventScroll: true });
   }
 
-  // --- The composer at a spot on the image ----------------------------------
+  // --- The composer at a spot on the image or the page ----------------------
 
   function placeComposer() {
     if (!mode || composer.hidden) return;
+    const onImage = mode === "point";
     if (phone.matches) {
       // Docked to the bottom of the page by the style sheet; while it is
       // typed in on a touch screen it is at the top instead (typing mode).
@@ -603,6 +661,10 @@
       composer.style.left = "";
       composer.style.top = "";
       if (typingHost === composer) return;
+      if (!onImage) {
+        dockToast();
+        return;
+      }
       // Room under the image, so the pin can scroll up above the composer.
       const covered = imageBox.getBoundingClientRect().bottom - composer.getBoundingClientRect().top;
       imageBox.style.paddingBottom = covered > 0 ? `${covered + 8}px` : "";
@@ -612,12 +674,22 @@
     dockToast();
     // Next to the pin, inside the window: below it, or above with no room.
     composer.classList.remove("dock");
-    imageBox.style.paddingBottom = "";
-    const img = image.getBoundingClientRect();
-    const box = imageBox.getBoundingClientRect();
     const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
-    const x = clamp(img.left + draft.x * img.width, box.left, box.right);
-    const y = clamp(img.top + draft.y * img.height, box.top, box.bottom);
+    let x;
+    let y;
+    if (onImage) {
+      imageBox.style.paddingBottom = "";
+      const img = image.getBoundingClientRect();
+      const box = imageBox.getBoundingClientRect();
+      x = clamp(img.left + draft.x * img.width, box.left, box.right);
+      y = clamp(img.top + draft.y * img.height, box.top, box.bottom);
+    } else {
+      // The frame reports where the draft pin is in its own pixels.
+      const box = frame.getBoundingClientRect();
+      const spot = page.spot || { x: box.width / 2, y: 0 };
+      x = clamp(box.left + spot.x, box.left, box.right);
+      y = clamp(box.top + spot.y, box.top, box.bottom);
+    }
     const w = composer.offsetWidth;
     const h = composer.offsetHeight;
     const vw = document.documentElement.clientWidth;
@@ -636,7 +708,7 @@
   function minimizeComposer() {
     minimized = true;
     composer.hidden = true;
-    imageBox.style.paddingBottom = "";
+    if (mode === "point") imageBox.style.paddingBottom = "";
   }
 
   function restoreComposer() {
@@ -646,14 +718,18 @@
     $("composer-text").focus({ preventScroll: true });
   }
 
-  function openComposer(anchor) {
+  function openComposer(anchor, spot = null) {
     // A new draft makes an older discarded one's Undo meaningless.
     if (undoAction && undoAction.discarded) hideToast();
     // On a phone the composer takes the bottom; the sheet folds to the strip.
     if (phone.matches && !panel.hidden) closePanel();
     const wasOpen = !composer.hidden;
     draft = anchor;
+    page.spot = spot;
     lit.pin = null;
+    const on = $("composer-on");
+    on.hidden = mode !== "element";
+    on.textContent = anchor.text ? `On “${anchor.text}”` : "On the marked element";
     if (!wasOpen) {
       const name = $("composer-author");
       if (!name.value) name.value = storage.get(NAME_KEY) || "";
@@ -663,9 +739,7 @@
     drawPins();
     placeComposer();
     $("composer-text").focus({ preventScroll: true });
-    if (phone.matches && !typingHost) {
-      requestAnimationFrame(() => centerPin(pins.querySelector(".pin.new")));
-    }
+    if (phone.matches && !typingHost) requestAnimationFrame(() => centerOn(null));
   }
 
   // Closes the composer; focus goes to the content unless the caller moves it.
@@ -674,10 +748,16 @@
     if (typingHost === composer) exitTyping();
     composer.hidden = true;
     minimized = false;
-    if (inside) imageBox.focus({ preventScroll: true });
     draft = null;
+    page.spot = null;
     $("composer-text").value = "";
-    imageBox.style.paddingBottom = "";
+    $("composer-text").style.height = "";
+    if (mode === "point") {
+      if (inside) imageBox.focus({ preventScroll: true });
+      imageBox.style.paddingBottom = "";
+    } else if (inside) {
+      focusBack(null);
+    }
     dockToast();
     say("composer-status", "");
     drawPins();
@@ -686,18 +766,19 @@
   // Cancel or Escape. Typed text is not lost silently: Undo brings the
   // composer back with the same spot and text.
   function cancelComposer() {
-    const kept = { anchor: draft, text: $("composer-text").value };
+    const kept = { anchor: draft, spot: page.spot, text: $("composer-text").value };
     closeComposer();
     if (!kept.text.trim()) return;
     const restore = () => {
-      openComposer(kept.anchor);
+      openComposer(kept.anchor, kept.spot);
       $("composer-text").value = kept.text;
+      grow($("composer-text"));
     };
     restore.discarded = true;
     toast("Comment discarded", {
       undo: restore,
       ms: UNDO_MS,
-      back: "image-box",
+      back: mode === "point" ? "image-box" : null,
     });
     toastUndo.focus({ preventScroll: true });
   }
@@ -747,7 +828,8 @@
           // Focus on the new comment: its row, or its pin with the panel closed.
           const row = $(`comment-${c.n}`);
           if (row && row.getClientRects().length) row.focus({ preventScroll: true });
-          else pins.querySelector(`[data-n="${c.n}"]`).focus({ preventScroll: true });
+          else if (mode === "point") pins.querySelector(`[data-n="${c.n}"]`).focus({ preventScroll: true });
+          else focusBack(null);
           toast(sentMessage(c.n, kept), { ms: 5000 });
         } catch (err) {
           say("composer-status", err.message, true);
@@ -766,7 +848,15 @@
       if (typingHost === composer && composerText.value.trim()) leaveTyping();
       else cancelComposer();
     });
+    window.addEventListener("resize", placeComposer);
+    phone.addEventListener("change", () => {
+      // A computer has room for both: a hidden draft comes back.
+      if (minimized && !phone.matches) restoreComposer();
+      placeComposer();
+    });
+  }
 
+  if (mode === "point") {
     // A click places the spot (or moves it while writing); a Ctrl/Cmd or
     // middle click still opens the image full size.
     $("image-link").addEventListener("click", (e) => {
@@ -788,14 +878,92 @@
       watch.observe(image);
       watch.observe(imageBox);
     }
-    window.addEventListener("resize", () => { fitPins(); placeComposer(); });
+    window.addEventListener("resize", fitPins);
     imageBox.addEventListener("scroll", () => { if (!phone.matches) placeComposer(); });
-    phone.addEventListener("change", () => {
-      // A computer has room for both: a hidden draft comes back.
-      if (minimized && !phone.matches) restoreComposer();
-      placeComposer();
-    });
     $("form-note").hidden = false;
+  }
+
+  // --- Pins on a page: the script in the frame -------------------------------
+  // While the panel (a phone's sheet) is open, a click on the page marks the
+  // spot of a new comment and does nothing else; folded, the page works as
+  // usual.
+
+  // Tells the script whether the next click is a pin's.
+  function syncPicking() {
+    if (mode !== "element" || !page.ready) return;
+    const on = !panel.hidden;
+    if (on !== page.picking) tell({ type: "mode", on });
+    page.picking = on;
+  }
+
+  // Messages from the frame: only from its window, checked like any input.
+  const isAnchor = (a) => a && typeof a === "object" && a.type === "element"
+    && typeof a.selector === "string" && a.selector.length <= 512
+    && typeof a.text === "string" && a.text.length <= 200
+    && [a.x, a.y].every((v) => typeof v === "number" && v >= 0 && v <= 1)
+    && Number.isInteger(a.width) && a.width > 0 && a.width <= 100000;
+  const isSpot = (p) => p && typeof p === "object"
+    && [p.x, p.y].every((v) => typeof v === "number" && Number.isFinite(v));
+
+  function onFrameMessage(e) {
+    if (e.source !== frame.contentWindow) return;
+    const m = e.data;
+    if (!m || typeof m !== "object") return;
+    if (m.type === "ready") {
+      clearTimeout(timers.ready);
+      page.ready = true;
+      page.off = false;
+      // A page loaded again starts with pin mode off.
+      page.picking = false;
+      syncPicking();
+      $("form-note").hidden = false;
+      render();
+    } else if (!page.ready) {
+      // Nothing else counts before the script has said it is there.
+    } else if (m.type === "anchor" && page.picking && isAnchor(m.anchor)) {
+      const { selector, text: t, x, y, width } = m.anchor;
+      openComposer({ type: "element", selector, text: t, x, y, width }, isSpot(m.spot) ? m.spot : null);
+    } else if (m.type === "placed" && Array.isArray(m.missing) && m.missing.length <= 200
+      && m.missing.every(Number.isInteger) && (m.spot === null || isSpot(m.spot))) {
+      const missing = new Set(m.missing);
+      const same = missing.size === page.missing.size && [...missing].every((n) => page.missing.has(n));
+      page.spot = m.spot;
+      placeComposer();
+      if (same) return;
+      page.missing = missing;
+      render();
+    } else if (m.type === "pin" && Number.isInteger(m.n)) {
+      if (m.n === 0) {
+        if (minimized) closePanel(); // brings the composer back
+        else if (!composer.hidden) $("composer-text").focus();
+      } else if (comments.some((c) => c.n === m.n)) {
+        showComment(m.n);
+      }
+    } else if (m.type === "escape") {
+      escape();
+    }
+  }
+
+  // The script may have reported ready before this page listened; asked
+  // here and when the frame has loaded, it answers. With no answer soon
+  // after, the page blocks it: comments without pins.
+  function waitForScript(ms) {
+    clearTimeout(timers.ready);
+    if (page.ready) return;
+    timers.ready = setTimeout(() => {
+      page.off = true;
+      render();
+    }, ms);
+  }
+
+  if (mode === "element") {
+    window.addEventListener("message", onFrameMessage);
+    frame.addEventListener("load", () => {
+      tell({ type: "hello" });
+      waitForScript(2000);
+    });
+    tell({ type: "hello" });
+    waitForScript(4000);
   }
 
   // --- The form for the whole file, folded to one button until needed --------
@@ -828,6 +996,7 @@
       try {
         const { c, kept } = await post(body);
         text.value = "";
+        text.style.height = "";
         if (typingHost === form) exitTyping();
         fold(true);
         light("comment", c.n);
@@ -928,6 +1097,7 @@
     editing = { n: c.n, draft: c.text, start: c.text.length, end: c.text.length };
     render();
     const area = $(`comment-${c.n}`).querySelector("textarea");
+    grow(area);
     area.focus();
     area.setSelectionRange(editing.start, editing.end);
   }
@@ -1084,6 +1254,7 @@
     if (mode && phone.matches && !composer.hidden) minimizeComposer();
     panel.hidden = false;
     setExpanded(true);
+    syncPicking();
     applySize();
     fitPins();
     dockToast();
@@ -1097,6 +1268,7 @@
     if (typingHost && panel.contains(typingHost)) exitTyping();
     panel.hidden = true;
     setExpanded(false);
+    syncPicking();
     if (!text.value.trim()) fold(true);
     fitPins();
     if (minimized) restoreComposer();
@@ -1413,6 +1585,7 @@
     : null);
 
   function typingAnchor(host) {
+    if (mode === "element") return null;
     if (host === composer) return draft;
     if (host === form || !mode) return null;
     const c = comments.find((x) => x.n === Number(host.dataset.n));
@@ -1445,10 +1618,6 @@
     pin.style.top = `${top + anchor.y * h}px`;
   }
 
-  function growField(area) {
-    area.style.height = "auto";
-    area.style.height = `${Math.min(132, Math.max(66, area.scrollHeight + 2))}px`;
-  }
 
   function enterTyping(host) {
     if (typingHost === host) return;
@@ -1465,15 +1634,15 @@
       node.classList.add("typing-path");
     }
     document.body.classList.add("typing");
-    if (mode) imageBox.style.paddingBottom = "";
+    if (mode === "point") imageBox.style.paddingBottom = "";
     $("typing-title").textContent = host === composer
-      ? "New comment on the image"
+      ? (mode === "point" ? "New comment on the image" : $("composer-on").textContent)
       : host === form ? "New comment on the whole file" : `Editing #${host.dataset.n}`;
     host.prepend(typingContext);
     typingContext.hidden = false;
     fillStrip(typingAnchor(host));
     const area = host.querySelector("textarea");
-    if (area) growField(area);
+    if (area) grow(area);
     dockToast();
   }
 
@@ -1481,12 +1650,12 @@
     typingHost.classList.remove("typing-host");
     for (const node of document.querySelectorAll(".typing-path")) node.classList.remove("typing-path");
     document.body.classList.remove("typing");
-    const area = typingHost.querySelector("textarea");
-    if (area) area.style.height = "";
     typingContext.hidden = true;
     document.body.append(typingContext);
+    const area = typingHost.querySelector("textarea");
     typingHost = null;
     typingBase = null;
+    if (area) grow(area);
   }
 
   function exitTyping() {
@@ -1496,7 +1665,7 @@
     fitPins();
     placeComposer();
     dockToast();
-    if (mode && !composer.hidden) requestAnimationFrame(() => centerPin(pins.querySelector(".pin.new")));
+    if (mode && !composer.hidden) requestAnimationFrame(() => centerOn(null));
   }
 
   // Cancel in typing mode: back to the page, focus on the form or comment.
@@ -1533,10 +1702,10 @@
     if (typingHost && typingHost.contains(e.target) && e.target.closest("button")) e.preventDefault();
   });
   document.addEventListener("input", (e) => {
-    if (typingHost && e.target.matches("textarea") && typingHost.contains(e.target)) {
-      growField(e.target);
-      dockToast();
-    }
+    if (!e.target.matches("#composer-text, #comment-text, .comment-edit textarea")) return;
+    grow(e.target);
+    if (typingHost) dockToast();
+    else placeComposer();
   });
   phone.addEventListener("change", () => { if (!phone.matches) exitTyping(); });
   // Android hides the keyboard (the Back button) but leaves the field
@@ -1552,12 +1721,12 @@
     });
   }
 
-  document.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape") return;
+  function escape() {
     if (!menu.hidden) closeMenu();
     else if (mode && !composer.hidden) cancelComposer();
     else if (!panel.hidden) closePanel();
-  });
+  }
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") escape(); });
   // Others may have commented while this tab was in the background.
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") load();

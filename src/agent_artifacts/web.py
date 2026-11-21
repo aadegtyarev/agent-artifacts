@@ -182,10 +182,12 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             return RedirectResponse(f"/a/{a.id}", status_code=303)
         csp = pages.SANDBOX_CSP if kind.sandboxed else pages.RAW_CSP
         headers = {"Cache-Control": "no-store", "Content-Security-Policy": csp}
-        if kind.name in ("md", "txt"):
-            build = pages.markdown_page if kind.name == "md" else pages.text_page
+        # Pages get the pin script: appended to HTML, inside the Markdown and
+        # text pages built here.
+        if kind.name in ("html", "md", "txt"):
+            build = {"html": pages.html_page, "md": pages.markdown_page, "txt": pages.text_page}
             try:
-                page = await run_in_threadpool(build, store.path(a.id), a.name)
+                page = await run_in_threadpool(build[kind.name], store.path(a.id), a.name)
             except FileNotFoundError:  # purged since the lookup
                 return pages.not_found()
             return HTMLResponse(page, headers=headers)

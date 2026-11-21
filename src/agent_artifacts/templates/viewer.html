@@ -16,7 +16,7 @@
 <div class="stage">
 <main>
 {%- if kind.sandboxed %}
-  <iframe sandbox="{{ sandbox }}" src="{{ raw }}" title="content"></iframe>
+  <iframe id="frame" sandbox="{{ sandbox }}" src="{{ raw }}" title="content"></iframe>
 {%- elif kind.name == "pdf" %}
   {#- Browsers refuse to run their PDF viewer in a sandboxed frame. #}
   <iframe src="{{ raw }}" title="content"></iframe>
@@ -40,6 +40,7 @@
   </div>
   <div class="comments-body">
     <p id="comments-status" class="note" role="status" aria-live="polite"></p>
+    <p id="pin-hint" class="note" hidden></p>
     <p id="comments-empty" class="note" hidden>No comments yet.</p>
     <ol id="comment-list" class="comment-list"></ol>
     <ol id="resolved-list" class="comment-list" hidden></ol>
@@ -47,9 +48,9 @@
   {#- A comment about the whole file, folded to one button until needed. #}
   <form id="comment-form" class="comment-form folded" tabindex="-1" novalidate>
     <button type="button" id="comment-open">Write a comment…</button>
-    <p id="form-note" class="note" hidden>About the whole image. To mark a spot, click the image instead.</p>
+    <p id="form-note" class="note" hidden>{% if kind.pin == "element" %}About the whole file. To mark a spot, click the page instead.{% else %}About the whole image. To mark a spot, click the image instead.{% endif %}</p>
     <input id="comment-author" name="author" maxlength="64" autocomplete="name" placeholder="Your name" aria-label="Your name">
-    <textarea id="comment-text" name="text" maxlength="2000" rows="3" placeholder="Comment" aria-label="Comment text" aria-describedby="comment-hint"></textarea>
+    <textarea id="comment-text" name="text" maxlength="2000" rows="1" placeholder="Comment" aria-label="Comment text" aria-describedby="comment-hint"></textarea>
     <div class="form-row">
       <span id="comment-hint" class="note hint">Ctrl+Enter to send</span>
       <button type="button" id="comment-cancel" class="typing-cancel">Cancel</button>
@@ -62,12 +63,13 @@
     for the agent's status, once the server reports one. #}
 <button type="button" id="comments-strip" class="strip" aria-controls="comments" aria-expanded="false" aria-label="{% if a.comments %}Comments: {{ a.comments }}, {{ a.comments - a.open_comments }} resolved. Open{% else %}No comments yet. Open comments{% endif %}">{{ icon.comment() }}<span id="strip-text">{% if a.comments %}{{ a.comments }} · {{ a.comments - a.open_comments }} resolved{% else %}No comments yet{% endif %}</span><span id="strip-agent" class="strip-agent" hidden></span>{{ icon.chevron_up() }}</button>
 </div>
-{%- if kind.pin == "point" and kind.viewable %}
-{#- The composer at the spot clicked on the image: a popover next to the pin
-    on a computer, docked at the bottom on a phone. #}
+{%- if kind.pin and kind.viewable %}
+{#- The composer at the spot clicked on the image or the page: a popover
+    next to the pin on a computer, docked at the bottom on a phone. #}
 <form id="composer" class="composer" hidden tabindex="-1" novalidate aria-label="New comment at the marked spot">
+  <p id="composer-on" class="note composer-on" hidden></p>
   <input id="composer-author" name="author" maxlength="64" autocomplete="name" placeholder="Your name" aria-label="Your name">
-  <textarea id="composer-text" name="text" maxlength="2000" rows="3" placeholder="Comment" aria-label="Comment text" aria-describedby="composer-hint"></textarea>
+  <textarea id="composer-text" name="text" maxlength="2000" rows="1" placeholder="Comment" aria-label="Comment text" aria-describedby="composer-hint"></textarea>
   <div class="form-row">
     <span id="composer-hint" class="note hint">Ctrl+Enter to send</span>
     <button type="button" id="composer-cancel" class="typing-cancel">Cancel</button>

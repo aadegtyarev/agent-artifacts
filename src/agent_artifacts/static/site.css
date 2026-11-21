@@ -44,6 +44,8 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
 .stage > main > iframe, .stage > main > .center { position: absolute;
   top: 0; left: 0; width: 100%; height: 100%; }
 #comments-toggle[aria-expanded="true"] { border-color: var(--accent); }
+/* The element a page's composer is about. */
+.composer-on { margin: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .comments { width: 340px; flex: none; display: flex; flex-direction: column;
   border-left: 1px solid var(--line); background: var(--bg); }
 .grip, .strip, #comments-close .chevron, .comment-form .typing-cancel { display: none; }
@@ -76,6 +78,7 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
   .strip { flex: none; justify-content: flex-start; gap: 8px; width: 100%; height: 48px;
     padding: 0 0 0 14px; font-size: 15px; font-weight: 500; background: var(--bg); border: 0;
     border-top: 1px solid var(--line); border-radius: 0; touch-action: none; }
+  .composer-on { display: none; }
   #strip-text { flex: 1; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden;
     text-overflow: ellipsis; }
   .strip .chevron { flex: none; width: 44px; color: var(--muted); }
@@ -114,6 +117,9 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
   font-size: 12px; color: var(--muted); }
 .comment-meta .author { color: var(--fg); font-weight: 600; overflow-wrap: anywhere; }
 .comment-text { margin: 4px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* A page's comment shown without its pin: the text of its element. */
+.where { overflow-wrap: anywhere; }
+.where .lost { color: var(--error); }
 .comment-tools { display: flex; flex-wrap: wrap; gap: 4px 12px; }
 /* The meta line, with the comment's actions as icon buttons at its right. */
 .comment-head { display: flex; align-items: center; gap: 8px; }
@@ -134,8 +140,9 @@ button.primary:disabled { opacity: 0.6; cursor: default; }
 .comment-form input, .comments textarea, .composer input, .composer textarea {
   width: 100%; color: inherit; font: 14px/1.4 system-ui, sans-serif;
   background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
-.comments textarea, .composer textarea { height: auto; min-height: 4.5em; word-break: normal;
-  overflow-wrap: anywhere; resize: vertical; }
+/* One line while empty; the script grows a field with its text. */
+.comments textarea, .composer textarea { height: auto; min-height: 0; max-height: 40vh;
+  word-break: normal; overflow-wrap: anywhere; resize: none; }
 .form-row { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .form-row .note { margin: 0 auto 0 0; }
 /* Folded to one button until the person starts writing. */
@@ -214,7 +221,7 @@ button.primary:disabled { opacity: 0.6; cursor: default; }
   /* The docked composer: the text on top, the name and the buttons in one
      row under it, so it covers as little of the image as it can. */
   .composer { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; }
-  .composer textarea { grid-row: 1; grid-column: 1 / -1; min-height: 4em; }
+  .composer textarea { grid-row: 1; grid-column: 1 / -1; }
   .composer input { grid-row: 2; grid-column: 1; }
   .composer .form-row { display: contents; }
   .composer .hint { display: none; }
@@ -234,7 +241,7 @@ button.primary:disabled { opacity: 0.6; cursor: default; }
   body:not(.typing) .comment-form:not(.folded) .form-row { display: contents; }
   /* Two whole lines of the text, the rest cut at a line's edge (no bottom
      padding for a third line to show in); all of it shows in typing mode. */
-  body:not(.typing) .comment-form:not(.folded) textarea { height: calc(2.8em + 10px); min-height: 0;
+  body:not(.typing) .comment-form:not(.folded) textarea { height: calc(2.8em + 10px) !important;
     padding: 8px 8px 0; overflow: hidden; resize: none; }
   body:not(.typing) .comment-form:not(.folded) .note { grid-column: 1 / -1; }
 }
@@ -265,7 +272,7 @@ body.typing .typing-host #form-note { display: none !important; }
 .typing-pin { position: absolute; width: 24px; height: 24px; transform: translateY(-100%);
   background: var(--hi); border: 2px solid #fff; border-radius: 12px 12px 12px 2px;
   box-shadow: 0 1px 4px rgb(0 0 0 / 0.4); }
-body.typing .typing-host textarea { grid-row: 2; grid-column: 1; min-height: 66px; max-height: 132px;
+body.typing .typing-host textarea { grid-row: 2; grid-column: 1; min-height: 44px; max-height: 132px;
   font-size: 16px; resize: none; }
 body.typing .typing-host input { grid-row: 3; grid-column: 1; height: 44px; font-size: 16px; }
 body.typing .typing-host .typing-send, body.typing .typing-host .typing-cancel {

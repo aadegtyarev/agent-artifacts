@@ -372,17 +372,24 @@ a composer at that spot: a popover next to the pin on a computer, docked at
 the bottom on a phone; Ctrl/Cmd+Enter sends, Escape or Cancel closes it,
 with Undo if text was typed. On an image a Ctrl/Cmd or middle click still
 opens it full size; any other click places the pin, on a phone while the
-sheet is folded as well. On a phone the composer and the sheet never show
-at once: opening the sheet hides the composer with its draft, and folding
-the sheet brings it back.
+sheet is folded as well. On a page (HTML, Markdown, text) a click places a
+pin only while the panel or sheet is open, and then does nothing else: a
+link or a button under it does not fire, and on a computer the element
+under the pointer has a dashed outline. With the panel closed or the sheet
+folded, the page works as usual. While pins work there, the top of the list
+says "Click the page to pin a comment" ("Tap" on a phone). Comment fields
+are one line tall while empty and grow with the text. On a phone the
+composer and the sheet never show at once: opening the sheet hides the
+composer with its draft, and folding the sheet brings it back.
 
 On a phone with a touch screen (a coarse pointer, up to 640 px wide),
 typing in a comment field (the composer, the form, an edit) switches to
 typing mode: the header, the content and the sheet step aside, and the form
 sits at the top of the page under a line saying what is being written ("New
-comment on the image", "Editing #N") and, for a comment with a pin, a strip
-of the image around it; the text field grows to a few lines, with Send or
-Save beside it and Cancel under it. Leaving the field brings the page back
+comment on the image", "On “See plans”" for a page's element, "Editing #N")
+and, for a comment with a pin on an image, a strip of the image around it;
+the text field grows to a few lines, with Send or Save beside it and Cancel
+under it. Leaving the field brings the page back
 with the text kept, and so does hiding the keyboard (on Android the field
 keeps the focus, so the page watches the visible height come back, a pinch
 zoom aside); Cancel there does the same, or closes the composer or the edit
@@ -465,13 +472,16 @@ on top of the page and does not touch the page's elements. The script and the
 viewer page talk only through `postMessage`:
 
 - the script reports when it is ready, and the viewer sends nothing before
-  that. If it never does, for example because the page's own `<meta>` CSP
-  blocks inline scripts or the page leaves a tag unclosed, the viewer offers
-  comments without pins;
-- the viewer turns pin mode on and off and sends the pins to draw: numbers,
-  anchors and resolved flags, never comment texts or names;
+  that but one request to report it (the frame may be ready before the
+  viewer listens). If it never does, for example because the page's own
+  `<meta>` CSP blocks inline scripts or the page leaves a tag unclosed, the
+  viewer offers comments without pins: no hint, no pin placement, and a
+  comment with an anchor shows its anchor's text;
+- the viewer turns pin mode on while its panel is open and off when it
+  closes, and sends the pins to draw: numbers, anchors and resolved flags,
+  never comment texts or names;
 - the script answers with the anchor of the clicked spot. In pin mode it
-  takes that one click in the capture phase and cancels it, so a link or a
+  takes each click in the capture phase and cancels it, so a link or a
   button under it does not fire;
 - outside pin mode, the script sends the path and fragment of a clicked link
   to another file, see [Links between files](#projects).
