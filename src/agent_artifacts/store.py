@@ -11,6 +11,7 @@ thread pool, since a write may wait for another one's lock.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import os
 import secrets
 import shutil
@@ -42,7 +43,9 @@ CREATE TABLE IF NOT EXISTS artifacts (
     kind TEXT NOT NULL,
     size INTEGER NOT NULL,
     created_at REAL NOT NULL,
-    expires_at REAL NOT NULL
+    expires_at REAL NOT NULL,
+    comment_seq INTEGER NOT NULL DEFAULT 0,  -- the last comment number handed out
+    replaced_at REAL
 );
 CREATE INDEX IF NOT EXISTS artifacts_owner ON artifacts(owner);
 CREATE INDEX IF NOT EXISTS artifacts_expires ON artifacts(expires_at);
@@ -53,17 +56,36 @@ CREATE TABLE IF NOT EXISTS invites (
     created_by TEXT NOT NULL,
     expires_at REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS comments (
+    artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+    n INTEGER NOT NULL,
+    author TEXT NOT NULL,
+    text TEXT NOT NULL,
+    anchor TEXT,  -- JSON; NULL: about the whole file
+    edit_token_hash TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    edited_at REAL,
+    read_at REAL,
+    resolved_at REAL,
+    PRIMARY KEY (artifact_id, n)
+);
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value INTEGER NOT NULL
 );
 """
 
-# Columns of agents added after the first release, for databases made before.
-_AGENT_COLUMNS = {
-    "admin": "INTEGER NOT NULL DEFAULT 0",
-    "quota_bytes": "INTEGER",
-    "last_upload_at": "REAL",
+# Columns added after the first release, for databases made before.
+_ADDED_COLUMNS = {
+    "agents": {
+        "admin": "INTEGER NOT NULL DEFAULT 0",
+        "quota_bytes": "INTEGER",
+        "last_upload_at": "REAL",
+    },
+    "artifacts": {
+        "comment_seq": "INTEGER NOT NULL DEFAULT 0",
+        "replaced_at": "REAL",
+    },
 }
 
 SETTINGS = ("user_quota_bytes", "max_total_bytes", "ttl_seconds")
@@ -78,6 +100,52 @@ class Artifact:
     size: int
     created_at: float
     expires_at: float
+    comments: int = 0
+    open_comments: int = 0
+
+
+# An artifact row with its comment counts, for Artifact(*row).
+_ARTIFACT_SQL = (
+    "SELECT a.id, a.owner, a.name, a.kind, a.size, a.created_at, a.expires_at, "
+    "(SELECT COUNT(*) FROM comments c WHERE c.artifact_id = a.id), "
+    "(SELECT COUNT(*) FROM comments c WHERE c.artifact_id = a.id AND c.resolved_at IS NULL) "
+    "FROM artifacts a"
+)
+
+MAX_COMMENTS = 200
+
+
+@dataclass(frozen=True)
+class Comment:
+    n: int
+    author: str
+    text: str
+    anchor: str | None  # JSON
+    created_at: float
+    edited_at: float | None
+    read_at: float | None
+    resolved_at: float | None
+    before_replace: bool
+
+
+_COMMENT_SQL = (
+    "SELECT c.n, c.author, c.text, c.anchor, c.created_at, c.edited_at, c.read_at, "
+    "c.resolved_at, a.replaced_at IS NOT NULL AND c.created_at < a.replaced_at "
+    "FROM comments c JOIN artifacts a ON a.id = c.artifact_id "
+    "WHERE c.artifact_id = :id AND a.expires_at > :now"
+)
+
+
+class TooManyComments(Exception):
+    pass
+
+
+class WrongToken(Exception):
+    pass
+
+
+class AlreadyRead(Exception):
+    pass
 
 
 class StorageFull(Exception):
@@ -144,10 +212,11 @@ class Store:
         with self._conn() as db:
             db.execute("PRAGMA journal_mode = WAL")
             db.executescript(_SCHEMA)
-            have = {r[1] for r in db.execute("PRAGMA table_info(agents)")}
-            for column, decl in _AGENT_COLUMNS.items():
-                if column not in have:
-                    db.execute(f"ALTER TABLE agents ADD COLUMN {column} {decl}")
+            for table, columns in _ADDED_COLUMNS.items():
+                have = {r[1] for r in db.execute(f"PRAGMA table_info({table})")}
+                for column, decl in columns.items():
+                    if column not in have:
+                        db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
 
     @contextmanager
     def _conn(self) -> Iterator[sqlite3.Connection]:
@@ -315,19 +384,23 @@ class Store:
 
     def get(self, artifact_id: str, *, owner: str | None = None) -> Artifact | None:
         """A live artifact, optionally only if ``owner`` owns it."""
-        sql = "SELECT * FROM artifacts WHERE id = ? AND expires_at > ?"
-        args: tuple = (artifact_id, time.time())
-        if owner is not None:
-            sql += " AND owner = ?"
-            args += (owner,)
         with self._conn() as db:
-            row = db.execute(sql, args).fetchone()
+            return self._artifact(db, artifact_id, owner)
+
+    def _artifact(
+        self, db: sqlite3.Connection, artifact_id: str, owner: str | None = None
+    ) -> Artifact | None:
+        row = db.execute(
+            f"{_ARTIFACT_SQL} WHERE a.id = :id AND a.expires_at > :now "
+            "AND (:owner IS NULL OR a.owner = :owner)",
+            {"id": artifact_id, "now": time.time(), "owner": owner},
+        ).fetchone()
         return Artifact(*row) if row else None
 
     def list(self, owner: str) -> list[Artifact]:
         with self._conn() as db:
             rows = db.execute(
-                "SELECT * FROM artifacts WHERE owner = ? AND expires_at > ? ORDER BY created_at",
+                f"{_ARTIFACT_SQL} WHERE a.owner = ? AND a.expires_at > ? ORDER BY a.created_at",
                 (owner, time.time()),
             ).fetchall()
         return [Artifact(*r) for r in rows]
@@ -373,24 +446,157 @@ class Store:
                     raise StorageFull
                 if artifact_id is None:
                     db.execute(
-                        "INSERT INTO artifacts VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        "INSERT INTO artifacts (id, owner, name, kind, size, created_at, "
+                        "expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
                         (new_id, owner, name, kind, size, now, now + ttl),
                     )
-                    created = now
                 else:
+                    # Read under the lock, so a comment posted before this
+                    # replace always has an earlier created_at.
                     row = db.execute(
-                        "UPDATE artifacts SET name = ?, kind = ?, size = ?, expires_at = ? "
-                        "WHERE id = ? AND owner = ? AND expires_at > ? RETURNING created_at",
-                        (name, kind, size, now + ttl, new_id, owner, now),
+                        "UPDATE artifacts SET name = ?, kind = ?, size = ?, expires_at = ?, "
+                        "replaced_at = ? WHERE id = ? AND owner = ? AND expires_at > ? "
+                        "RETURNING id",
+                        (name, kind, size, now + ttl, time.time(), new_id, owner, now),
                     ).fetchone()
                     if row is None:
                         return None
-                    created = row[0]
                 db.execute("UPDATE agents SET last_upload_at = ? WHERE name = ?", (now, owner))
+                artifact = self._artifact(db, new_id)
                 os.replace(tmp, self.files / new_id)
         finally:
             tmp.unlink(missing_ok=True)
-        return Artifact(new_id, owner, name, kind, size, created, now + ttl)
+        return artifact
+
+    # Comments; they go with their artifact (ON DELETE CASCADE).
+
+    def comments(self, artifact_id: str, *, owner: str | None = None) -> list[Comment] | None:
+        """The comments of a live artifact, oldest first; None if there is no
+        such artifact (of ``owner``'s). The owner's read marks them read in the
+        same transaction, so it marks exactly what it returns."""
+        with self._conn() as db:
+            if owner is not None:
+                db.execute("BEGIN IMMEDIATE")
+            if self._artifact(db, artifact_id, owner) is None:
+                return None
+            args = {"id": artifact_id, "now": time.time()}
+            if owner is not None:
+                db.execute(
+                    "UPDATE comments SET read_at = :now "
+                    "WHERE artifact_id = :id AND read_at IS NULL",
+                    args,
+                )
+            rows = db.execute(f"{_COMMENT_SQL} ORDER BY c.n", args).fetchall()
+        return [_comment(r) for r in rows]
+
+    def add_comment(
+        self, artifact_id: str, *, author: str, text: str, anchor: str | None, token_hash: str
+    ) -> Comment | None:
+        """Post a comment; None if the artifact is gone. Raises TooManyComments."""
+        with self._conn() as db:
+            db.execute("BEGIN IMMEDIATE")
+            args = {"id": artifact_id, "now": time.time()}
+            row = db.execute(
+                "SELECT (SELECT COUNT(*) FROM comments WHERE artifact_id = :id) FROM artifacts "
+                "WHERE id = :id AND expires_at > :now",
+                args,
+            ).fetchone()
+            if row is None:
+                return None
+            if row[0] >= MAX_COMMENTS:
+                raise TooManyComments
+            (n,) = db.execute(
+                "UPDATE artifacts SET comment_seq = comment_seq + 1 WHERE id = :id "
+                "RETURNING comment_seq",
+                args,
+            ).fetchone()
+            db.execute(
+                "INSERT INTO comments (artifact_id, n, author, text, anchor, edit_token_hash, "
+                "created_at) VALUES (:id, :n, :author, :text, :anchor, :token_hash, :now)",
+                args
+                | {
+                    "n": n,
+                    "author": author,
+                    "text": text,
+                    "anchor": anchor,
+                    "token_hash": token_hash,
+                },
+            )
+            return self._comment(db, artifact_id, n)
+
+    def resolve_comment(
+        self, artifact_id: str, n: int, resolved: bool, *, owner: str | None = None
+    ) -> Comment | None:
+        """Mark a comment resolved or open; anyone may, read or not."""
+        with self._conn() as db:
+            if self._artifact(db, artifact_id, owner) is None:
+                return None
+            db.execute(
+                "UPDATE comments SET resolved_at = CASE WHEN :resolved "
+                "THEN COALESCE(resolved_at, :now) END WHERE artifact_id = :id AND n = :n",
+                {"id": artifact_id, "n": n, "resolved": resolved, "now": time.time()},
+            )
+            return self._comment(db, artifact_id, n)
+
+    def edit_comment(
+        self, artifact_id: str, n: int, *, token_hash: str, text: str
+    ) -> Comment | None:
+        """Change the text by the poster's token. Raises WrongToken, AlreadyRead."""
+        with self._conn() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if not self._check_token(db, artifact_id, n, token_hash):
+                return None
+            db.execute(
+                "UPDATE comments SET text = :text, edited_at = :now "
+                "WHERE artifact_id = :id AND n = :n",
+                {"id": artifact_id, "n": n, "text": text, "now": time.time()},
+            )
+            return self._comment(db, artifact_id, n)
+
+    def delete_comment(
+        self,
+        artifact_id: str,
+        n: int,
+        *,
+        owner: str | None = None,
+        token_hash: str | None = None,
+    ) -> bool:
+        """Delete by the owner, any time, or by the poster's token until read.
+        Raises WrongToken, AlreadyRead."""
+        assert (owner is None) != (token_hash is None)
+        with self._conn() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if token_hash is not None:
+                if not self._check_token(db, artifact_id, n, token_hash):
+                    return False
+            elif self._artifact(db, artifact_id, owner) is None:
+                return False
+            sql = "DELETE FROM comments WHERE artifact_id = ? AND n = ?"
+            return db.execute(sql, (artifact_id, n)).rowcount > 0
+
+    def _comment(self, db: sqlite3.Connection, artifact_id: str, n: int) -> Comment | None:
+        row = db.execute(
+            f"{_COMMENT_SQL} AND c.n = :n", {"id": artifact_id, "now": time.time(), "n": n}
+        ).fetchone()
+        return _comment(row) if row else None
+
+    def _check_token(
+        self, db: sqlite3.Connection, artifact_id: str, n: int, token_hash: str
+    ) -> bool:
+        """False if there is no such comment; the token before the read state."""
+        row = db.execute(
+            "SELECT c.edit_token_hash, c.read_at FROM comments c "
+            "JOIN artifacts a ON a.id = c.artifact_id "
+            "WHERE c.artifact_id = :id AND c.n = :n AND a.expires_at > :now",
+            {"id": artifact_id, "n": n, "now": time.time()},
+        ).fetchone()
+        if row is None:
+            return False
+        if not hmac.compare_digest(row[0], token_hash):
+            raise WrongToken
+        if row[1] is not None:
+            raise AlreadyRead
+        return True
 
     def delete(self, artifact_id: str, *, owner: str) -> bool:
         with self._conn() as db:
@@ -426,3 +632,7 @@ class Store:
 
     def _unlink(self, artifact_id: str) -> None:
         self.path(artifact_id).unlink(missing_ok=True)
+
+
+def _comment(row: tuple) -> Comment:
+    return Comment(*row[:-1], before_replace=bool(row[-1]))

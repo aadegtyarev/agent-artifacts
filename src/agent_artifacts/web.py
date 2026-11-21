@@ -1,5 +1,6 @@
 """HTTP routes: the agent API under /api/v1, the viewer under /a, invites
-under /join. The HTML itself is in pages.py, the admin API in admin.py."""
+under /join. The HTML itself is in pages.py, the admin API in admin.py, comments in
+comments.py."""
 
 from __future__ import annotations
 
@@ -29,6 +30,7 @@ from starlette.staticfiles import StaticFiles
 from . import kinds, pages
 from .admin import admin_routes
 from .api import ApiError, error, iso, on_api_error, require_agent, user_json
+from .comments import comment_routes
 from .config import Config
 from .store import ID_RE, TOKEN_RE, Artifact, NameTaken, QuotaExceeded, StorageFull, Store
 
@@ -68,6 +70,8 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             "size": a.size,
             "created_at": iso(a.created_at),
             "expires_at": iso(a.expires_at),
+            "comments": a.comments,
+            "open_comments": a.open_comments,
         }
 
     async def save(request: Request, agent: str, artifact_id: str | None) -> Response:
@@ -129,7 +133,8 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         agent = require_agent(store, request)
         if request.method == "POST":
             return await save(request, agent, None)
-        return JSONResponse([as_json(a) for a in store.list(agent)])
+        found = await run_in_threadpool(store.list, agent)  # counts comments too
+        return JSONResponse([as_json(a) for a in found])
 
     async def me(request: Request) -> Response:
         info = await run_in_threadpool(store.agent_info, require_agent(store, request))
@@ -235,6 +240,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             Route("/join/{token:invite_token}", join, methods=["GET", "POST"]),
             Mount("/static", StaticFiles(directory=pages.STATIC_DIR), name="static"),
             *admin_routes(store, config.public_url),
+            *comment_routes(store),
         ],
         middleware=[Middleware(_CommonHeaders)],
         exception_handlers={ApiError: on_api_error},

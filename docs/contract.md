@@ -373,9 +373,11 @@ Comment JSON:
 - `n` numbers the artifact's comments from 1. A counter kept with the
   artifact hands it out, so a deleted number is never given again.
 - `author` is at most 64 characters, `text` 1 to 2000, counted as Unicode
-  code points after trimming spaces at both ends. Control characters other
-  than line breaks and tabs are refused. An empty author becomes `anonymous`;
-  an empty text is refused.
+  code points after trimming spaces at both ends. Every field refuses
+  control characters, bidi controls (U+202A to U+202E, U+2066 to U+2069) and
+  U+2028, U+2029; `text` keeps line breaks and tabs, while `author`, the
+  anchor's `selector` and `text` refuse them too. An empty author becomes
+  `anonymous`; an empty text is refused.
 - `anchor` is `null` for a comment about the whole file. On an image it is
   `{"type": "point", "x", "y"}`, the point as fractions (0 to 1) of the
   image's width and height. On a page it is `{"type": "element", "selector",
