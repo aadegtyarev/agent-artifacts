@@ -59,6 +59,12 @@ produce:
 | something to print or sign | HTML with print styles and a Print button (see below); upload a `.pdf` only if you already have one |
 | data to open in a spreadsheet or tool | the files in a `.zip`, plus an HTML page that shows the data |
 
+A report is an HTML page by default. Shape it to the task and the kind of
+report, and to what the person asked for: tables for figures to compare,
+charts (inline SVG) for trends and shares, sections with headings for a long
+read. A plain page with lists is fine when that is all the content needs; do
+not add tables or charts for their own sake.
+
 When the person is going to review and comment on a spot, an image is the
 form that takes pins today; other types take comments on the whole file.
 
