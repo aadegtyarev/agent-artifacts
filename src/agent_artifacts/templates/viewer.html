@@ -29,13 +29,14 @@
 {%- endif %}
 </main>
 <aside id="comments" class="comments" hidden aria-labelledby="comments-title" data-artifact="{{ a.id }}" data-kind="{{ kind.name }}">
-  {#- On a phone the panel is a bottom sheet: a swipe down on the head (the
-      grip is a bar on its top edge) folds it back to the strip. #}
+  {#- On a phone the panel is a bottom sheet over a strip: dragging the head
+      or the strip snaps it to 25 %, 50 % or 100 % of the height or folds
+      it; a tap on the head steps through the heights. #}
   <div class="comments-head">
-    <div class="grip" aria-hidden="true"></div>
+    <button type="button" id="comments-grip" class="grip" aria-label="Sheet height"></button>
     <h2 id="comments-title" tabindex="-1">Comments · {{ a.open_comments }} open</h2>
     <button type="button" id="show-resolved" class="text" aria-expanded="false" aria-controls="resolved-list" hidden></button>
-    <button type="button" id="comments-close" title="Close" aria-label="Close comments">{{ icon.close() }}</button>
+    <button type="button" id="comments-close" title="Close" aria-label="Close comments">{{ icon.close() }}{{ icon.chevron_down() }}</button>
   </div>
   <div class="comments-body">
     <p id="comments-status" class="note" role="status" aria-live="polite"></p>
@@ -44,34 +45,42 @@
     <ol id="resolved-list" class="comment-list" hidden></ol>
   </div>
   {#- A comment about the whole file, folded to one button until needed. #}
-  <form id="comment-form" class="comment-form folded" novalidate>
+  <form id="comment-form" class="comment-form folded" tabindex="-1" novalidate>
     <button type="button" id="comment-open">Write a comment…</button>
     <p id="form-note" class="note" hidden>About the whole image. To mark a spot, click the image instead.</p>
     <input id="comment-author" name="author" maxlength="64" autocomplete="name" placeholder="Your name" aria-label="Your name">
     <textarea id="comment-text" name="text" maxlength="2000" rows="3" placeholder="Comment" aria-label="Comment text" aria-describedby="comment-hint"></textarea>
     <div class="form-row">
       <span id="comment-hint" class="note hint">Ctrl+Enter to send</span>
-      <button type="submit" id="comment-send" class="primary">Send</button>
+      <button type="button" id="comment-cancel" class="typing-cancel">Cancel</button>
+      <button type="submit" id="comment-send" class="primary typing-send">Send</button>
     </div>
     <p id="form-status" class="note" role="status" aria-live="polite"></p>
   </form>
 </aside>
-{#- A phone shows this strip while the sheet is folded. #}
-<button type="button" id="comments-strip" class="strip" aria-controls="comments" aria-expanded="false">{{ icon.comment() }}<span id="strip-text">Comments · {{ a.open_comments }} open</span>{{ icon.chevron_up() }}</button>
+{#- A phone shows this strip while the sheet is folded. The empty span is
+    for the agent's status, once the server reports one. #}
+<button type="button" id="comments-strip" class="strip" aria-controls="comments" aria-expanded="false" aria-label="{% if a.comments %}Comments: {{ a.comments }}, {{ a.comments - a.open_comments }} resolved. Open{% else %}No comments yet. Open comments{% endif %}">{{ icon.comment() }}<span id="strip-text">{% if a.comments %}{{ a.comments }} · {{ a.comments - a.open_comments }} resolved{% else %}No comments yet{% endif %}</span><span id="strip-agent" class="strip-agent" hidden></span>{{ icon.chevron_up() }}</button>
 </div>
 {%- if kind.pin == "point" and kind.viewable %}
 {#- The composer at the spot clicked on the image: a popover next to the pin
-    on a computer, docked above the keyboard on a phone. #}
-<form id="composer" class="composer" hidden novalidate aria-label="New comment at the marked spot">
+    on a computer, docked at the bottom on a phone. #}
+<form id="composer" class="composer" hidden tabindex="-1" novalidate aria-label="New comment at the marked spot">
   <input id="composer-author" name="author" maxlength="64" autocomplete="name" placeholder="Your name" aria-label="Your name">
   <textarea id="composer-text" name="text" maxlength="2000" rows="3" placeholder="Comment" aria-label="Comment text" aria-describedby="composer-hint"></textarea>
   <div class="form-row">
     <span id="composer-hint" class="note hint">Ctrl+Enter to send</span>
-    <button type="button" id="composer-cancel">Cancel</button>
-    <button type="submit" id="composer-send" class="primary">Send</button>
+    <button type="button" id="composer-cancel" class="typing-cancel">Cancel</button>
+    <button type="submit" id="composer-send" class="primary typing-send">Send</button>
   </div>
   <p id="composer-status" class="note" role="status" aria-live="polite"></p>
 </form>
 {%- endif %}
+{#- Typing on a phone: this row goes on top of the form being typed in, with
+    a strip of the image around the pin when the comment has one. #}
+<div id="typing-context" class="typing-context" hidden><p id="typing-title"></p><div id="typing-strip" class="typing-strip" aria-hidden="true"><img id="typing-image" alt=""><span class="typing-pin"></span></div></div>
+{#- A comment's actions: a bottom sheet on a phone (long press or the ⋯
+    button), a menu at the pointer on a computer (right click). #}
+<div id="card-menu" class="card-menu" hidden><div class="menu-scrim"></div><div class="menu-box"><p id="card-menu-title" class="menu-title"></p><div id="card-menu-list" role="menu" aria-labelledby="card-menu-title"></div></div></div>
 <div id="toast" class="toast" role="status" aria-live="polite"><span id="toast-text"></span><button type="button" id="toast-undo" class="text" hidden>Undo</button></div>
 {% endblock %}

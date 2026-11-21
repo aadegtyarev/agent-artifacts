@@ -345,34 +345,62 @@ file, but not for anything beyond it.
 
 **On the viewer page.** The header has a Comments button with the number of
 open comments, on every file type. It opens a panel at the side on a
-computer; on a phone the panel is a bottom sheet, folded to a strip
-"Comments · N open" at the bottom when closed (a tap on the strip opens it,
-a swipe down on its grip or head or the close button folds it). The panel's
-head reads "Comments · N open" and has a "Resolved (N)" toggle; resolved
-comments are hidden until it is used, then shown dimmed with a grey checked
-number. Each comment has its actions as icon buttons on its first line
-(resolve or reopen; edit and delete for the author's own unread comment).
-At the bottom is a folded form for a comment about the whole file. The
-name is remembered by the browser.
+computer. On a phone (up to 640 px wide) the panel is a bottom sheet:
+folded, it leaves a one-line strip at the bottom with "N · M resolved" (all
+comments and the resolved ones; room is kept there for the agent's status).
+The header button or a tap on the strip opens the sheet at the height last
+chosen in the session, 25 % of the screen at first; dragging the strip or
+the sheet's head snaps it to 25, 50 or 100 % or folds it (a pull up from
+the strip always opens it), a tap on the head steps through the heights,
+and the close button folds it. The panel's head reads "Comments · N open"
+and has a "Resolved (N)" toggle; resolved comments are hidden until it is
+used, then shown dimmed with a grey checked number. On a computer each
+comment has its actions as icon buttons on its first line (resolve or
+reopen; edit and delete for the author's own unread comment), then a ⋯
+button that shows on hover or keyboard focus; it, or a right click on a
+comment (with a mouse at any window width), opens the same actions as a
+menu, with Copy text and Copy link. The comment being edited offers no Edit
+there. On a phone a ⋯ button takes the place of the icons, and it or a long
+press on the comment opens them as a sheet at the bottom (comments cannot
+be selected there, so Copy text is the way to copy one). Copy link copies
+the page's link ending in `#comment-N`; opening it shows that comment. At
+the bottom of the panel is a folded form for a comment about the whole
+file. The name is remembered by the browser.
 
 Where a pin is possible, a click on the content places a draft pin and opens
-a composer at that spot: a popover next to the pin on a computer, docked
-above the keyboard on a phone; Ctrl/Cmd+Enter sends, Escape or Cancel
-closes it, with Undo if text was typed. On an image a Ctrl/Cmd or middle
-click still opens it full size; any other click places the pin. On a phone
-the composer and the sheet never show at once: opening the sheet hides the
-composer with its draft, and folding the sheet brings it back. Pins of open
-comments show over the content, and pins of resolved ones in grey while the
-resolved list is shown; on a phone a pin takes taps from a finger-sized area
-around it, the nearest pin winning. A click on a pin opens the panel at its
-comment; a click on a comment highlights its pin and scrolls it into view,
-leaving the panel or sheet open. Resolve shows a toast with Undo, which
-reopens the comment. Delete by token hides the comment at once with Undo;
-the DELETE is sent when the Undo time ends, before the next send, save,
-resolve or delete, or on pagehide when the page is left (a switch to
-another tab keeps the Undo), and if it fails the comment comes back with
-the reason. The panel renders texts and names as text nodes, never as
-HTML.
+a composer at that spot: a popover next to the pin on a computer, docked at
+the bottom on a phone; Ctrl/Cmd+Enter sends, Escape or Cancel closes it,
+with Undo if text was typed. On an image a Ctrl/Cmd or middle click still
+opens it full size; any other click places the pin, on a phone while the
+sheet is folded as well. On a phone the composer and the sheet never show
+at once: opening the sheet hides the composer with its draft, and folding
+the sheet brings it back.
+
+On a phone with a touch screen (a coarse pointer, up to 640 px wide),
+typing in a comment field (the composer, the form, an edit) switches to
+typing mode: the header, the content and the sheet step aside, and the form
+sits at the top of the page under a line saying what is being written ("New
+comment on the image", "Editing #N") and, for a comment with a pin, a strip
+of the image around it; the text field grows to a few lines, with Send or
+Save beside it and Cancel under it. Leaving the field brings the page back
+with the text kept, and so does hiding the keyboard (on Android the field
+keeps the focus, so the page watches the visible height come back, a pinch
+zoom aside); Cancel there does the same, or closes the composer or the edit
+if nothing was typed or changed. The layout does not depend on the visual
+viewport, so it works in a frame too.
+
+Pins of open comments show over the content, and pins of resolved ones in
+grey while the resolved list is shown; on a phone a pin takes taps from a
+finger-sized area around it, the nearest pin winning. A click on a pin
+opens the panel at its comment; a click on a comment highlights its pin and
+scrolls it into view, leaving the panel or sheet open. Resolve shows a
+toast with Undo, which reopens the comment; on a phone toasts sit above the
+strip or the sheet's form, and in typing mode under the form. Delete by
+token hides the comment at once with Undo; the DELETE is sent when the Undo
+time ends, before the next send, save, resolve or delete, or on pagehide
+when the page is left (a switch to another tab keeps the Undo), and if it
+fails the comment comes back with the reason. The panel renders texts and
+names as text nodes, never as HTML.
 
 | Type | Pin |
 | --- | --- |
