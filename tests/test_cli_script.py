@@ -75,6 +75,17 @@ def test_setup_upload_and_new_key(server):
     assert code == 1 and "unauthorized" in err
 
 
+def test_setup_keeps_a_different_key(server):
+    url, store, home = server
+    first, second = store.add_agent("admin", admin=True), store.add_agent("pi")
+    env_file = home / ".config" / "agent-artifacts" / "env"
+    for key in (first, first, second):
+        cli(home, "setup", stdin=f"AGENT_ARTIFACTS_URL={url}\nAGENT_ARTIFACTS_KEY={key}\n")
+    (backup,) = env_file.parent.glob("env.bak-*")  # the same key again is not backed up
+    assert first in backup.read_text() and second in env_file.read_text()
+    assert backup.stat().st_mode & 0o777 == 0o600
+
+
 def test_setup_refuses_a_wrong_key(server):
     url, _, home = server
     code, _, err = cli(
