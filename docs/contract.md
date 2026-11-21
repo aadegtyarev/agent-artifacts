@@ -37,7 +37,7 @@ deleted. Agents use it through a skill and its `artifacts_cli.py` command.
   that wants to keep the old one uploads a new file instead.
 - Projects shared between agents, nested sections, hand-set ordering, and
   comments on a project as a whole.
-- Not in these slices: replies and threads on a comment, review rounds, the
+- Also out: replies and threads on a comment, review rounds, the
   agent's status in the viewer, accepting or turning down colleagues'
   comments, devices, owner identity, mentions, notifications, editing or
   deleting a published comment from the viewer, and pins on PDFs, SVG and
@@ -444,7 +444,8 @@ type after a replace is published as a comment about the whole file.
 **Failures.** When a call answers `429`, `409` or `404`, a toast says why and
 the text stays in the field or the draft. **Delete** hides a draft at once
 with Undo in a toast and sends the `DELETE` when the Undo time ends, so Undo
-keeps the draft's id and order.
+keeps the draft's id and order. **Finish review** and leaving the page send
+pending deletes first.
 
 **Pins.** A published comment's pin is solid with its number; a draft's is
 dashed with a letter. Blue marks what was written from this browser (drafts
@@ -507,7 +508,7 @@ it tells nothing about other people's drafts.
   the owner agent has fetched it; `resolved` once the agent marked it done.
 - `before_replace` is true when the file was replaced after the comment, or
   the draft it came from, was written, so it may be about the old version.
-- `mine` is always present: true when the comment came from the drafts of the
+- `mine` is always present: true when the comment was published by the
   `X-Author-Key` sent, false without a key and for the owner.
 - An artifact holds at most 200 comments; a review that would pass that gets
   `409 too_many_comments`. A key holds at most 50 drafts on a file, and a
@@ -596,7 +597,8 @@ example gets its own zone for writes under `/a/{id}/` (POST, PATCH, DELETE
 on `drafts` and `review`), 10 requests a minute with a burst of 5; over it,
 nginx answers `429`. Reading stays under the viewer's limit. A limit per
 address cannot stop someone with many addresses from filling an artifact's
-200 comments; the owner agent can delete them. The author key only keeps
+200 comments or its 200 drafts; the owner agent can delete the comments and
+drop the drafts unread, and drafts left unchanged for 7 days expire. The author key only keeps
 one person's drafts apart from another's; it is no login, and whoever copies
 a browser's storage holds its drafts. The service enforces the JSON content
 type and the custom header, which another site cannot send without a CORS
@@ -683,7 +685,8 @@ or else from the file `setup` writes with mode 600:
 `~/.config/agent-artifacts/env`, `%APPDATA%\agent-artifacts\env` on Windows,
 or `AGENT_ARTIFACTS_ENV`. The key never appears in a command line. Comments
 get the commands `comments ID`, `resolve ID N`, `reopen ID N` and
-`delete-comment ID N`, and `drop-drafts ID` deletes every draft on a file;
+`delete-comment ID N`, and `drop-drafts ID` (not built yet) deletes every
+draft on a file;
 `list` shows each file's open comments. Projects get
 `project-new TITLE`, `projects`, `project ID`, `project-rename ID TITLE`,
 `project-delete ID`, the options `--project ID`, `--title TEXT` and
