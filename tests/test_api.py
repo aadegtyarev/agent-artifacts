@@ -294,7 +294,7 @@ def test_image_opens_full_size_on_its_own(env):
     client, _, keys = env
     img = upload(client, keys["alice"], "a.png", PNG).json()
     page = client.get(f"/a/{img['id']}").text
-    assert f'<a href="/a/{img["id"]}/raw" target="_blank" rel="noopener">' in page
+    assert f'<a id="image-link" href="/a/{img["id"]}/raw" target="_blank" rel="noopener">' in page
     r = client.get(f"/a/{img['id']}/raw", headers={"Sec-Fetch-Dest": "document"})
     assert (r.status_code, r.headers["content-type"]) == (200, "image/png")
 
@@ -522,6 +522,29 @@ def test_own_pages_escape_values_and_load_only_static_code(env):
     assert client.get("/static/copy.js").status_code == 200
     for path in ("/static/../store.py", "/static/%2e%2e/store.py", "/static/..%2fstore.py"):
         assert client.get(path).status_code == 404, path
+
+
+def test_viewer_page_has_comments_on_every_type(env):
+    client, _, keys = env
+    for name, data in (("a.html", b"<p>x"), ("b.png", PNG), ("c.zip", b"PK\x03\x04")):
+        art = upload(client, keys["alice"], name, data).json()
+        for _ in range(2):
+            comment(client, art["id"])
+        client.patch(f"/a/{art['id']}/comments/1", json={"resolved": True})
+        page = client.get(f"/a/{art['id']}")
+        assert 'id="comments-toggle"' in page.text, name
+        assert '<span id="comments-count">1</span>' in page.text, name
+        assert '<script src="/static/comments.js"></script>' in page.text, name
+        assert "connect-src 'self'" in page.headers["content-security-policy"], name
+    assert client.get("/static/comments.js").status_code == 200
+
+
+def test_only_the_viewer_may_connect(env):
+    client, _, _ = env
+    page = client.get("/a/" + "a" * 22)
+    assert page.status_code == 404
+    assert "connect-src" not in page.headers["content-security-policy"]
+    assert "comments.js" not in page.text
 
 
 def test_markdown_page_stays_about_the_size_of_the_file(env):

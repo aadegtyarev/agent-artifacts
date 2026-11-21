@@ -1,8 +1,10 @@
 :root { color-scheme: light dark; --fg: #1d1d1f; --bg: #fff; --muted: #6e6e73;
-  --line: #d2d2d7; --btn: #f2f2f4; }
+  --line: #d2d2d7; --btn: #f2f2f4; --accent: #0a64d8; --error: #c4281c; }
 @media (prefers-color-scheme: dark) { :root { --fg: #f2f2f4; --bg: #1c1c1e;
-  --muted: #a1a1a6; --line: #3a3a3c; --btn: #2c2c2e; } }
+  --muted: #a1a1a6; --line: #3a3a3c; --btn: #2c2c2e; --accent: #4c9bff;
+  --error: #ff6b5e; } }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { margin: 0; font: 15px/1.4 system-ui, sans-serif; color: var(--fg);
   background: var(--bg); display: flex; flex-direction: column; height: 100vh; }
 
@@ -24,12 +26,74 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .check, .done > :not(.check) { display: none; }
 .done .check { display: block; }
 .copy-source { position: absolute; left: -9999px; }
-main { flex: 1; min-height: 0; }
+main { flex: 1; min-width: 0; min-height: 0; }
 iframe { display: block; border: 0; width: 100%; height: 100%; background: #fff; }
 .center { display: flex; align-items: center; justify-content: center;
   height: 100%; padding: 16px; text-align: center; }
 img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
 .center a { display: contents; }
+
+/* Comments: a panel at the side, a bottom sheet on a phone. */
+.stage { flex: 1; min-height: 0; display: flex; }
+.stage > main { height: 100%; }
+#comments-toggle[aria-expanded="true"] { border-color: var(--accent); }
+.comments { width: 340px; flex: none; display: flex; flex-direction: column;
+  border-left: 1px solid var(--line); background: var(--bg); }
+/* On a phone the sheet takes the bottom part and the content shrinks above
+   it, so the whole image stays in view to place a pin on. */
+@media (max-width: 640px) {
+  .stage { flex-direction: column; }
+  .stage > main { height: auto; }
+  .comments { width: auto; height: 60%; border-left: 0; border-top: 1px solid var(--line);
+    border-radius: 12px 12px 0 0; box-shadow: 0 -4px 16px rgb(0 0 0 / 0.15); }
+  #comment-hint { visibility: hidden; }
+}
+.comments-head { display: flex; align-items: center; padding: 4px 8px 4px 12px;
+  border-bottom: 1px solid var(--line); }
+.comments-head h2 { flex: 1; margin: 0; font-size: 14px; outline: none; }
+.comments-body { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 12px; }
+.note { margin: 4px 0; color: var(--muted); font-size: 13px; }
+.note:empty { display: none; }
+.note.error { color: var(--error); }
+.comment-list { list-style: none; margin: 0; padding: 0; }
+.comment { padding: 8px 0; border-bottom: 1px solid var(--line); outline: none; }
+.comment.lit { background: var(--btn); box-shadow: -12px 0 0 var(--btn), 12px 0 0 var(--btn); }
+.comment-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px;
+  font-size: 12px; color: var(--muted); }
+.comment-meta .author { color: var(--fg); font-weight: 600; overflow-wrap: anywhere; }
+.comment-text { margin: 4px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.comment-tools { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.tag { padding: 0 4px; border: 1px solid var(--line); border-radius: 4px; }
+button.text { display: inline; min-width: 0; height: auto; padding: 0; border: 0;
+  background: none; color: var(--accent); font-size: 12px; }
+button.text:disabled { color: var(--muted); cursor: default; }
+#show-resolved { margin: 8px 0; font-size: 13px; }
+.comment-form { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px;
+  border-top: 1px solid var(--line); }
+.comment-form input, .comments textarea { width: 100%; color: inherit;
+  font: 14px/1.4 system-ui, sans-serif; background: var(--bg); border: 1px solid var(--line);
+  border-radius: 6px; padding: 6px 8px; }
+.comments textarea { height: auto; min-height: 4.5em; word-break: normal;
+  overflow-wrap: anywhere; resize: vertical; }
+.form-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.form-row .note { margin: 0; }
+.spot { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; font-size: 13px; }
+.spot.waiting { color: var(--accent); }
+
+/* Pins over an image: a layer the size of the image, pins placed in %. */
+#image-box { position: relative; }
+.pins { position: absolute; pointer-events: none; }
+.waiting-spot img { cursor: crosshair; }
+.pin { position: absolute; transform: translateY(-100%); pointer-events: auto;
+  min-width: 24px; height: 24px; padding: 0 6px; font-size: 12px; font-weight: 600;
+  color: #fff; background: var(--accent); border: 2px solid #fff;
+  border-radius: 12px 12px 12px 2px; box-shadow: 0 1px 4px rgb(0 0 0 / 0.4); }
+.pin.new { background: var(--muted); }
+.pin.lit { outline: 3px solid var(--accent); outline-offset: 2px; }
+button.badge { display: inline-flex; min-width: 20px; height: 18px; padding: 0 5px;
+  font-size: 11px; font-weight: 600; color: #fff; background: var(--accent);
+  border: 0; border-radius: 9px; }
+.number { font-weight: 600; }
 
 /* Invite pages. */
 .join { max-width: 560px; margin: 0 auto; padding: 24px 16px; }
