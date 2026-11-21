@@ -20,13 +20,22 @@ deleted. Agents use it through a skill and its `artifacts_cli.py` command.
    leave comments there. The person tells the agent to look at the comments;
    the agent reads them with the spot each one points at, fixes the mockup,
    replaces it at the same link and marks those comments resolved.
+7. A job grows into many files: contracts, app mockups, site mockups. The
+   agent puts them in a project, each with a title and a section. The person
+   keeps one link to the project page, sees the files grouped by section,
+   moves between them from any file's header, and follows links the agent
+   put inside the files. Project files stay until deleted; when the agent's
+   space runs out, it clears out old versions itself and says what it removed.
 
 ## Out of scope
 
 - Accounts, logins or passwords for viewers. Knowing the link is the access.
 - Multi-file sites. An HTML artifact is one self-contained file.
 - Browsing the contents of an archive. Archives are download-only.
-- Keeping files beyond the TTL, versions, or history of replaced files.
+- Keeping files outside a project beyond the TTL, versions, or history of
+  replaced files.
+- Projects shared between agents, nested sections, hand-set ordering, and
+  comments on a project as a whole.
 - Comment threads, mentions, notifications, editing a comment after the agent
   has read it, and pins on PDFs, SVG and archives (those get comments without
   a pin).
@@ -52,7 +61,7 @@ Every artifact can be downloaded in its original form under its original name.
 
 | Setting | Default |
 | --- | --- |
-| Lifetime of an artifact | 48 h from the last upload or replace |
+| Lifetime of an artifact | 48 h from the last upload or replace; none in a project |
 | Size of one file | 25 MB |
 | Size of a Markdown or text file (fixed) | 2 MB |
 | Size of one agent's live files | 500 MB, then its uploads get `507` `quota_exceeded`; an admin can set it per agent |
@@ -73,7 +82,9 @@ a missing one.
 | `GET /api/v1/me` | the calling agent's name, space and role | `200` + user JSON, see [Admin calls](#admin-calls) |
 | `POST /api/v1/me/key` | a new key for the calling agent; the old one stops working, the files stay | `200` + `{"name", "key"}` |
 
-`name` defaults to the uploaded file name. It is reduced to a safe base name
+Uploads and replaces also take optional fields `title`, `project` and
+`section`, described in [Projects](#projects). `name` defaults to the uploaded
+file name. It is reduced to a safe base name
 (no directories, no control characters, at most 200 characters) and must keep
 an allowed extension.
 
@@ -86,6 +97,9 @@ Artifact JSON:
   "name": "report.html",
   "type": "html",
   "size": 48213,
+  "title": "Report",
+  "project": null,
+  "section": null,
   "created_at": "2026-11-20T10:00:00Z",
   "expires_at": "2026-11-22T10:00:00Z",
   "comments": 3,
@@ -108,6 +122,17 @@ Comments on the caller's own artifact (see [Comments](#comments)):
 | `GET /api/v1/artifacts/{id}/comments` | all comments, oldest first; marks them read | `200` + list of comment JSON |
 | `PATCH /api/v1/artifacts/{id}/comments/{n}` | `{"resolved": true or false}` | `200` + comment JSON |
 | `DELETE /api/v1/artifacts/{id}/comments/{n}` | delete one; the other numbers stay | `204` |
+
+Projects and file details, the caller's own only (see [Projects](#projects)):
+
+| Call | Purpose | Answer |
+| --- | --- | --- |
+| `POST /api/v1/projects` | `{"title"}` | `201` + project JSON |
+| `GET /api/v1/projects` | the caller's projects | `200` + list of project JSON |
+| `GET /api/v1/projects/{id}` | one project with its files | `200` + project JSON with `"artifacts"`: a list of artifact JSON |
+| `PATCH /api/v1/projects/{id}` | `{"title"}` | `200` + project JSON |
+| `DELETE /api/v1/projects/{id}` | delete the project and every file in it | `204` |
+| `PATCH /api/v1/artifacts/{id}` | any of `{"title", "project", "section"}`, without uploading again | `200` + artifact JSON |
 
 ### Admin calls
 
@@ -145,7 +170,8 @@ lifetime applies to uploads from then on.
 
 | Path | What |
 | --- | --- |
-| `/a/{id}` | page with the name, expiry, the content, and buttons: Download, Copy link |
+| `/a/{id}` | page with the title, expiry, the content, and buttons: Download, Copy link; in a project also the project menu |
+| `/p/{id}` | a project's page: its title and its files by section, each a link to `/a/{id}` |
 | `/a/{id}/raw` | the content itself, with the sandbox headers below; opened as a page on its own, HTML, SVG, Markdown and text redirect to `/a/{id}`, while images and PDFs open in the browser's own viewer |
 | `/a/{id}/download` | the original file as an attachment under its name |
 | `GET /a/{id}/comments` | the comments, the same JSON as for the owner; does not mark them read | `200` + list of comment JSON |
@@ -170,6 +196,63 @@ cancelled.
 
 Opening the link does not use it up, because chat apps and link checkers fetch
 links themselves (GET or HEAD) to build a preview. Only the POST does.
+
+## Projects
+
+A project groups one agent's files under a title and gives them one page.
+Files in a project have no lifetime: they stay until the agent deletes them
+or the project, and only the agent's quota limits them. When an upload gets
+`quota_exceeded`, the agent frees space in its projects itself, as described
+in the [Skill](#skill) section.
+
+Project JSON:
+
+```json
+{"id": "Pq7...22 chars", "url": "https://art.example.org/p/Pq7...",
+ "title": "Landing redesign", "created_at": "2026-11-20T10:00:00Z",
+ "files": 6, "used_bytes": 3145728}
+```
+
+- The project id is 128 random bits, like an artifact id, and its page is
+  open to anyone with the link, the same as a file. The page shows titles,
+  sections, types, sizes and dates, nothing else.
+- A project title is 1 to 200 characters. Another agent's project answers
+  `404`, the same as a missing one.
+- Deleting a project deletes its files and their comments.
+
+File details:
+
+- `title` is what pages show; it defaults to `name`. 1 to 200 characters.
+- `project` is a project id or `null`. Putting a file in a project removes
+  its expiry (`expires_at` becomes `null`); taking it out with `"project":
+  null` starts a new 48 h lifetime from that moment. A file is in at most one
+  project. A project that is not the caller's gives `404 not_found`.
+- `section` groups files inside a project: free text, 1 to 64 characters, or
+  `null` for none. It is kept only while the file is in a project; a section
+  without a project gives `400 bad_request`.
+- Changing the title, project or section does not change the link, the
+  content or the comments.
+
+**The project page** `/p/{id}` lists sections in the order their first file
+was added, files without a section first, and files inside a section in the
+order they were added. Each line shows the title, type, size and when it was
+last updated, and links to the file's viewer page.
+
+**The project menu.** The viewer page of a file in a project shows the
+project's title in the header. It opens a menu with the same list as the
+project page, the current file marked, and a link to the project page. Moving
+between files happens in the same tab.
+
+**Links between files.** Inside HTML, Markdown and text, a plain click on a
+link to `/a/{id}` or `/p/{id}` of the same service, relative or absolute,
+opens it in the viewer's own tab instead of inside the frame. The script that
+draws comment pins (see [Comments](#comments)) catches such a click and asks
+the viewer to go there. The viewer goes only to a path of the form
+`/a/{id}` or `/p/{id}` on its own origin, with an optional `#fragment`
+that it passes on to the content; anything else it ignores. Clicks with a
+modifier key, links with `target="_blank"` and links elsewhere behave as
+before. Without the script, for example when the page's own CSP blocks it,
+such links open only with `target="_blank"`.
 
 ## Comments
 
@@ -294,6 +377,7 @@ text, which the person types into the viewer's form outside the sandbox.
 
 **Links.** `id` is 128 random bits, URL-safe base64. It cannot be listed or
 guessed; the only listing is the owner agent's own `GET /api/v1/artifacts`.
+A project id is made the same way; a project page lists only its own files.
 
 **Agent keys.** Created by `agent-artifacts agent add <name>`, which prints the
 key once. Only its SHA-256 is stored. `agent remove <name>` revokes it and
@@ -369,10 +453,11 @@ behind a TLS reverse proxy.
 
 ## Storage and cleanup
 
-Files under `<data>/files/<id>`,
-metadata, comments and key hashes in `<data>/meta.sqlite`. A background
-task deletes expired artifacts every 10 minutes, and expired ids already answer `404` before
-that.
+Files under `<data>/files/<id>`, metadata, projects, comments and key
+hashes in `<data>/meta.sqlite`. A background task deletes expired artifacts
+every 10 minutes, and expired ids already answer `404` before that. Files in
+projects never expire, so over time the total limit, not the lifetime, decides
+how much is kept; an admin watches `stats` and raises the limits if needed.
 
 ## Deployment
 
@@ -391,7 +476,11 @@ or else from the file `setup` writes with mode 600:
 `~/.config/agent-artifacts/env`, `%APPDATA%\agent-artifacts\env` on Windows,
 or `AGENT_ARTIFACTS_ENV`. The key never appears in a command line. Comments
 get the commands `comments ID`, `resolve ID N`, `reopen ID N` and
-`delete-comment ID N`; `list` shows each file's open comments. The skill
+`delete-comment ID N`; `list` shows each file's open comments. Projects get
+`project-new TITLE`, `projects`, `project ID`, `project-rename ID TITLE`,
+`project-delete ID`, the options `--project ID`, `--title TEXT` and
+`--section TEXT` on `upload` and `replace`, and `set ID [--title]
+[--project ID|none] [--section TEXT|none]`. The skill
 teaches:
 
 - upload, replace and delete with `artifacts_cli.py`, and how to give the
@@ -399,7 +488,14 @@ teaches:
 - one link per piece of work: keep the id and replace, don't upload again;
 - HTML must be one self-contained file: inline CSS and JS, images as `data:`
   URIs, no CDN or web fonts, internal navigation by `#anchor`, no
-  `localStorage`;
+  `localStorage`; links to other files of the service as `/a/{id}` or
+  `/p/{id}`;
+- for a job with several files, a project: one project per job, a title and
+  a section for every file, and the project page as the link to give;
+- on `quota_exceeded`: list the project's files and delete what is clearly
+  superseded (older versions, duplicates, drafts replaced by a final file),
+  then retry and tell the person what was deleted; if nothing is clearly
+  superseded, ask the person what to delete;
 - what the person can do with the link (view, download, forward, comment)
   and that it expires;
 - on "look at the comments": read them with `artifacts_cli.py comments ID`,
