@@ -96,7 +96,7 @@ Artifact JSON:
 Errors are `{"error": "<code>", "message": "<text>"}` with codes
 `bad_request`, `unauthorized`, `not_found`, `too_large`, `unsupported_type`,
 `type_mismatch`, `quota_exceeded`, `storage_full`, `too_many_comments`,
-`already_read`. `quota_exceeded` also
+`already_read`, and `forbidden` for admin calls and comment tokens. `quota_exceeded` also
 carries `used_bytes` and `quota_bytes`; a replace counts only the new file's
 size. Uploads must carry `Content-Length`; a body
 larger than the file limit is refused before it is read.
@@ -148,12 +148,13 @@ lifetime applies to uploads from then on.
 | `/a/{id}` | page with the name, expiry, the content, and buttons: Download, Copy link |
 | `/a/{id}/raw` | the content itself, with the sandbox headers below; opened as a page on its own, HTML, SVG, Markdown and text redirect to `/a/{id}`, while images and PDFs open in the browser's own viewer |
 | `/a/{id}/download` | the original file as an attachment under its name |
-| `GET /a/{id}/comments` | the comments, as for the owner | `200` + list of comment JSON |
+| `GET /a/{id}/comments` | the comments, the same JSON as for the owner; does not mark them read | `200` + list of comment JSON |
 | `POST /a/{id}/comments` | `{"author", "text", "anchor"}`, JSON only | `201` + comment JSON with its `edit_token`; `409 too_many_comments` |
 | `PATCH /a/{id}/comments/{n}` | `{"resolved": true or false}`, or `{"edit_token", "text"}` to edit, JSON only | `200` + comment JSON; `403` wrong token, `409 already_read` |
 | `DELETE /a/{id}/comments/{n}` | header `X-Edit-Token`; delete your own comment | `204`; `403`, `409 already_read` |
 
-A missing or expired id gives a `404` page saying so. Pages carry
+A missing or expired id gives a `404` page saying so (the comment calls
+answer JSON instead). Pages carry
 `X-Robots-Tag: noindex` and `Referrer-Policy: no-referrer`.
 
 ### Invite pages (no auth)
@@ -244,8 +245,10 @@ Comment JSON:
 
 **Rules for the comment calls.** Bodies are JSON with `Content-Type:
 application/json`, at most 16 KB, with `Content-Length`; the service checks
-this itself and refuses anything else with `400 bad_request` (`413
-too_large` for a bigger body). Errors are JSON, never a page:
+this itself and refuses anything else with `400 bad_request` (`411
+bad_request` without `Content-Length`, `413 too_large` for a bigger body).
+The token is checked before the read state, so a wrong token gets `403`
+whether or not the agent has read the comment. Errors are JSON, never a page:
 
 | Case | Answer |
 | --- | --- |
@@ -305,8 +308,9 @@ two presses cannot both get a key. The pages send `Cache-Control: no-store`,
 
 **Comments.** Posting needs no key, so it is limited: the sizes and the count
 above, and a request rate per address in the reverse proxy. The nginx example
-gets its own zone for `/a/{id}/comments`, 10 requests a minute with a burst
-of 5; over it, nginx answers `429` itself. A limit per address cannot stop
+gets its own zone for writes to `/a/{id}/comments` (POST, PATCH, DELETE),
+10 requests a minute with a burst of 5; over it, nginx answers `429` itself.
+Reading comments stays under the viewer's limit. A limit per address cannot stop
 someone with many addresses from filling an artifact's 200 comments; the
 owner agent can delete them. The service enforces the JSON content type,
 which another site cannot send without a CORS preflight, and answers no CORS
