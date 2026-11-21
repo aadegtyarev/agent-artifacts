@@ -4,6 +4,7 @@ in static/, served from /static."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -25,6 +26,16 @@ _env = Environment(
     lstrip_blocks=True,
     auto_reload=False,  # the templates ship with the code
 )
+
+
+def _static_url(name: str) -> str:
+    """/static/<name>?v=<hash of its content>: a new deploy gets a new URL, so
+    a browser never pairs a new page with a stale cached file."""
+    digest = hashlib.sha256((STATIC_DIR / name).read_bytes()).hexdigest()[:12]
+    return f"/static/{name}?v={digest}"
+
+
+_env.globals["static"] = {n: _static_url(n) for n in ("site.css", "copy.js", "comments.js")}
 
 SANDBOX = (
     "allow-scripts allow-forms allow-modals allow-popups "

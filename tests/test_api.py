@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import re
 import time
 
 import pytest
@@ -534,9 +535,13 @@ def test_viewer_page_has_comments_on_every_type(env):
         page = client.get(f"/a/{art['id']}")
         assert 'id="comments-toggle"' in page.text, name
         assert '<span id="comments-count">1</span>' in page.text, name
-        assert '<script src="/static/comments.js"></script>' in page.text, name
+        assert re.search(
+            r'<script src="/static/comments\.js\?v=[0-9a-f]{12}"></script>', page.text
+        ), name
         assert "connect-src 'self'" in page.headers["content-security-policy"], name
     assert client.get("/static/comments.js").status_code == 200
+    css = re.search(r'href="(/static/site\.css\?v=[0-9a-f]{12})"', page.text)
+    assert css and client.get(css.group(1)).status_code == 200
 
 
 def test_only_the_viewer_may_connect(env):
