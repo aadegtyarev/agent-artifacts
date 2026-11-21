@@ -49,8 +49,15 @@
   // image, "placed" with the anchor in `spot`, or "whole" for the whole file.
   let spotState = mode ? "waiting" : "whole";
   let spot = null;
-  let editing = null; // {n, draft} while a comment's text is being edited
+  // {n, draft, start, end} while a comment's text is being edited; kept
+  // here so a redraw of the list does not lose the text or the caret.
+  let editing = null;
+  // The comment and the pin highlighted for a moment, redrawn lit.
+  const lit = { comment: null, pin: null };
+  // Every change to `comments` bumps it, so an older GET cannot overwrite it.
+  let generation = 0;
   const timers = {};
+  const phone = window.matchMedia("(max-width: 640px)");
 
   class ApiError extends Error {
     constructor(status, code, message) {
@@ -125,18 +132,52 @@
   // --- Loading and drawing --------------------------------------------------
 
   async function load() {
+    const mine = ++generation;
     if (!comments.length) say("comments-status", "Loading comments…");
+    let found;
     try {
-      comments = await call("GET", base);
+      found = await call("GET", base);
     } catch (e) {
-      say("comments-status", `Could not load comments. ${e.message}`, true);
+      if (mine === generation) say("comments-status", `Could not load comments. ${e.message}`, true);
       return;
     }
+    if (mine !== generation) return; // something newer has landed meanwhile
+    comments = found;
     say("comments-status", "");
+    dropStaleTokens();
     render();
   }
 
+  // Tokens of this file's comments that are gone, deleted by the agent.
+  function dropStaleTokens() {
+    const prefix = tokenKey("");
+    const known = new Set(comments.map((c) => tokenKey(c.n)));
+    try {
+      const keys = Object.keys(localStorage).filter((k) => k.startsWith(prefix) && !known.has(k));
+      for (const key of keys) localStorage.removeItem(key);
+    } catch { /* no storage, no tokens */ }
+  }
+
+  function changed(next) {
+    generation++;
+    comments = next;
+  }
+
+  // Redraws the list from `comments`, keeping focus on the same comment and
+  // an open editor's text and caret.
   function render() {
+    const active = document.activeElement;
+    const editorFocused = active && active.matches(".comment-edit textarea");
+    if (editorFocused && editing) {
+      editing.start = active.selectionStart;
+      editing.end = active.selectionEnd;
+    }
+    let focusedItem = active && active.matches(".comment") ? active.id : null;
+    if (editorFocused && editing) focusedItem = `comment-${editing.n}`;
+    if (editing && !comments.some((c) => c.n === editing.n)) {
+      say("comments-status", `Comment ${editing.n} was deleted.`, true);
+      editing = null;
+    }
     const open = comments.filter((c) => !c.resolved);
     const resolved = comments.filter((c) => c.resolved);
     count.textContent = open.length;
@@ -150,17 +191,31 @@
     showResolved.setAttribute("aria-expanded", String(resolvedShown));
     resolvedList.hidden = !resolvedShown;
     drawPins();
+    if (editing && editorFocused) {
+      const area = $(`comment-${editing.n}`).querySelector("textarea");
+      area.focus({ preventScroll: true });
+      area.setSelectionRange(editing.start, editing.end);
+    } else if (focusedItem && $(focusedItem)) {
+      $(focusedItem).focus({ preventScroll: true });
+    }
   }
 
   function item(c) {
     const li = el("li", "comment");
     li.id = `comment-${c.n}`;
     li.tabIndex = -1;
+    if (lit.comment === c.n) li.classList.add("lit");
     // A comment the agent has read is final: this browser's token is useless.
     let token = storage.get(tokenKey(c.n));
     if (token && c.read) {
       storage.remove(tokenKey(c.n));
       token = null;
+    }
+    if (editing && editing.n === c.n && (c.read || !token)) {
+      editing = null;
+      say("comments-status", c.read
+        ? `The agent has already read comment ${c.n}; it can no longer be changed.`
+        : `Comment ${c.n} cannot be changed from this browser.`, true);
     }
 
     const meta = el("div", "comment-meta");
@@ -218,6 +273,7 @@
     const shown = comments.filter(isPinned).map((c) => {
       const pin = pinAt(c.anchor, String(c.n));
       pin.dataset.n = c.n;
+      if (lit.pin === c.n) pin.classList.add("lit");
       pin.setAttribute("aria-label", `Comment ${c.n}`);
       pin.addEventListener("click", (e) => {
         e.preventDefault();
@@ -227,8 +283,8 @@
       return pin;
     });
     if (spotState === "placed") {
-      const next = Math.max(0, ...comments.map((c) => c.n)) + 1;
-      const pin = pinAt(spot, String(next));
+      // Unnumbered: the server hands out the number on sending.
+      const pin = pinAt(spot, "+");
       pin.classList.add("new");
       pin.setAttribute("aria-label", "The spot of the comment you are writing");
       pin.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); text.focus(); });
@@ -249,42 +305,82 @@
     return pin;
   }
 
-  // The pin layer covers exactly the displayed image.
+  // The pin layer covers exactly the displayed image. A pin too close to
+  // the right or top edge turns to the other side to stay on the image.
   function fitPins() {
     if (!mode) return;
+    const width = image.offsetWidth;
+    const height = image.offsetHeight;
     pins.style.left = `${image.offsetLeft}px`;
     pins.style.top = `${image.offsetTop}px`;
-    pins.style.width = `${image.offsetWidth}px`;
-    pins.style.height = `${image.offsetHeight}px`;
+    pins.style.width = `${width}px`;
+    pins.style.height = `${height}px`;
+    for (const pin of pins.children) {
+      const x = parseFloat(pin.style.left) / 100;
+      const y = parseFloat(pin.style.top) / 100;
+      pin.classList.toggle("left", x * width + pin.offsetWidth > width && x * width >= pin.offsetWidth);
+      pin.classList.toggle("down", y * height < pin.offsetHeight);
+    }
   }
 
-  function highlight(node, scroll) {
-    if (!node) return;
-    node.classList.add("lit");
-    node.scrollIntoView(scroll);
-    clearTimeout(node.litTimer);
-    node.litTimer = setTimeout(() => node.classList.remove("lit"), 2500);
+  // Lights the comment or pin `n` for a moment; the state survives redraws.
+  function light(which, n) {
+    lit[which] = n;
+    clearTimeout(timers[which]);
+    timers[which] = setTimeout(() => {
+      lit[which] = null;
+      for (const node of document.querySelectorAll(which === "pin" ? ".pin.lit" : ".comment.lit")) {
+        node.classList.remove("lit");
+      }
+    }, 2500);
   }
 
   function highlightComment(n) {
     if (panel.hidden) openPanel(false);
     const c = comments.find((x) => x.n === n);
-    if (c && c.resolved && !resolvedShown) { resolvedShown = true; render(); }
+    if (c && c.resolved) resolvedShown = true;
+    light("comment", n);
+    render();
     const li = $(`comment-${n}`);
-    highlight(li, { block: "nearest" });
-    if (li) li.focus({ preventScroll: true });
+    if (!li) return;
+    li.scrollIntoView({ block: "nearest" });
+    li.focus({ preventScroll: true });
   }
 
   function highlightPin(n) {
+    light("pin", n);
+    drawPins();
     const pin = pins.querySelector(`[data-n="${n}"]`);
-    highlight(pin, { block: "center", inline: "center" });
+    if (pin) pin.scrollIntoView({ block: "center", inline: "center" });
   }
 
   // --- The spot of a new comment --------------------------------------------
 
   function pinModeOn() {
-    return mode && !panel.hidden && spotState !== "whole";
+    return mode && !panel.hidden && spotState !== "whole" && !(phone.matches && folded());
   }
+
+  // --- The form, folded to one button on a phone until it is needed ---------
+
+  const folded = () => form.classList.contains("folded");
+
+  function fold(yes) {
+    form.classList.toggle("folded", yes);
+    showSpot();
+  }
+
+  $("comment-open").addEventListener("click", () => {
+    fold(false);
+    text.focus();
+  });
+  // Folds again when left empty, unless a spot is still to be clicked.
+  form.addEventListener("focusout", () => {
+    setTimeout(() => {
+      if (form.contains(document.activeElement) || text.value.trim()) return;
+      if (spotState === "whole") fold(true);
+    }, 0);
+  });
+  phone.addEventListener("change", showSpot);
 
   function showSpot() {
     $("spot").hidden = !mode;
@@ -318,16 +414,13 @@
       if (!pinModeOn()) return;
       e.preventDefault();
       const box = image.getBoundingClientRect();
+      if (!box.width || !box.height) return;
       const fraction = (v) => Math.round(Math.min(1, Math.max(0, v)) * 10000) / 10000;
-      // A click from the keyboard has no position: the middle of the image.
-      const anchor = e.detail === 0 || !box.width
-        ? { type: "point", x: 0.5, y: 0.5 }
-        : {
-          type: "point",
-          x: fraction((e.clientX - box.left) / box.width),
-          y: fraction((e.clientY - box.top) / box.height),
-        };
-      setSpot("placed", anchor);
+      setSpot("placed", {
+        type: "point",
+        x: fraction((e.clientX - box.left) / box.width),
+        y: fraction((e.clientY - box.top) / box.height),
+      });
       say("form-status", "");
       text.focus({ preventScroll: true });
     });
@@ -362,7 +455,7 @@
   }
 
   function replace(updated) {
-    comments = comments.map((c) => (c.n === updated.n ? updated : c));
+    changed(comments.map((c) => (c.n === updated.n ? updated : c)));
   }
 
   async function resolve(c, b) {
@@ -379,11 +472,11 @@
   }
 
   function startEdit(c) {
-    editing = { n: c.n, draft: c.text };
+    editing = { n: c.n, draft: c.text, start: c.text.length, end: c.text.length };
     render();
     const area = $(`comment-${c.n}`).querySelector("textarea");
     area.focus();
-    area.setSelectionRange(area.value.length, area.value.length);
+    area.setSelectionRange(editing.start, editing.end);
   }
 
   function cancelEdit(n) {
@@ -423,7 +516,7 @@
         if (e.status !== 404) { say("comments-status", e.message, true); return; }
       }
       storage.remove(tokenKey(c.n));
-      comments = comments.filter((x) => x.n !== c.n);
+      changed(comments.filter((x) => x.n !== c.n));
       render();
       say("comments-status", `Comment ${c.n} deleted.`);
       $("comments-title").focus();
@@ -452,16 +545,17 @@
         const posted = await call("POST", base, body);
         const { edit_token: token, ...c } = posted;
         const kept = storage.set(tokenKey(c.n), token);
-        comments.push(c);
+        changed([...comments, c]);
         text.value = "";
         if (mode) spotState = "waiting";
         spot = null;
-        showSpot();
+        fold(true);
+        light("comment", c.n);
         render();
         say("form-status", kept
           ? "Sent. You can edit or delete it until the agent reads it."
           : "Sent. This browser cannot store it, so it cannot be edited here.");
-        highlight($(`comment-${c.n}`), { block: "nearest" });
+        $(`comment-${c.n}`).scrollIntoView({ block: "nearest" });
       } catch (err) {
         say("form-status", err.message, true);
       }
@@ -490,6 +584,7 @@
     const inside = panel.contains(document.activeElement);
     panel.hidden = true;
     toggle.setAttribute("aria-expanded", "false");
+    if (!text.value.trim() && spotState !== "placed") form.classList.add("folded");
     showSpot();
     fitPins();
     if (inside) toggle.focus();

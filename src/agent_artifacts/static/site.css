@@ -47,13 +47,17 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
   .comments { width: auto; height: 60%; border-left: 0; border-top: 1px solid var(--line);
     border-radius: 12px 12px 0 0; box-shadow: 0 -4px 16px rgb(0 0 0 / 0.15); }
   #comment-hint { visibility: hidden; }
+  /* The form folds to one button until the person starts writing. */
+  .comment-form.folded > :not(#comment-open):not(#form-status) { display: none; }
+  .comment-form.folded #comment-open { display: flex; }
 }
 .comments-head { display: flex; align-items: center; padding: 4px 8px 4px 12px;
   border-bottom: 1px solid var(--line); }
 .comments-head h2 { flex: 1; margin: 0; font-size: 14px; outline: none; }
 .comments-body { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 12px; }
 .note { margin: 4px 0; color: var(--muted); font-size: 13px; }
-.note:empty { display: none; }
+/* Status lines stay in the layout when empty, so screen readers announce them. */
+.note:empty { margin: 0; }
 .note.error { color: var(--error); }
 .comment-list { list-style: none; margin: 0; padding: 0; }
 .comment { padding: 8px 0; border-bottom: 1px solid var(--line); outline: none; }
@@ -75,20 +79,30 @@ button.text:disabled { color: var(--muted); cursor: default; }
   border-radius: 6px; padding: 6px 8px; }
 .comments textarea { height: auto; min-height: 4.5em; word-break: normal;
   overflow-wrap: anywhere; resize: vertical; }
+/* At least 16px on a phone, or iOS zooms the page in on focus. */
+@media (max-width: 640px) { .comment-form input, .comments textarea { font-size: 16px; } }
 .form-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .form-row .note { margin: 0; }
 .spot { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; font-size: 13px; }
 .spot.waiting { color: var(--accent); }
+#comment-open { display: none; justify-content: flex-start; width: 100%; height: 36px;
+  padding: 0 8px; color: var(--muted); font-size: 16px; }
 
 /* Pins over an image: a layer the size of the image, pins placed in %. */
-#image-box { position: relative; }
+/* Clipped, so a pin at an edge never widens the page. */
+#image-box { position: relative; overflow: hidden; }
 .pins { position: absolute; pointer-events: none; }
 .waiting-spot img { cursor: crosshair; }
 .pin { position: absolute; transform: translateY(-100%); pointer-events: auto;
   min-width: 24px; height: 24px; padding: 0 6px; font-size: 12px; font-weight: 600;
   color: #fff; background: var(--accent); border: 2px solid #fff;
   border-radius: 12px 12px 12px 2px; box-shadow: 0 1px 4px rgb(0 0 0 / 0.4); }
-.pin.new { background: var(--muted); }
+/* The sharp corner marks the spot; near the right or top edge the pin turns
+   to the other side so it stays on the image. */
+.pin.left { transform: translate(-100%, -100%); border-radius: 12px 12px 2px 12px; }
+.pin.down { transform: none; border-radius: 2px 12px 12px 12px; }
+.pin.left.down { transform: translateX(-100%); border-radius: 12px 2px 12px 12px; }
+.pin.new { background: #6e6e73; }
 .pin.lit { outline: 3px solid var(--accent); outline-offset: 2px; }
 button.badge { display: inline-flex; min-width: 20px; height: 18px; padding: 0 5px;
   font-size: 11px; font-weight: 600; color: #fff; background: var(--accent);

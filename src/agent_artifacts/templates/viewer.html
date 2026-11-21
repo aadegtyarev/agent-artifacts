@@ -40,7 +40,9 @@
     <button type="button" id="show-resolved" class="text" aria-expanded="false" hidden></button>
     <ol id="resolved-list" class="comment-list" hidden></ol>
   </div>
-  <form id="comment-form" class="comment-form" novalidate>
+  {#- On a phone the form stays folded to one button until it is needed. #}
+  <form id="comment-form" class="comment-form folded" novalidate>
+    <button type="button" id="comment-open">Write a comment…</button>
     <div id="spot" class="spot" hidden>
       <span id="spot-text"></span>
       <button type="button" id="spot-action" class="text"></button>
