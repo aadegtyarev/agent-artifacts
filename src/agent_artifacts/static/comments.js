@@ -127,13 +127,31 @@
     undoAction = undo;
     toastUndo.hidden = !undo;
     toastBox.classList.add("on");
+    document.body.classList.add("toast-on");
+    dockToast();
     timers.toast = setTimeout(hideToast, ms);
+  }
+
+  // On a phone a toast sits right above whatever holds the bottom: the
+  // docked composer, the form of the open sheet, or the strip.
+  function dockToast() {
+    if (!phone.matches) {
+      toastBox.style.bottom = "";
+      return;
+    }
+    let edge = window.innerHeight;
+    const docked = composer && !composer.hidden && composer.classList.contains("dock");
+    const holder = docked ? composer : panel.hidden ? strip : form;
+    const top = holder.getBoundingClientRect().top;
+    if (top > 0) edge = top;
+    toastBox.style.bottom = `${Math.max(0, window.innerHeight - edge) + 4}px`;
   }
 
   function hideToast() {
     clearTimeout(timers.toast);
     const focused = toastBox.contains(document.activeElement);
     toastBox.classList.remove("on");
+    document.body.classList.remove("toast-on");
     undoAction = null;
     toastUndo.hidden = true;
     if (focused) (panel.hidden ? (phone.matches ? strip : toggle) : $("comments-title")).focus();
@@ -159,16 +177,36 @@
     return b;
   }
 
-  function checkIcon() {
+  const ICONS = {
+    check: "m5 12 5 5 9-10",
+    reopen: "M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3",
+    edit: "M4 20h4L19 9l-4-4L4 16zM13 7l4 4",
+    delete: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13",
+    up: "m6 15 6-6 6 6",
+    down: "m6 9 6 6 6-6",
+  };
+  function icon(name) {
     const ns = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(ns, "svg");
     svg.setAttribute("viewBox", "0 0 24 24");
     svg.setAttribute("aria-hidden", "true");
     const path = document.createElementNS(ns, "path");
-    path.setAttribute("d", "m5 12 5 5 9-10");
+    path.setAttribute("d", ICONS[name]);
     svg.append(path);
     return svg;
   }
+
+  // A button that shows only an icon; its name is in aria-label and title.
+  function iconButton(name, label, onClick) {
+    const b = button("", onClick, "icon");
+    b.append(icon(name));
+    b.setAttribute("aria-label", label);
+    b.title = label.replace(/ comment \d+$/, "");
+    return b;
+  }
+
+  // "Comment 3" in the panel and on a computer; "#3" in a phone's toast.
+  const named = (n) => (phone.matches ? `#${n}` : `Comment ${n}`);
 
   function when(iso) {
     const t = new Date(iso);
@@ -241,12 +279,16 @@
     count.textContent = open.length;
     toggle.setAttribute("aria-label", `Comments, ${open.length} open`);
     stripText.textContent = `Comments · ${open.length} open`;
+    $("comments-title").textContent = `Comments · ${open.length} open`;
     $("comments-empty").hidden = shown.length > 0;
     if (!resolved.length) resolvedShown = false;
     list.replaceChildren(...open.map(item));
     resolvedList.replaceChildren(...resolved.map(item));
     showResolved.hidden = resolved.length === 0;
-    showResolved.textContent = `${resolvedShown ? "Hide" : "Show"} resolved (${resolved.length})`;
+    // Compact, to share the head row with the title: the chevron shows
+    // whether the resolved list is open (aria-expanded says it too).
+    showResolved.replaceChildren(`Resolved (${resolved.length})`, icon(resolvedShown ? "up" : "down"));
+    showResolved.title = `${resolvedShown ? "Hide" : "Show"} resolved comments`;
     showResolved.setAttribute("aria-expanded", String(resolvedShown));
     resolvedList.hidden = !resolvedShown;
     drawPins();
@@ -290,7 +332,7 @@
     if (hasPin(c)) badge.setAttribute("aria-label", `Show the pin of comment ${c.n}`);
     if (c.resolved) {
       badge.classList.add("resolved");
-      badge.append(checkIcon());
+      badge.append(icon("check"));
     }
     meta.append(badge);
     meta.append(el("span", "author", c.author));
@@ -302,20 +344,23 @@
     if (c.before_replace) meta.append(el("span", "tag", "before update"));
     if (c.read) meta.append(el("span", "tag", "read by the agent"));
     if (c.edited_at) meta.append(el("span", "tag", "edited"));
-    li.append(meta);
-
+    // The actions sit at the right of the meta line, as icon buttons.
+    const head = el("div", "comment-head");
+    head.append(meta);
     if (editing && editing.n === c.n) {
-      li.append(editor(c, token));
+      li.append(head, editor(c, token));
       return li;
     }
-    li.append(el("p", "comment-text", c.text));
-    const tools = el("div", "comment-tools");
-    tools.append(button(c.resolved ? "Reopen" : "Resolve", (e) => resolve(c, e.target)));
+    const actions = el("div", "comment-actions");
+    actions.append(c.resolved
+      ? iconButton("reopen", `Reopen comment ${c.n}`, (e) => resolve(c, e.currentTarget))
+      : iconButton("check", `Resolve comment ${c.n}`, (e) => resolve(c, e.currentTarget)));
     if (token && !c.read) {
-      tools.append(button("Edit", () => startEdit(c)));
-      tools.append(button("Delete", () => remove(c, token)));
+      actions.append(iconButton("edit", `Edit comment ${c.n}`, () => startEdit(c)));
+      actions.append(iconButton("delete", `Delete comment ${c.n}`, () => remove(c, token)));
     }
-    li.append(tools);
+    head.append(actions);
+    li.append(head, el("p", "comment-text", c.text));
     return li;
   }
 
@@ -470,11 +515,10 @@
       // Room under the image, so the pin can scroll up above the composer.
       const covered = imageBox.getBoundingClientRect().bottom - top;
       imageBox.style.paddingBottom = covered > 0 ? `${covered + 8}px` : "";
-      // Toasts show above the composer, not over its buttons.
-      toastBox.style.bottom = `${window.innerHeight - top + 8}px`;
+      dockToast();
       return;
     }
-    toastBox.style.bottom = "";
+    dockToast();
     // Next to the pin, inside the window: below it, or above with no room.
     composer.classList.remove("dock");
     imageBox.style.paddingBottom = "";
@@ -521,7 +565,7 @@
     draft = null;
     $("composer-text").value = "";
     imageBox.style.paddingBottom = "";
-    toastBox.style.bottom = "";
+    dockToast();
     say("composer-status", "");
     drawPins();
   }
@@ -675,14 +719,22 @@
     say("comments-status", `${why.charAt(0).toUpperCase()}${why.slice(1)}; it can no longer be changed.`, true);
   }
 
+  // Disables the button while `action` runs; a text button says what is
+  // going on, an icon button keeps its icon.
   async function busy(b, label, action) {
+    const iconOnly = b.classList.contains("icon");
     const old = b.textContent;
     b.disabled = true;
-    b.textContent = label;
+    b.setAttribute("aria-busy", "true");
+    if (!iconOnly) b.textContent = label;
     try {
       await action();
     } finally {
-      if (b.isConnected) { b.disabled = false; b.textContent = old; }
+      if (b.isConnected) {
+        b.disabled = false;
+        b.removeAttribute("aria-busy");
+        if (!iconOnly) b.textContent = old;
+      }
     }
   }
 
@@ -698,10 +750,10 @@
         replace(await call("PATCH", `${base}/${c.n}`, { resolved: resolving }));
         render();
         if (resolving) {
-          toast(`Comment ${c.n} resolved`, { undo: () => reopen(c.n), ms: UNDO_MS });
+          toast(`${named(c.n)} resolved`, { undo: () => reopen(c.n), ms: UNDO_MS });
           toastUndo.focus({ preventScroll: true });
         } else {
-          toast(`Comment ${c.n} reopened.`);
+          toast(`${named(c.n)} reopened`);
         }
       } catch (e) {
         if (e.status === 404) await load();
@@ -715,7 +767,7 @@
       replace(await call("PATCH", `${base}/${n}`, { resolved: false }));
       light("comment", n);
       render();
-      toast(`Comment ${n} reopened.`);
+      toast(`${named(n)} reopened`);
     } catch (e) {
       if (e.status === 404) await load();
       toast(`Comment ${n} was not reopened. ${e.status === 404 ? "It was deleted." : e.message}`,
@@ -765,7 +817,7 @@
     flushPending();
     pending = { c, token, timer: setTimeout(flushPending, UNDO_MS) };
     render();
-    toast(`Comment ${c.n} deleted`, { undo: undoDelete, ms: UNDO_MS });
+    toast(`${named(c.n)} deleted`, { undo: undoDelete, ms: UNDO_MS });
     toastUndo.focus({ preventScroll: true });
   }
 
@@ -776,7 +828,7 @@
     pending = null;
     light("comment", n);
     render();
-    toast(`Comment ${n} restored.`);
+    toast(`${named(n)} restored`);
   }
 
   // Sends the waiting delete, if any. The fetch starts synchronously, with
@@ -827,6 +879,7 @@
     panel.hidden = false;
     setExpanded(true);
     fitPins();
+    dockToast();
     load();
     if (focus) $("comments-title").focus();
   }
@@ -838,6 +891,7 @@
     setExpanded(false);
     if (!text.value.trim()) fold(true);
     fitPins();
+    dockToast();
     if (inside) (phone.matches ? strip : toggle).focus();
   }
 
@@ -847,11 +901,14 @@
   showResolved.addEventListener("click", () => {
     resolvedShown = !resolvedShown;
     render();
+    if (resolvedShown) resolvedList.scrollIntoView({ block: "nearest" });
   });
+  window.addEventListener("resize", dockToast);
+  phone.addEventListener("change", dockToast);
 
   // A swipe down on the sheet's grip or head folds it to the strip.
   let swipeFrom = null;
-  for (const handle of [panel.querySelector(".grip"), panel.querySelector(".comments-head")]) {
+  for (const handle of [panel.querySelector(".comments-head")]) {
     handle.addEventListener("touchstart", (e) => {
       if (!phone.matches) return;
       swipeFrom = e.touches[0].clientY;

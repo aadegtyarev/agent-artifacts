@@ -54,10 +54,10 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
   .comments { width: auto; height: 60%; border-left: 0; border-top: 1px solid var(--line);
     border-radius: 12px 12px 0 0; box-shadow: 0 -4px 16px rgb(0 0 0 / 0.15); }
   .comments.dragging { transition: none; }
-  .grip { display: block; flex: none; height: 12px; touch-action: none; }
-  .grip::before { content: ""; display: block; width: 40px; height: 4px; margin: 4px auto;
-    border-radius: 2px; background: var(--line); }
-  .comments-head { touch-action: none; }
+  /* The grip is a bar on the head's top edge, not a band of its own. */
+  .comments-head { position: relative; touch-action: none; }
+  .grip { display: block; position: absolute; top: 4px; left: calc(50% - 20px); width: 40px;
+    height: 4px; border-radius: 2px; background: var(--line); }
   .comments[hidden] + .strip { display: flex; }
   .strip { flex: none; justify-content: flex-start; gap: 8px; width: 100%; height: 44px;
     padding: 0 12px; font-size: 15px; background: var(--bg); border: 0;
@@ -67,7 +67,11 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
 }
 .comments-head { display: flex; align-items: center; padding: 4px 8px 4px 12px;
   border-bottom: 1px solid var(--line); }
-.comments-head h2 { flex: 1; margin: 0; font-size: 14px; outline: none; }
+.comments-head { gap: 8px; }
+.comments-head h2 { flex: 1; min-width: 0; margin: 0; font-size: 14px; outline: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#show-resolved { display: inline-flex; align-items: center; gap: 2px; flex: none; font-size: 13px; }
+#show-resolved svg { width: 16px; height: 16px; }
 .comments-body { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 12px; }
 .note { margin: 4px 0; color: var(--muted); font-size: 13px; }
 /* Status lines stay in the layout when empty, so screen readers announce them. */
@@ -85,13 +89,20 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
 .comment-meta .author { color: var(--fg); font-weight: 600; overflow-wrap: anywhere; }
 .comment-text { margin: 4px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .comment-tools { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+/* The meta line, with the comment's actions as icon buttons at its right. */
+.comment-head { display: flex; align-items: center; gap: 8px; }
+.comment-head .comment-meta { flex: 1; min-width: 0; }
+.comment-actions { display: flex; flex: none; gap: 2px; }
+button.icon { min-width: 28px; height: 28px; padding: 0; color: var(--muted);
+  background: none; border: 0; }
+button.icon:hover { color: var(--accent); background: var(--btn); }
+button.icon:disabled { opacity: 0.5; cursor: default; }
 .tag { padding: 0 4px; border: 1px solid var(--line); border-radius: 4px; }
 button.text { display: inline; min-width: 0; height: auto; padding: 0; border: 0;
   background: none; color: var(--accent); font-size: 12px; }
 button.text:disabled { color: var(--muted); cursor: default; }
 button.primary { color: #fff; background: var(--accent); border-color: var(--accent); }
 button.primary:disabled { opacity: 0.6; cursor: default; }
-#show-resolved { margin: 8px 0; font-size: 13px; }
 .comment-form { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px;
   border-top: 1px solid var(--line); }
 .comment-form input, .comments textarea, .composer input, .composer textarea {
@@ -119,7 +130,7 @@ button.primary:disabled { opacity: 0.6; cursor: default; }
   padding: 8px 14px; font-size: 13px; color: #fff; background: #1d1d1f;
   border-radius: 18px; box-shadow: 0 4px 16px rgb(0 0 0 / 0.25);
   visibility: hidden; opacity: 0; transition: opacity 0.2s, visibility 0.2s; }
-.toast.on { visibility: visible; opacity: 0.95; }
+.toast.on { visibility: visible; opacity: 1; }
 .toast.error { background: var(--error); }
 .toast button.text { color: #8ec5ff; font-size: 13px; font-weight: 600; }
 .toast.error button.text { color: #fff; }
@@ -132,11 +143,21 @@ button.primary:disabled { opacity: 0.6; cursor: default; }
   button.text, .toast button.text { display: inline-flex; align-items: center;
     min-height: 44px; padding: 0 8px; font-size: 15px; }
   .comment-tools { gap: 0 12px; margin-left: -8px; }
-  #show-resolved { margin: 4px 0 4px -8px; }
+  #show-resolved { min-height: 44px; padding: 0 6px; font-size: 15px; }
+  .comments-head { gap: 4px; }
+  button.icon { width: 44px; height: 44px; }
+  button.icon svg { width: 22px; height: 22px; }
+  .comment-actions { gap: 4px; margin-right: -8px; }
   .form-row button, #comments-close, #comment-open { min-width: 44px; height: 44px;
     padding: 0 14px; font-size: 15px; }
   #comment-open { font-size: 16px; }
-  .toast { bottom: 52px; min-height: 44px; padding: 0 6px 0 14px; font-size: 15px; }
+  /* Full width above the strip, the form or the composer (set by the script). */
+  .toast { left: 8px; right: 8px; bottom: 52px; transform: none; max-width: none;
+    justify-content: space-between; min-height: 52px; padding: 4px 4px 4px 14px;
+    font-size: 15px; border-radius: 10px; }
+  .toast button.text { min-height: 44px; padding: 0 16px; color: #fff;
+    background: rgb(255 255 255 / 0.16); border-radius: 8px; }
+  .toast-on .comments-body { padding-bottom: 64px; }
   .comments-body { padding: 4px 12px; }
   .comment-meta { font-size: 13px; }
   .note { font-size: 14px; }
@@ -145,9 +166,13 @@ button.primary:disabled { opacity: 0.6; cursor: default; }
   .comments-head { padding: 0 4px 0 12px; }
   .comments-head h2 { font-size: 15px; }
   .comment-form, .composer { padding: 8px; }
-  /* The 44px action row gives each comment its bottom spacing. */
-  .comment { padding-bottom: 0; }
-  .comment-text { margin: 2px 0 0; }
+  /* The 44px icon buttons give the meta line its own spacing. */
+  .comment { padding: 0 6px 8px; }
+  .comment-text { margin: 0; }
+  /* Folded, the form is one slim row. */
+  .comment-form.folded { gap: 0; padding: 0; }
+  .comment-form.folded #comment-open { height: 44px; padding: 0 12px; border: 0;
+    border-radius: 0; background: var(--bg); }
   /* The docked composer: the text on top, the name and the buttons in one
      row under it, so it covers as little of the image as it can. */
   .composer { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; }

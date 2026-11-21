@@ -347,10 +347,12 @@ file, but not for anything beyond it.
 open comments, on every file type. It opens a panel at the side on a
 computer; on a phone the panel is a bottom sheet, folded to a strip
 "Comments · N open" at the bottom when closed (a tap on the strip opens it,
-a swipe down on its grip or head or the close button folds it). The panel
-lists the comments, resolved ones dimmed with a grey checked number and
-hidden behind "Show resolved (N)", and has a folded form for a comment about
-the whole file. The name is remembered by the browser.
+a swipe down on its grip or head or the close button folds it). The panel's
+head reads "Comments · N open" and has a "Resolved (N)" toggle; resolved
+comments are hidden until it is used, then shown dimmed with a grey checked
+number. Each comment has its actions as icon buttons on its first line
+(resolve or reopen; edit and delete for the author's own unread comment).
+At the bottom is a folded form for a comment about the whole file. The name is remembered by the browser.
 
 Where a pin is possible, a click on the content places a draft pin and opens
 a composer at that spot: a popover next to the pin on a computer, docked

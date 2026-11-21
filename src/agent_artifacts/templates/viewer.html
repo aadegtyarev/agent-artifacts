@@ -29,18 +29,18 @@
 {%- endif %}
 </main>
 <aside id="comments" class="comments" hidden aria-labelledby="comments-title" data-artifact="{{ a.id }}" data-kind="{{ kind.name }}">
-  {#- On a phone the panel is a bottom sheet: a swipe down on the grip or
-      the head folds it back to the strip. #}
-  <div class="grip" aria-hidden="true"></div>
+  {#- On a phone the panel is a bottom sheet: a swipe down on the head (the
+      grip is a bar on its top edge) folds it back to the strip. #}
   <div class="comments-head">
-    <h2 id="comments-title" tabindex="-1">Comments</h2>
+    <div class="grip" aria-hidden="true"></div>
+    <h2 id="comments-title" tabindex="-1">Comments · {{ a.open_comments }} open</h2>
+    <button type="button" id="show-resolved" class="text" aria-expanded="false" aria-controls="resolved-list" hidden></button>
     <button type="button" id="comments-close" title="Close" aria-label="Close comments">{{ icon.close() }}</button>
   </div>
   <div class="comments-body">
     <p id="comments-status" class="note" role="status" aria-live="polite"></p>
     <p id="comments-empty" class="note" hidden>No comments yet.</p>
     <ol id="comment-list" class="comment-list"></ol>
-    <button type="button" id="show-resolved" class="text" aria-expanded="false" hidden></button>
     <ol id="resolved-list" class="comment-list" hidden></ol>
   </div>
   {#- A comment about the whole file, folded to one button until needed. #}
