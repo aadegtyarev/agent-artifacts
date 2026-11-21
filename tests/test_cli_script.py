@@ -1,6 +1,7 @@
 """The skill's artifacts_cli.py against a real server on a free port."""
 
 import json
+import re
 import socket
 import subprocess
 import sys
@@ -98,6 +99,8 @@ def test_setup_refuses_a_wrong_key(server):
 def test_help_admin_and_env_key(server):
     url, store, home = server
     assert cli(home, "--help")[0] == 0
+    code, out, _ = cli(home, "version")  # works without a key
+    assert code == 0 and re.fullmatch(r"\d{4}-\d{2}-\d{2}\n", out)
     root = store.add_agent("root", admin=True)
     env = {"AGENT_ARTIFACTS_URL": url, "AGENT_ARTIFACTS_KEY": root}
     code, out, _ = cli(home, "invite", "petrov", "2", env=env)

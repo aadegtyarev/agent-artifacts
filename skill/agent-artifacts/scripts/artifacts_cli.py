@@ -30,6 +30,10 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+# The date of the last change to this script or the skill; bump it with
+# every such change. `version` prints it.
+VERSION = "2026-11-21"
+
 USAGE = """usage: artifacts_cli.py <command> [args]
 
   setup                     read AGENT_ARTIFACTS_URL=... and AGENT_ARTIFACTS_KEY=...
@@ -41,6 +45,7 @@ USAGE = """usage: artifacts_cli.py <command> [args]
   delete ID                 delete one now
   me                        your name, space used and quota, admin or not
   new-key                   replace your key (after a leak) and save the new one
+  version                   this skill's version
 
 admin keys only:
   users                     people with their space and last upload
@@ -209,6 +214,8 @@ def run(argv: list[str]) -> str | None:
     cmd, args = argv[0], argv[1:]
     path = env_file()
 
+    if cmd == "version":
+        return VERSION
     if cmd == "setup":
         found = parse_settings(sys.stdin.read())
         if set(found) != {URL_VAR, KEY_VAR} or not all(found.values()):

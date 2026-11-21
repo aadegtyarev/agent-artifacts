@@ -5,6 +5,8 @@ agent-artifacts. There are two jobs; do the one you were asked for.
 
 - **Connect**: the person gave you two lines, `AGENT_ARTIFACTS_URL=…` and
   `AGENT_ARTIFACTS_KEY=…`. Install the skill and save the key.
+- **Update**: the skill is already installed and the person asks to update
+  it. Replace the skill folder; the key stays.
 - **Deploy**: the person wants to run the service on their own server.
 
 ## Connect
@@ -71,6 +73,59 @@ Windows. Below, `run` means `uv run` if uv is installed, otherwise `python3`
 
 Do not repeat the key in your answer, and do not write it anywhere except
 through `setup`.
+
+## Update
+
+The key is not in the skill folder, so replacing the folder keeps it. Run
+`setup` only in the one case step 4 names. Paths below use `/`; on Windows use
+`\`, as in [Connect](#connect).
+
+1. Note what you have now:
+
+   ```bash
+   run <skills folder>/agent-artifacts/scripts/artifacts_cli.py version
+   run <skills folder>/agent-artifacts/scripts/artifacts_cli.py me
+   ```
+
+   Keep the name `me` prints. A version from before this command exits with
+   an error; call it "older". That is not a broken install.
+
+2. Find every copy. Check each skills folder from the table in
+   [Connect](#connect) step 2 for an `agent-artifacts` folder, and note
+   whether it is a symlink (`ls -l`; on Windows `dir` shows `<SYMLINK>` or
+   `<JUNCTION>`). Several folders may be links to one real folder or clone;
+   update each real one once.
+
+3. Get the new files:
+
+   - A symlink into a clone of the repository: run
+     `git -C <clone> pull --ff-only`. If it fails, stop and tell the person;
+     do not reset the clone.
+   - A plain folder: clone into a temporary folder, as in Connect step 1.
+     Copy the new `skill/agent-artifacts` next to the old one as
+     `agent-artifacts.new`, rename the old one to `agent-artifacts.old`, then
+     `agent-artifacts.new` to `agent-artifacts`. If a step fails, put the old
+     folder back.
+
+4. Check it, in every folder you updated:
+
+   ```bash
+   run <skills folder>/agent-artifacts/scripts/artifacts_cli.py version
+   run <skills folder>/agent-artifacts/scripts/artifacts_cli.py me
+   ```
+
+   `me` must print the same name as in step 1. `no key` means the key file
+   is gone; `unauthorized` means the key was revoked or changed on the
+   server. In both cases ask the person for their two lines and run Connect
+   step 3.
+
+5. Tell the person the old and new versions and what changed for them. To
+   see it: for a plain folder, compare `agent-artifacts.old` with the new
+   one (`SKILL.md`, `admin.md`, the script); for a clone, run
+   `git -C <clone> log --oneline ORIG_HEAD..HEAD -- skill/`. The
+   version is the date of the last change, so treat it as a hint. Then delete
+   `agent-artifacts.old` and the temporary clone. Some harnesses load a
+   changed skill only after a restart; say so if yours does.
 
 ## Deploy
 
