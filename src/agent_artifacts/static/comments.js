@@ -317,12 +317,12 @@
     if (match && visible().some((c) => c.n === Number(match[1]))) showComment(Number(match[1]));
   }
 
-  // Tokens of this file's comments that are gone, deleted by the agent.
+  // Edit tokens of this file's comments: a published comment can no longer
+  // be changed from the viewer, so every one kept from before goes.
   function dropStaleTokens() {
     const prefix = tokenKey("");
-    const known = new Set(comments.map((c) => tokenKey(c.n)));
     try {
-      const keys = Object.keys(localStorage).filter((k) => k.startsWith(prefix) && !known.has(k));
+      const keys = Object.keys(localStorage).filter((k) => k.startsWith(prefix));
       for (const key of keys) localStorage.removeItem(key);
     } catch { /* no storage, no tokens */ }
   }
@@ -451,9 +451,6 @@
     more.classList.add("more");
     more.setAttribute("aria-haspopup", "menu");
     more.setAttribute("aria-expanded", "false");
-    actions.append(c.resolved
-      ? iconButton("reopen", `Reopen comment ${c.n}`, (e) => resolve(c, e.currentTarget))
-      : iconButton("check", `Resolve comment ${c.n}`, (e) => resolve(c, e.currentTarget)));
     if (token && !c.read) {
       actions.append(iconButton("edit", `Edit comment ${c.n}`, () => startEdit(c)));
       actions.append(iconButton("delete", `Delete comment ${c.n}`, () => remove(c, token)));
@@ -807,17 +804,33 @@
     return name;
   }
 
+  // This browser's author key: the server keeps a person's drafts apart by
+  // it. Without storage it lasts as long as the page.
+  const AUTHOR_KEY = "agent-artifacts:author-key";
+  let authorKey = storage.get(AUTHOR_KEY);
+  if (!/^[A-Za-z0-9_-]{22}$/.test(authorKey || "")) {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    authorKey = btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").slice(0, 22);
+    storage.set(AUTHOR_KEY, authorKey);
+  }
+  const asAuthor = { "X-Author-Key": authorKey };
+
+  // Until the review panel comes, a comment is one draft published at once.
   async function post(body) {
-    const posted = await call("POST", base, body);
-    const { edit_token: token, ...c } = posted;
-    const kept = storage.set(tokenKey(c.n), token);
-    changed([...comments, c]);
-    return { c, kept };
+    const draft = await call("POST", `/a/${artifact}/drafts`, body, asAuthor);
+    let made;
+    try {
+      made = await call("POST", `/a/${artifact}/review`, { author: body.author }, asAuthor);
+    } catch (e) {
+      // Not published: the draft goes too, so it is not published later.
+      call("DELETE", `/a/${artifact}/drafts/${draft.id}`, undefined, asAuthor).catch(() => {});
+      throw e;
+    }
+    changed([...comments, ...made]);
+    return { c: made[made.length - 1] };
   }
 
-  const sentMessage = (n, kept) => (kept
-    ? `Comment ${n} sent. You can edit or delete it until the agent reads it.`
-    : `Comment ${n} sent. This browser cannot store it, so it cannot be edited here.`);
+  const sentMessage = (n) => `Comment ${n} sent.`;
 
   if (mode) {
     const composerText = $("composer-text");
@@ -834,7 +847,7 @@
       const body = { author: takeName($("composer-author")), text: composerText.value, anchor: draft };
       await busy(composerSend, "Sending…", async () => {
         try {
-          const { c, kept } = await post(body);
+          const { c } = await post(body);
           closeComposer();
           light("comment", c.n);
           light("pin", c.n);
@@ -844,7 +857,7 @@
           if (row && row.getClientRects().length) row.focus({ preventScroll: true });
           else if (mode === "point") pins.querySelector(`[data-n="${c.n}"]`).focus({ preventScroll: true });
           else focusBack(null);
-          toast(sentMessage(c.n, kept), { ms: 5000 });
+          toast(sentMessage(c.n), { ms: 5000 });
         } catch (err) {
           say("composer-status", err.message, true);
         }
@@ -1016,14 +1029,14 @@
     const body = { author: takeName(author), text: text.value, anchor: null };
     await busy(send, "Sending…", async () => {
       try {
-        const { c, kept } = await post(body);
+        const { c } = await post(body);
         text.value = "";
         text.style.height = "";
         if (typingHost === form) exitTyping();
         fold(true);
         light("comment", c.n);
         render();
-        say("form-status", sentMessage(c.n, kept));
+        say("form-status", sentMessage(c.n));
         $(`comment-${c.n}`).scrollIntoView({ block: "nearest" });
       } catch (err) {
         say("form-status", err.message, true);
@@ -1078,41 +1091,6 @@
 
   function replace(updated) {
     changed(comments.map((c) => (c.n === updated.n ? updated : c)));
-  }
-
-  async function resolve(c, b) {
-    flushPending();
-    const resolving = !c.resolved;
-    const back = neighbour(c.n);
-    await busy(b, resolving ? "Resolving…" : "Reopening…", async () => {
-      try {
-        replace(await call("PATCH", `${base}/${c.n}`, { resolved: resolving }));
-        render();
-        if (resolving) {
-          toast(`${named(c.n)} resolved`, { undo: () => reopen(c.n), ms: UNDO_MS, back });
-          toastUndo.focus({ preventScroll: true });
-        } else {
-          toast(`${named(c.n)} reopened`);
-        }
-      } catch (e) {
-        if (e.status === 404) await load();
-        say("comments-status", e.status === 404 ? `Comment ${c.n} was deleted.` : e.message, true);
-      }
-    });
-  }
-
-  async function reopen(n) {
-    try {
-      replace(await call("PATCH", `${base}/${n}`, { resolved: false }));
-      light("comment", n);
-      render();
-      focusBack(`comment-${n}`);
-      toast(`${named(n)} reopened`);
-    } catch (e) {
-      if (e.status === 404) await load();
-      toast(`Comment ${n} was not reopened. ${e.status === 404 ? "It was deleted." : e.message}`,
-        { error: true, ms: 8000 });
-    }
   }
 
   function startEdit(c) {
@@ -1392,12 +1370,7 @@
 
   function menuItems(c) {
     const token = storage.get(tokenKey(c.n));
-    const card = () => $(`comment-${c.n}`);
-    // The card's ⋯ button stands for the busy state of a resolve.
-    const busyButton = () => (card() && card().querySelector(".more")) || el("button");
-    const items = [c.resolved
-      ? { icon: "reopen", label: "Reopen", run: () => resolve(c, busyButton()) }
-      : { icon: "check", label: "Resolve", run: () => resolve(c, busyButton()) }];
+    const items = [];
     if (token && !c.read) {
       // Not while it is being edited: that would start over and drop the draft.
       if (!(editing && editing.n === c.n)) items.push({ icon: "edit", label: "Edit", run: () => startEdit(c) });

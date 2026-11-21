@@ -382,8 +382,10 @@ links work only with `target="_blank"`.
 
 ## Comments
 
-Not built yet: this section is the approved design. The owner calls under
-`/api/v1` exist, except `DELETE /api/v1/artifacts/{id}/drafts`.
+The server side is built: the public and owner calls, their rules and
+limits. The viewer is not built yet: it still has the earlier panel, which
+sends a comment as one draft and publishes it at once, and has no sheet
+heights, drafts, Finish review or draft pins.
 
 Anyone with the link can read the published comments and write their own,
 the same people who can see the file. A person writes comments as drafts,
@@ -685,7 +687,7 @@ or else from the file `setup` writes with mode 600:
 `~/.config/agent-artifacts/env`, `%APPDATA%\agent-artifacts\env` on Windows,
 or `AGENT_ARTIFACTS_ENV`. The key never appears in a command line. Comments
 get the commands `comments ID`, `resolve ID N`, `reopen ID N` and
-`delete-comment ID N`, and `drop-drafts ID` (not built yet) deletes every
+`delete-comment ID N`, and `drop-drafts ID` deletes every
 draft on a file;
 `list` shows each file's open comments. Projects get
 `project-new TITLE`, `projects`, `project ID`, `project-rename ID TITLE`,

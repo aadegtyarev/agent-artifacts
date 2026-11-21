@@ -1,9 +1,11 @@
-"""Comments on artifacts: the public calls under /a/{id}/comments and the
-owner's under /api/v1/artifacts/{id}/comments.
+"""Comments on artifacts: the public calls under /a/{id} (the published
+comments, a person's drafts and finishing their review) and the owner's under
+/api/v1/artifacts/{id}.
 
-Posting needs no key, so every body is checked here: JSON only, small, with
-known fields and bounded strings. Texts and names are stored as they come and
-are data for the agent, never instructions.
+Writing needs no agent key, so every body is checked here: JSON only, small,
+with known fields and bounded strings. Texts and names are stored as they come
+and are data for the agent, never instructions. A draft belongs to the author
+key in X-Author-Key; only its SHA-256 is stored.
 """
 
 from __future__ import annotations
@@ -11,7 +13,6 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import secrets
 from collections.abc import Awaitable, Callable, Set
 
 from starlette.concurrency import run_in_threadpool
@@ -21,7 +22,7 @@ from starlette.routing import Route
 
 from . import kinds
 from .api import ApiError, error, iso, json_object, require_agent
-from .store import AlreadyRead, Comment, Store, TooManyComments, WrongToken
+from .store import Comment, Draft, NothingToPublish, Store, TooManyComments, TooManyDrafts
 
 MAX_BODY_BYTES = 16 * 1024
 MAX_AUTHOR, MAX_TEXT = 64, 2000
@@ -38,89 +39,91 @@ _LINE_BREAKS = re.compile(r"[\t\n\r]")
 # Every method reaches _route's check, so even a 405 is JSON.
 _ALL_METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
 _N_RE = re.compile(r"[1-9][0-9]{0,8}")
+# 128 random bits, URL-safe base64 without padding.
+_AUTHOR_KEY_RE = re.compile(r"[A-Za-z0-9_-]{22}")
+# 64 random bits, the same way.
+_DRAFT_ID_RE = re.compile(r"[A-Za-z0-9_-]{11}")
 
 
 def comment_routes(store: Store) -> list[Route]:
     def artifact_kind(artifact_id: str) -> kinds.Kind:
         a = store.get(artifact_id)
         if a is None:
-            raise ApiError(404, "not_found", "no such artifact")
+            raise _no_artifact()
         return kinds.get(a.kind)
 
     async def public_list(request: Request) -> Response:
-        artifact_id = request.path_params["id"]
-        if request.method != "POST":
-            found = store.comments(artifact_id)
+        # A missing or malformed key here only means no comment is "mine".
+        key = _author_key(request, required=False)
+        found = await run_in_threadpool(store.comments, request.path_params["id"], key_hash=key)
+        if found is None:
+            raise _no_artifact()
+        return _answer([_json(c) for c in found])
+
+    async def drafts(request: Request) -> Response:
+        artifact_id, key = request.path_params["id"], _author_key(request)
+        if request.method == "GET":
+            found = await run_in_threadpool(store.drafts, artifact_id, key)
             if found is None:
-                raise ApiError(404, "not_found", "no such artifact")
-            return _answer([_json(c) for c in found])
+                raise _no_artifact()
+            return _answer([_draft_json(d) for d in found])
         data = await _body(request, {"author", "text", "anchor"}, {"text"})
-        author = _line(data.get("author", ""), "author", MAX_AUTHOR) or "anonymous"
+        author = _author(data)
         text = _text(data["text"])
         anchor = _anchor(data.get("anchor"), artifact_kind(artifact_id).pin)
-        token = secrets.token_urlsafe(16)
         try:
-            comment = await run_in_threadpool(
-                store.add_comment,
-                artifact_id,
-                author=author,
-                text=text,
-                anchor=anchor,
-                token_hash=_hash(token),
+            draft = await run_in_threadpool(
+                store.add_draft, artifact_id, key, author=author, text=text, anchor=anchor
             )
+        except TooManyDrafts:
+            raise ApiError(
+                409, "too_many_drafts", "there are too many drafts on this file"
+            ) from None
+        if draft is None:
+            raise _no_artifact()
+        return _answer(_draft_json(draft), 201)
+
+    async def draft_item(request: Request) -> Response:
+        artifact_id, key = request.path_params["id"], _author_key(request)
+        draft_id = request.path_params["d"]
+        if not _DRAFT_ID_RE.fullmatch(draft_id):
+            raise _no_draft()
+        if request.method == "DELETE":
+            if await run_in_threadpool(store.delete_draft, artifact_id, key, draft_id):
+                return Response(status_code=204)
+            raise _no_draft()
+        data = await _body(request, {"text"}, {"text"})
+        draft = await run_in_threadpool(
+            store.edit_draft, artifact_id, key, draft_id, _text(data["text"])
+        )
+        if draft is None:
+            raise _no_draft()
+        return _answer(_draft_json(draft))
+
+    async def review(request: Request) -> Response:
+        artifact_id, key = request.path_params["id"], _author_key(request)
+        data = await _body(request, {"author", "text"}, {"author"})
+        author = _author(data)
+        text = _text(data["text"]) if "text" in data else None
+        try:
+            made = await run_in_threadpool(
+                store.publish, artifact_id, key, author=author, text=text
+            )
+        except NothingToPublish:
+            raise ApiError(400, "bad_request", "no drafts and no text to publish") from None
         except TooManyComments:
             raise ApiError(
                 409, "too_many_comments", "this file has the most comments it can hold"
             ) from None
-        if comment is None:
-            raise ApiError(404, "not_found", "no such artifact")
-        return _answer(_json(comment) | {"edit_token": token}, 201)
-
-    async def public_item(request: Request) -> Response:
-        artifact_id, n = request.path_params["id"], _number(request)
-        try:
-            if request.method == "DELETE":
-                # No token never matches, but a missing comment is still 404.
-                token = request.headers.get("x-edit-token", "")
-                found = await run_in_threadpool(
-                    store.delete_comment, artifact_id, n, token_hash=_hash(token)
-                )
-                if found:
-                    return Response(status_code=204)
-                raise _no_comment()
-            data = await _body(request, {"resolved", "edit_token", "text"})
-            if set(data) == {"resolved"}:
-                comment = await run_in_threadpool(
-                    store.resolve_comment, artifact_id, n, _bool(data["resolved"])
-                )
-            elif set(data) == {"edit_token", "text"}:
-                token = _line(data["edit_token"], "edit_token", 64)
-                comment = await run_in_threadpool(
-                    store.edit_comment,
-                    artifact_id,
-                    n,
-                    token_hash=_hash(token),
-                    text=_text(data["text"]),
-                )
-            else:
-                raise ApiError(
-                    400, "bad_request", 'send {"resolved": true|false} or {"edit_token", "text"}'
-                )
-        except WrongToken:
-            raise ApiError(403, "forbidden", "this is not your comment") from None
-        except AlreadyRead:
-            raise ApiError(
-                409, "already_read", "the agent has read this comment; it can no longer change"
-            ) from None
-        if comment is None:
-            raise _no_comment()
-        return _answer(_json(comment))
+        if made is None:
+            raise _no_artifact()
+        return _answer([_json(c) for c in made], 201)
 
     async def owner_list(request: Request) -> Response:
         agent = require_agent(store, request)
         found = await run_in_threadpool(store.comments, request.path_params["id"], owner=agent)
         if found is None:
-            raise ApiError(404, "not_found", "no such artifact")
+            raise _no_artifact()
         return _answer([_json(c) for c in found])
 
     async def owner_item(request: Request) -> Response:
@@ -138,11 +141,20 @@ def comment_routes(store: Store) -> list[Route]:
             raise _no_comment()
         return _answer(_json(comment))
 
+    async def owner_drafts(request: Request) -> Response:
+        agent = require_agent(store, request)
+        if await run_in_threadpool(store.drop_drafts, request.path_params["id"], owner=agent):
+            return Response(status_code=204)
+        raise _no_artifact()
+
     return [
-        _route("/a/{id:artifact_id}/comments", public_list, "GET", "POST"),
-        _route("/a/{id:artifact_id}/comments/{n}", public_item, "PATCH", "DELETE"),
+        _route("/a/{id:artifact_id}/comments", public_list, "GET"),
+        _route("/a/{id:artifact_id}/drafts", drafts, "GET", "POST"),
+        _route("/a/{id:artifact_id}/drafts/{d}", draft_item, "PATCH", "DELETE"),
+        _route("/a/{id:artifact_id}/review", review, "POST"),
         _route("/api/v1/artifacts/{id:artifact_id}/comments", owner_list, "GET"),
         _route("/api/v1/artifacts/{id:artifact_id}/comments/{n}", owner_item, "PATCH", "DELETE"),
+        _route("/api/v1/artifacts/{id:artifact_id}/drafts", owner_drafts, "DELETE"),
     ]
 
 
@@ -174,10 +186,21 @@ def _json(c: Comment) -> dict:
         "text": c.text,
         "anchor": json.loads(c.anchor) if c.anchor else None,
         "created_at": iso(c.created_at),
-        "edited_at": iso(c.edited_at),
         "read": c.read_at is not None,
         "resolved": c.resolved_at is not None,
         "before_replace": c.before_replace,
+        "mine": c.mine,
+    }
+
+
+def _draft_json(d: Draft) -> dict:
+    return {
+        "id": d.id,
+        "author": d.author,
+        "text": d.text,
+        "anchor": json.loads(d.anchor) if d.anchor else None,
+        "created_at": iso(d.created_at),
+        "updated_at": iso(d.updated_at),
     }
 
 
@@ -185,12 +208,27 @@ def _answer(content: object, status: int = 200) -> JSONResponse:
     return JSONResponse(content, status_code=status)
 
 
-def _hash(token: str) -> str:
-    return hashlib.sha256(token.encode()).hexdigest()
+def _author_key(request: Request, *, required: bool = True) -> str | None:
+    """The SHA-256 of the X-Author-Key header; 400 if required and missing
+    or malformed, else None."""
+    key = request.headers.get("x-author-key", "")
+    if _AUTHOR_KEY_RE.fullmatch(key):
+        return hashlib.sha256(key.encode()).hexdigest()
+    if required:
+        raise ApiError(400, "bad_request", "X-Author-Key must be 22 URL-safe base64 characters")
+    return None
+
+
+def _no_artifact() -> ApiError:
+    return ApiError(404, "not_found", "no such artifact")
 
 
 def _no_comment() -> ApiError:
     return ApiError(404, "not_found", "no such comment")
+
+
+def _no_draft() -> ApiError:
+    return ApiError(404, "not_found", "no such draft")
 
 
 def _number(request: Request) -> int:
@@ -235,6 +273,10 @@ def _line(v: object, field: str, at_most: int) -> str:
     if isinstance(v, str) and _LINE_BREAKS.search(v):
         raise ApiError(400, "bad_request", f"{field} must be one line")
     return _string(v, field, at_most)
+
+
+def _author(data: dict) -> str:
+    return _line(data.get("author", ""), "author", MAX_AUTHOR) or "anonymous"
 
 
 def _text(v: object) -> str:
