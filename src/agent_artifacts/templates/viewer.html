@@ -7,11 +7,13 @@
     <div class="meta">{{ size }} · expires {{ expires }}</div>
   </div>
   <div class="actions">
+    <button type="button" id="comments-toggle" aria-controls="comments" aria-expanded="false" title="Comments" aria-label="Comments, {{ a.open_comments }} open">{{ icon.comment() }}<span id="comments-count">{{ a.open_comments }}</span></button>
     <a class="btn" href="/a/{{ a.id }}/download" title="Download" aria-label="Download">{{ icon.download() }}</a>
     <input id="url" class="copy-source" readonly value="{{ url }}" aria-hidden="true" tabindex="-1">
     <button type="button" data-copy="url" title="Copy link" aria-label="Copy link">{{ icon.link() }}{{ icon.check() }}</button>
   </div>
 </header>
+<div class="stage">
 <main>
 {%- if kind.sandboxed %}
   <iframe sandbox="{{ sandbox }}" src="{{ raw }}" title="content"></iframe>
@@ -19,10 +21,40 @@
   {#- Browsers refuse to run their PDF viewer in a sandboxed frame. #}
   <iframe src="{{ raw }}" title="content"></iframe>
 {%- elif kind.viewable %}
-  {#- A click opens it full size in the browser's image viewer. #}
-  <div class="center"><a href="{{ raw }}" target="_blank" rel="noopener"><img src="{{ raw }}" alt="{{ a.name }}"></a></div>
+  {#- A click opens it full size in the browser's image viewer, except while
+      a comment waits for its spot; pins are drawn in the layer on top. #}
+  <div class="center" id="image-box"><a id="image-link" href="{{ raw }}" target="_blank" rel="noopener"><img id="image" src="{{ raw }}" alt="{{ a.name }}"></a><div class="pins" id="pins" hidden></div></div>
 {%- else %}
   <div class="center">Archive: download it to see the contents.</div>
 {%- endif %}
 </main>
+<aside id="comments" class="comments" hidden aria-labelledby="comments-title" data-artifact="{{ a.id }}" data-kind="{{ kind.name }}">
+  <div class="comments-head">
+    <h2 id="comments-title" tabindex="-1">Comments</h2>
+    <button type="button" id="comments-close" title="Close" aria-label="Close comments">{{ icon.close() }}</button>
+  </div>
+  <div class="comments-body">
+    <p id="comments-status" class="note" role="status" aria-live="polite"></p>
+    <p id="comments-empty" class="note" hidden>No comments yet.</p>
+    <ol id="comment-list" class="comment-list"></ol>
+    <button type="button" id="show-resolved" class="text" aria-expanded="false" hidden></button>
+    <ol id="resolved-list" class="comment-list" hidden></ol>
+  </div>
+  {#- On a phone the form stays folded to one button until it is needed. #}
+  <form id="comment-form" class="comment-form folded" novalidate>
+    <button type="button" id="comment-open">Write a comment…</button>
+    <div id="spot" class="spot" hidden>
+      <span id="spot-text"></span>
+      <button type="button" id="spot-action" class="text"></button>
+    </div>
+    <input id="comment-author" name="author" maxlength="64" autocomplete="name" placeholder="Your name" aria-label="Your name">
+    <textarea id="comment-text" name="text" maxlength="2000" rows="3" placeholder="Comment" aria-label="Comment text" aria-describedby="comment-hint"></textarea>
+    <div class="form-row">
+      <span id="comment-hint" class="note">Ctrl+Enter to send</span>
+      <button type="submit" id="comment-send">Send</button>
+    </div>
+    <p id="form-status" class="note" role="status" aria-live="polite"></p>
+  </form>
+</aside>
+</div>
 {% endblock %}

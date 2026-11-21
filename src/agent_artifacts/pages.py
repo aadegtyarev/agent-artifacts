@@ -44,7 +44,13 @@ RAW_CSP = "frame-ancestors 'self'"
 
 # The service's own pages: their CSS and script come from /static only.
 _OWN = "default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'"
-VIEWER_CSP = f"{_OWN}; img-src 'self'; frame-src 'self'; frame-ancestors 'none'; form-action 'none'"
+# Error and other message pages show only text.
+MESSAGE_CSP = f"{_OWN}; frame-ancestors 'none'; form-action 'none'"
+# The viewer frames the content and calls the comment API from its script.
+VIEWER_CSP = (
+    f"{_OWN}; img-src 'self'; frame-src 'self'; connect-src 'self'; "
+    "frame-ancestors 'none'; form-action 'none'"
+)
 # The invite page posts its form back to itself.
 JOIN_CSP = f"{_OWN}; frame-ancestors 'none'; form-action 'self'"
 
@@ -74,6 +80,7 @@ def viewer_page(a: Artifact, url: str) -> HTMLResponse:
         VIEWER_CSP,
         title=a.name,
         copy=True,
+        comments=True,
         a=a,
         url=url,
         raw=f"/a/{a.id}/raw",
@@ -117,7 +124,7 @@ def key_page(name: str, key: str, public_url: str) -> HTMLResponse:
     )
 
 
-def message(status: int, text: str, *, csp: str = VIEWER_CSP) -> HTMLResponse:
+def message(status: int, text: str, *, csp: str = MESSAGE_CSP) -> HTMLResponse:
     return _page("message.html", csp, status, title=text)
 
 
