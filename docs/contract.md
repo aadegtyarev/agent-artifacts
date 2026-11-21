@@ -25,7 +25,7 @@ deleted. Agents use it through a skill and its `artifacts_cli.py` command.
    keeps one link to the project page, sees the files grouped by section,
    moves between them from any file's header, and follows links the agent
    put inside the files. Project files stay until deleted; when the agent's
-   space runs out, it clears out old versions itself and says what it removed.
+   space runs out, it deletes superseded files itself and says what it removed.
 
 ## Out of scope
 
@@ -255,7 +255,7 @@ Multipart cannot clear a field; `PATCH /api/v1/artifacts/{id}` can, with
 `null` for `project` or `section`. The project is checked in the same
 transaction that stores the file, so an unknown project stores nothing.
 
-`PATCH` bodies follow the rules for the comment calls (JSON only, at most
+`POST /api/v1/projects` and every `PATCH` body follow the rules for the comment calls (JSON only, at most
 16 KB, with `Content-Length`). A PATCH needs at least one known field and
 checks the result as a whole: a `section` needs the resulting `project` to be
 non-null.
@@ -271,6 +271,8 @@ trimming, so "Mockups" and "mockups" are two sections.
 | an empty or unknown PATCH, `title: null`, an empty or too long text | `400 bad_request` |
 | a section without a project | `400 bad_request` |
 | over a limit in the table below | `409 too_many` |
+
+Fixed limits:
 
 | Limit | Value |
 | --- | --- |
@@ -297,7 +299,8 @@ between files happens in the same tab.
 whose target, resolved against the document's own URL, has the same origin
 and the path `/a/{id}` or `/p/{id}` opens that page in the viewer's own tab
 instead of inside the frame. The pin script (see [Comments](#comments))
-catches such a click and sends the viewer the path and fragment; the viewer:
+catches such a click, sends the viewer the path and fragment, and cancels the
+click; a link the viewer then refuses does nothing. The viewer:
 
 - accepts it only while the page has a user activation from that click
   (`navigator.userActivation.isActive`), so the content cannot move the tab
@@ -309,7 +312,7 @@ catches such a click and sends the viewer the path and fragment; the viewer:
   it after rendering.
 
 At worst, content can send the person to another page of the same service
-on a click inside it, which a link with `target="_blank"` can do anyway. Pin
+on a click inside it. Pin
 mode takes precedence: while it is on, a click places a pin and follows no
 link. Links with a modifier key or `target="_blank"`, links to other sites,
 and links to `/raw`, `/download` or with a query string behave as before.
@@ -442,6 +445,7 @@ text, which the person types into the viewer's form outside the sandbox.
 **Links.** `id` is 128 random bits, URL-safe base64. It cannot be listed or
 guessed; the only listing is the owner agent's own `GET /api/v1/artifacts`.
 A project id is made the same way; a project page lists only its own files.
+A file in a project shows its project, see [Projects](#projects).
 
 **Agent keys.** Created by `agent-artifacts agent add <name>`, which prints the
 key once. Only its SHA-256 is stored. `agent remove <name>` revokes it and
