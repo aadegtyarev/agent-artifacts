@@ -206,6 +206,7 @@
     up: "m6 15 6-6 6 6",
     down: "m6 9 6 6 6-6",
     more: "M5 12h.01M12 12h.01M19 12h.01",
+    copy: "M9 9h10v11H9zM5 15V4h10",
     link: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1",
   };
   function icon(name) {
@@ -1194,6 +1195,8 @@
       items.push({ icon: "edit", label: "Edit", run: () => startEdit(c) });
       items.push({ icon: "delete", label: "Delete", danger: true, run: () => remove(c, token) });
     }
+    // Comments cannot be selected on a phone (a long press opens this menu).
+    items.push({ icon: "copy", label: "Copy text", run: () => copyText(c.n) });
     items.push({ icon: "link", label: "Copy link", run: () => copyLink(c.n) });
     return items;
   }
@@ -1266,26 +1269,38 @@
   });
   window.addEventListener("resize", () => closeMenu(false));
 
-  // The link of the page with the comment's number; opening it shows the comment.
-  async function copyLink(n) {
-    const link = `${$("url").value.split("#")[0]}#comment-${n}`;
-    let copied = false;
+  // Copies `value`; true if it worked. Focus ends on the comment `n`.
+  async function copy(value, n) {
     try {
-      await navigator.clipboard.writeText(link);
-      copied = true;
+      await navigator.clipboard.writeText(value);
+      return true;
     } catch {
       // No clipboard access (an insecure page, a frame): the old way.
       const area = el("textarea", "copy-source");
-      area.value = link;
+      area.value = value;
       area.readOnly = true;
       document.body.append(area);
       area.select();
+      let copied = false;
       try { copied = document.execCommand("copy"); } catch { /* not allowed */ }
       area.remove();
       focusBack(`comment-${n}`);
+      return copied;
     }
-    if (copied) toast(`Link to ${named(n)} copied`);
+  }
+
+  // The link of the page with the comment's number; opening it shows the comment.
+  async function copyLink(n) {
+    const link = `${$("url").value.split("#")[0]}#comment-${n}`;
+    if (await copy(link, n)) toast(`Link to ${named(n)} copied`);
     else toast(`Could not copy. The link: ${link}`, { error: true, ms: 10000 });
+  }
+
+  async function copyText(n) {
+    const c = comments.find((x) => x.n === n);
+    if (!c) return;
+    if (await copy(c.text, n)) toast("Copied");
+    else toast(`Could not copy the text of ${named(n)}.`, { error: true, ms: 8000 });
   }
 
   // A long press on a comment (a phone) or a right click (a computer).
@@ -1355,6 +1370,9 @@
   const typingImage = $("typing-image");
   const STRIP_PX = 96;
   let typingHost = null;
+  // The visual viewport's height when typing mode began, and whether an
+  // on-screen keyboard has taken part of it since.
+  let typingBase = null;
 
   const hostOf = (node) => (node && node.matches && node.matches("input, textarea")
     ? node.closest("#composer, #comment-form, .comment-edit")
@@ -1400,7 +1418,11 @@
 
   function enterTyping(host) {
     if (typingHost === host) return;
+    // A redrawn editor taking the old one's place keeps the measurement.
+    const base = typingHost ? typingBase : window.visualViewport
+      && { height: window.visualViewport.height, keyboard: false };
     if (typingHost) clearTyping();
+    typingBase = base || null;
     typingHost = host;
     closeMenu(false);
     host.classList.add("typing-host");
@@ -1429,6 +1451,7 @@
     typingContext.hidden = true;
     document.body.append(typingContext);
     typingHost = null;
+    typingBase = null;
   }
 
   function exitTyping() {
@@ -1472,6 +1495,17 @@
     if (typingHost && e.target.matches("textarea") && typingHost.contains(e.target)) growField(e.target);
   });
   phone.addEventListener("change", () => { if (!phone.matches) exitTyping(); });
+  // Android hides the keyboard (the Back button) but leaves the field
+  // focused: once the viewport is back to nearly its height from before the
+  // keyboard, typing mode ends as on a blur, the text kept.
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", () => {
+      if (!typingHost || !typingBase) return;
+      const height = window.visualViewport.height;
+      if (height < typingBase.height * 0.9) typingBase.keyboard = true;
+      else if (typingBase.keyboard) leaveTyping();
+    });
+  }
 
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;

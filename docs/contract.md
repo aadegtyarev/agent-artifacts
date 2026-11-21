@@ -357,9 +357,10 @@ toggle; resolved comments are hidden until it is used, then shown dimmed
 with a grey checked number. On a computer each comment has its actions as
 icon buttons on its first line (resolve or reopen; edit and delete for the
 author's own unread comment), and a right click on a comment opens the same
-actions as a menu, with Copy link. On a phone a ⋯ button takes the place of
-the icons, and it or a long press on the comment opens them as a sheet at
-the bottom. Copy link copies the page's link ending in `#comment-N`;
+actions as a menu, with Copy text and Copy link. On a phone a ⋯ button
+takes the place of the icons, and it or a long press on the comment opens
+them as a sheet at the bottom (comments cannot be selected there, so Copy
+text is the way to copy one). Copy link copies the page's link ending in `#comment-N`;
 opening it shows that comment. At the bottom of the panel is a folded form
 for a comment about the whole file. The name is remembered by the browser.
 
@@ -378,9 +379,11 @@ aside, and the form sits at the top of the page under a line saying what is
 being written ("New comment on the image", "Editing #N") and, for a comment
 with a pin, a strip of the image around it; the text field grows to a few
 lines, with Send or Save beside it and Cancel under it. Leaving the field
-brings the page back with the text kept; Cancel there does the same, or
-closes the composer or the edit if nothing was typed or changed. This
-layout does not depend on the visual viewport, so it works in a frame too.
+brings the page back with the text kept, and so does hiding the keyboard
+(on Android the field keeps the focus, so the page watches the visible
+height come back); Cancel there does the same, or closes the composer or
+the edit if nothing was typed or changed. The layout does not depend on
+the visual viewport, so it works in a frame too.
 
 Pins of open comments show over the content, and pins of resolved ones in
 grey while the resolved list is shown; on a phone a pin takes taps from a
