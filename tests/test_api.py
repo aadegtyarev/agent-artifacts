@@ -740,3 +740,61 @@ def test_owner_comment_calls_are_for_the_owner_only(env):
     assert client.get(f"/a/{art['id']}/comments").json()[0]["read"] is False
     r = client.patch(f"{base}/1", json={"resolved": True}, headers=auth(keys["alice"]))
     assert r.json()["resolved"] is True
+
+
+def test_head_and_other_methods_never_write(env):
+    client, _, keys = env
+    art = upload(client, keys["alice"], "a.txt", b"x").json()
+    url = f"/a/{art['id']}/comments"
+    body = b'{"text": "sneaky"}'
+    r = client.request("HEAD", url, content=body, headers={"Content-Type": "application/json"})
+    assert r.status_code == 405 and r.headers["allow"] == "GET, POST"
+    assert client.get(url).json() == []
+    comment(client, art["id"])
+    r = client.head(f"/api/v1/artifacts/{art['id']}/comments", headers=auth(keys["alice"]))
+    assert r.status_code == 405
+    assert client.get(url).json()[0]["read"] is False  # HEAD did not mark it read
+    r = client.put(url, json={"text": "x"})
+    assert (r.status_code, r.json()["error"]) == (405, "bad_request")
+    assert r.headers["cache-control"] == "no-store"
+
+
+def test_comment_body_is_counted_whatever_the_headers_say(env):
+    client, _, keys = env
+    art = upload(client, keys["alice"], "a.txt", b"x").json()
+    big = b'{"text": "' + b"x" * 17000 + b'"}'
+    r = client.post(
+        f"/a/{art['id']}/comments",
+        content=iter([big]),
+        headers={"Content-Type": "application/json", "Content-Length": "20"},
+    )
+    assert (r.status_code, r.json()["error"]) == (413, "too_large")
+    assert client.get(f"/a/{art['id']}/comments").json() == []
+
+
+def test_comment_errors_are_404_first_and_not_cached(env):
+    client, _, keys = env
+    art = upload(client, keys["alice"], "a.txt", b"x").json()
+    r = client.delete(f"/a/{art['id']}/comments/1")  # no token, no such comment
+    assert (r.status_code, r.json()["error"]) == (404, "not_found")
+    assert r.headers["cache-control"] == "no-store"
+    r = client.get(f"/api/v1/artifacts/{art['id']}/comments")
+    assert r.status_code == 401 and r.headers["cache-control"] == "no-store"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"text": "x", "author": "two\nlines"},
+        {"text": "x", "author": "tab\there"},
+        {"text": "x", "anchor": ELEMENT | {"selector": "p\n"}},
+        {"text": "x", "anchor": ELEMENT | {"text": "a\tb"}},
+        {"text": "price ‮1001"},
+        {"text": "a b"},
+        {"text": "x", "author": "⁦name"},
+    ],
+)
+def test_comment_one_line_fields_and_bidi_controls(env, body):
+    client, _, keys = env
+    art = upload(client, keys["alice"], "a.html", b"<p>").json()
+    assert comment(client, art["id"], body).json()["error"] == "bad_request"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Set
 from datetime import UTC, datetime
 
@@ -46,8 +47,13 @@ def require_admin(store: Store, request: Request) -> str:
 
 async def json_body(request: Request, allowed: Set[str], required: Set[str] = frozenset()) -> dict:
     """The request's JSON object, with only ``allowed`` keys and all ``required``."""
+    return json_object(await request.body(), allowed, required)
+
+
+def json_object(body: bytes, allowed: Set[str], required: Set[str] = frozenset()) -> dict:
+    """``body`` parsed as a JSON object, with only ``allowed`` keys and all ``required``."""
     try:
-        data = await request.json()
+        data = json.loads(body)
     except (ValueError, RecursionError):  # RecursionError: nested too deep
         data = None
     if not isinstance(data, dict) or not required <= set(data) <= allowed or not data:
