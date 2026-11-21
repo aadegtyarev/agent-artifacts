@@ -7,8 +7,8 @@
     <div class="meta">{{ size }} · expires {{ expires }}</div>
   </div>
   <div class="actions">
-    {#- Comment mode; for now it opens and closes the comments panel. #}
-    <button type="button" id="comments-toggle" class="sq" aria-controls="comments" aria-expanded="false" aria-pressed="false" title="Comments" aria-label="Comments, {{ a.open_comments }} open">{{ icon.bubble() }}<span id="comments-count" hidden>{{ a.open_comments }}</span></button>
+    {#- Comment mode: on, a tap on the content places a draft pin. #}
+    <button type="button" id="comments-toggle" class="sq" aria-controls="comments" aria-pressed="false" title="Comment" aria-label="Comment mode">{{ icon.bubble() }}</button>
     <button type="button" id="menu-button" class="sq" aria-haspopup="menu" aria-controls="fan" aria-expanded="false" title="Menu" aria-label="Menu">{{ icon.menu() }}</button>
   </div>
 </header>
@@ -38,68 +38,31 @@
   {#- Browsers refuse to run their PDF viewer in a sandboxed frame. #}
   <iframe src="{{ raw }}" title="content"></iframe>
 {%- elif kind.viewable %}
-  {#- A click places the spot of a new comment; a Ctrl/Cmd or middle click
-      still opens the image full size. Pins are drawn in the layer on top. #}
+  {#- In comment mode a tap places a draft pin; otherwise a tap does nothing,
+      while a Ctrl/Cmd or middle click still opens the image full size. Pins
+      are drawn in the layer on top. #}
   <div class="center" id="image-box" tabindex="-1"><a id="image-link" href="{{ raw }}" target="_blank" rel="noopener"><img id="image" src="{{ raw }}" alt="{{ a.name }}"></a><div class="pins" id="pins" hidden></div></div>
 {%- else %}
   <div class="center">Archive: download it to see the contents.</div>
 {%- endif %}
 </main>
-<aside id="comments" class="comments" hidden aria-labelledby="comments-title" data-artifact="{{ a.id }}" data-kind="{{ kind.name }}" data-url="{{ url }}">
-  {#- On a phone the panel is a bottom sheet over a strip: dragging the head
-      or the strip snaps it to 25 %, 50 % or 100 % of the height or folds
-      it; a tap on the head steps through the heights. #}
-  <div class="comments-head">
-    <button type="button" id="comments-grip" class="grip" aria-label="Sheet height"></button>
-    <h2 id="comments-title" tabindex="-1">Comments · {{ a.open_comments }} open</h2>
-    <button type="button" id="show-resolved" class="text" aria-expanded="false" aria-controls="resolved-list" hidden></button>
-    <button type="button" id="comments-close" title="Close" aria-label="Close comments">{{ icon.close() }}{{ icon.chevron_down() }}</button>
-  </div>
-  <div class="comments-body">
-    <p id="comments-status" class="note" role="status" aria-live="polite"></p>
-    <p id="pin-hint" class="note" hidden></p>
-    <p id="comments-empty" class="note" hidden>No comments yet.</p>
-    <ol id="comment-list" class="comment-list"></ol>
-    <ol id="resolved-list" class="comment-list" hidden></ol>
-  </div>
-  {#- A comment about the whole file, folded to one button until needed. #}
-  <form id="comment-form" class="comment-form folded" tabindex="-1" novalidate>
-    <button type="button" id="comment-open">Write a comment…</button>
-    <p id="form-note" class="note" hidden>{% if kind.pin == "element" %}About the whole file. To mark a spot, click the page instead.{% else %}About the whole image. To mark a spot, click the image instead.{% endif %}</p>
-    <input id="comment-author" name="author" maxlength="64" autocomplete="name" placeholder="Your name" aria-label="Your name">
-    <textarea id="comment-text" name="text" maxlength="2000" rows="1" placeholder="Comment" aria-label="Comment text" aria-describedby="comment-hint"></textarea>
-    <div class="form-row">
-      <span id="comment-hint" class="note hint">Ctrl+Enter to send</span>
-      <button type="button" id="comment-cancel" class="typing-cancel">Cancel</button>
-      <button type="submit" id="comment-send" class="primary typing-send">Send</button>
-    </div>
-    <p id="form-status" class="note" role="status" aria-live="polite"></p>
-  </form>
+{#- Comments: a bottom sheet on a phone (strip, a quarter, half, full),
+    a panel at the right on a computer. The script fills it; names and
+    texts go in as text only. #}
+<aside id="comments" class="sheet" data-pos="strip" aria-label="Comments" data-artifact="{{ a.id }}" data-kind="{{ kind.name }}" data-pin="{{ kind.pin or '' }}" data-url="{{ url }}"{% if not a.open_comments %} hidden{% endif %}>
+  <div id="sheet-grip" class="grip" aria-hidden="true"></div>
+  <div id="sheet-strip" class="strip"><span id="strip-text" class="strip-text">{% if a.open_comments %}Comments · {{ a.open_comments }}{% endif %}</span></div>
+  <div id="sheet-body" class="sbody"></div>
+  <div id="sheet-foot" class="sfoot"></div>
 </aside>
-{#- A phone shows this strip while the sheet is folded. The empty span is
-    for the agent's status, once the server reports one. #}
-<button type="button" id="comments-strip" class="strip" aria-controls="comments" aria-expanded="false" aria-label="{% if a.comments %}Comments: {{ a.comments }}, {{ a.comments - a.open_comments }} resolved. Open{% else %}No comments yet. Open comments{% endif %}">{{ icon.comment() }}<span id="strip-text">{% if a.comments %}{{ a.comments }} · {{ a.comments - a.open_comments }} resolved{% else %}No comments yet{% endif %}</span><span id="strip-agent" class="strip-agent" hidden></span>{{ icon.chevron_up() }}</button>
 </div>
-{%- if kind.pin and kind.viewable %}
-{#- The composer at the spot clicked on the image or the page: a popover
-    next to the pin on a computer, docked at the bottom on a phone. #}
-<form id="composer" class="composer" hidden tabindex="-1" novalidate aria-label="New comment at the marked spot">
-  <p id="composer-on" class="note composer-on" hidden></p>
-  <input id="composer-author" name="author" maxlength="64" autocomplete="name" placeholder="Your name" aria-label="Your name">
-  <textarea id="composer-text" name="text" maxlength="2000" rows="1" placeholder="Comment" aria-label="Comment text" aria-describedby="composer-hint"></textarea>
-  <div class="form-row">
-    <span id="composer-hint" class="note hint">Ctrl+Enter to send</span>
-    <button type="button" id="composer-cancel" class="typing-cancel">Cancel</button>
-    <button type="submit" id="composer-send" class="primary typing-send">Send</button>
-  </div>
-  <p id="composer-status" class="note" role="status" aria-live="polite"></p>
-</form>
-{%- endif %}
-{#- Typing on a phone: this row goes on top of the form being typed in, with
-    a strip of the image around the pin when the comment has one. #}
-<div id="typing-context" class="typing-context" hidden><p id="typing-title"></p><div id="typing-strip" class="typing-strip" aria-hidden="true"><img id="typing-image" alt=""><span class="typing-pin"></span></div></div>
-{#- A comment's actions: a bottom sheet on a phone (long press or the ⋯
-    button), a menu at the pointer on a computer (right click). #}
-<div id="card-menu" class="card-menu" hidden><div class="menu-scrim"></div><div class="menu-box"><p id="card-menu-title" class="menu-title"></p><div id="card-menu-list" role="menu" aria-labelledby="card-menu-title"></div></div></div>
-<div id="toast" class="toast" role="status" aria-live="polite"><span id="toast-text"></span><button type="button" id="toast-undo" class="text" hidden>Undo</button></div>
+{#- Asked once, the first time comment mode is turned on. #}
+<div id="name-dialog" class="scrim" hidden>
+  <form id="name-form" class="modal" role="dialog" aria-modal="true" aria-labelledby="name-title" novalidate>
+    <h2 id="name-title">What should we call you?</h2>
+    <input id="name-input" type="text" maxlength="64" autocomplete="name" placeholder="Name" aria-labelledby="name-title">
+    <div class="buttons"><button type="button" id="name-skip" class="btn">No name</button><button type="submit" class="btn pri">Done</button></div>
+  </form>
+</div>
+<div id="toast" class="toast" role="status" aria-live="polite"><div class="toast-box"><span id="toast-text"></span><button type="button" id="toast-undo" class="btn" hidden>Undo</button></div></div>
 {% endblock %}

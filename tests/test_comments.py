@@ -130,7 +130,8 @@ def test_drafts_are_seen_by_their_key_only(env):
     assert owner_comments(client, keys["alice"], art["id"]).json() == []
     listed = client.get("/api/v1/artifacts", headers=auth(keys["alice"])).json()
     assert (listed[0]["comments"], listed[0]["open_comments"]) == (0, 0)
-    assert '<span id="comments-count" hidden>0</span>' in client.get(f"/a/{art['id']}").text
+    # The viewer page counts no comments: its sheet waits, hidden.
+    assert '<span id="strip-text" class="strip-text"></span>' in client.get(f"/a/{art['id']}").text
     assert drafts(client, art["id"]).json() == [d]
     # Only the hash is stored.
     with store._conn() as db:

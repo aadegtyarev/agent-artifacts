@@ -1,10 +1,10 @@
 // Pins on a page. /a/{id}/raw appends this to HTML and includes it in the
 // Markdown and text pages; it runs inside the sandbox, draws the pins in its
 // own layer over the page and talks to the viewer page (its parent) only by
-// postMessage. It gets numbers, anchors and resolved flags, never comment
-// texts or names. In pin mode (while the viewer's comments are open) it takes
-// each click and cancels it, so a link or a button under it does not fire,
-// and answers with its anchor.
+// postMessage. It gets keys, short labels (a number or a letter), anchors and
+// styles, never comment texts or names. In pin mode (the viewer's comment
+// mode) it takes each click and cancels it, so a link or a button under it
+// does not fire, and answers with its anchor.
 (() => {
   const viewer = window.parent;
   if (viewer === window) return;
@@ -16,37 +16,44 @@
   host.style.cssText = "all:initial;position:fixed;left:0;top:0;width:100%;height:100%;"
     + "z-index:2147483647;pointer-events:none;overflow:hidden";
   const root = host.attachShadow({ mode: "closed" });
+  // The same pins as on an image in the viewer (site.css): blue for what
+  // this browser wrote, orange for others; solid with a number when
+  // published, dashed with a letter while a draft.
   root.innerHTML = "<style>"
     + ".box{position:absolute;display:none;box-sizing:border-box;border-radius:4px;pointer-events:none}"
-    + ".hover{border:2px dashed #0a64d8;background:rgb(10 100 216/.07)}"
-    + ".draft{border:2px dashed #6e6e73;background:rgb(110 110 115/.08)}"
-    + ".pin{position:absolute;box-sizing:border-box;margin:0;transform:translateY(-100%);min-width:24px;"
-    + "height:24px;padding:0 6px;font:600 12px/20px system-ui,sans-serif;color:#fff;background:#0a64d8;"
-    + "border:2px solid #fff;border-radius:12px 12px 12px 2px;box-shadow:0 1px 4px rgb(0 0 0/.4);"
-    + "pointer-events:auto;cursor:pointer}"
-    + "@media (max-width:640px){.pin::before{content:'';position:absolute;inset:-12px}}"
-    + ".pin.left{transform:translate(-100%,-100%);border-radius:12px 12px 2px 12px}"
-    + ".pin.down{transform:none;border-radius:2px 12px 12px 12px}"
-    + ".pin.left.down{transform:translateX(-100%);border-radius:12px 2px 12px 12px}"
-    + ".pin.resolved{background:#8e8e93}.pin.new{background:#6e6e73}"
-    + ".pin.lit{z-index:2;color:#1d1d1f;background:#ffb020;animation:p 1s ease-out 2}"
-    + "@keyframes p{from{box-shadow:0 0 0 0 rgb(255 176 32/.8)}to{box-shadow:0 0 0 14px rgb(255 176 32/0)}}"
-    + "@media (prefers-reduced-motion:reduce){.pin.lit{animation:none}}"
-    + "</style><div class='box hover'></div><div class='box draft'></div><div class='pins'></div>";
+    + ".hover{border:2px dashed #0a84ff;background:rgb(10 132 255/.07)}"
+    + ".fresh{border:1.5px dashed #0a84ff;background:rgb(10 132 255/.05)}"
+    + ".pin{position:absolute;box-sizing:border-box;margin:0;padding:0;transform:translateY(-100%);"
+    + "display:flex;align-items:center;justify-content:center;width:24px;height:24px;"
+    + "font:600 12px/1 -apple-system,system-ui,Roboto,sans-serif;color:#fff;background:#e8890c;border:0;"
+    + "border-radius:50% 50% 50% 4px;box-shadow:0 0 0 2px #fff,0 2px 6px rgb(0 0 0/.28);"
+    + "pointer-events:auto;cursor:pointer;-webkit-tap-highlight-color:transparent}"
+    + ".pin::before{content:'';position:absolute;inset:-10px}"
+    + ".pin.own{background:#0a84ff}"
+    + ".pin.draft{color:#b25e00;background:rgb(255 255 255/.96);border:1.5px dashed #e8890c;"
+    + "box-shadow:0 1px 4px rgb(0 0 0/.18)}"
+    + ".pin.draft.own{color:#0a84ff;border-color:#0a84ff}"
+    + ".pin.left{transform:translate(-100%,-100%);border-radius:50% 50% 4px 50%}"
+    + ".pin.down{transform:none;border-radius:4px 50% 50% 50%}"
+    + ".pin.left.down{transform:translateX(-100%);border-radius:50% 4px 50% 50%}"
+    + ".pin.lit{z-index:2;box-shadow:0 0 0 2px #fff,0 0 0 6px rgb(28 28 30/.18),0 2px 6px rgb(0 0 0/.25)}"
+    + ".pin.draft.lit{box-shadow:0 0 0 5px rgb(28 28 30/.14)}"
+    + "</style><div class='box hover'></div><div class='box fresh'></div><div class='pins'></div>";
   const hoverBox = root.querySelector(".hover");
-  const draftBox = root.querySelector(".draft");
+  const draftBox = root.querySelector(".fresh");
   const layer = root.querySelector(".pins");
   document.documentElement.append(host);
 
   let picking = false;
+  // {key, label, anchor, own, draft, lit}; the key "new" is the pin of the
+  // draft being written, its element outlined.
   let pins = [];
-  let draft = null;
   let hovered = null;
   let reported = "";
   // Elements found for anchors, kept while scrolling; dropped when the
   // page's size or content changes.
   let found = new Map();
-  // The pin buttons drawn, by comment number (0: the draft), kept across
+  // The pin buttons drawn, by key, kept across
   // layouts so a pin under the pointer stays the same node.
   const drawn = new Map();
   // Code points, as the server counts them.
@@ -176,32 +183,27 @@
   }
 
   // Draws the pins where their elements are now and tells the viewer which
-  // were not found and where the draft pin is.
+  // were not found.
   function layout() {
     const shown = new Set();
     const missing = [];
+    let fresh = null;
     for (const p of pins) {
-      const at = located(p.anchor, p.n);
-      if (!at) { missing.push(p.n); continue; }
-      pinAt(p.n, String(p.n), at.x, at.y, p.resolved && "resolved", p.lit && "lit");
-      shown.add(p.n);
-    }
-    let spot = null;
-    const d = draft && located(draft, "draft");
-    if (d) {
-      pinAt(0, "+", d.x, d.y, "new");
-      shown.add(0);
-      spot = { x: Math.round(d.x), y: Math.round(d.y) };
+      const at = located(p.anchor, p.key);
+      if (!at) { missing.push(p.key); continue; }
+      pinAt(p.key, p.label, at.x, at.y, p.own && "own", p.draft && "draft", p.lit && "lit");
+      shown.add(p.key);
+      if (p.key === "new") fresh = at.el;
     }
     for (const [key, b] of drawn) {
       if (!shown.has(key)) { b.remove(); drawn.delete(key); }
     }
-    outline(draftBox, d && d.el);
+    outline(draftBox, fresh);
     outline(hoverBox, picking && hovered);
-    const report = JSON.stringify({ missing, spot });
+    const report = JSON.stringify(missing);
     if (report !== reported) {
       reported = report;
-      tell({ type: "placed", missing, spot });
+      tell({ type: "placed", missing });
     }
   }
 
@@ -243,9 +245,7 @@
       y: fraction(e.clientY - r.top, r.height),
       width: Math.max(1, Math.round(window.innerWidth)),
     };
-    tell({ type: "anchor", anchor, spot: {
-      x: Math.round(r.left + anchor.x * r.width), y: Math.round(r.top + anchor.y * r.height),
-    } });
+    tell({ type: "anchor", anchor });
     schedule();
   }, true);
   window.addEventListener("pointermove", (e) => {
@@ -269,7 +269,7 @@
       const d = (r.left + r.width / 2 - e.clientX) ** 2 + (r.top + r.height / 2 - e.clientY) ** 2;
       if (d < distance) { distance = d; best = pin; }
     }
-    tell({ type: "pin", n: Number(best.dataset.key) });
+    tell({ type: "pin", key: best.dataset.key });
   });
 
   // Escape in pin mode reaches the viewer too while the focus is in the page.
@@ -303,6 +303,7 @@
     && typeof a.selector === "string" && length(a.selector) <= 512
     && typeof a.text === "string" && length(a.text) <= 200
     && [a.x, a.y].every((v) => typeof v === "number" && v >= 0 && v <= 1);
+  const isKey = (k) => typeof k === "string" && /^[A-Za-z0-9_-]{1,24}$/.test(k);
   window.addEventListener("message", (e) => {
     if (e.source !== viewer) return;
     const m = e.data;
@@ -315,15 +316,15 @@
       picking = m.on === true;
       hovered = null;
       schedule();
-    } else if (m.type === "pins" && Array.isArray(m.pins) && m.pins.length <= 200) {
-      pins = m.pins.filter((p) => p && Number.isInteger(p.n) && p.n > 0 && isAnchor(p.anchor))
-        .map((p) => ({ n: p.n, anchor: p.anchor, resolved: p.resolved === true, lit: p.lit === true }));
-      draft = isAnchor(m.draft) ? m.draft : null;
+    } else if (m.type === "pins" && Array.isArray(m.pins) && m.pins.length <= 500) {
+      pins = m.pins.filter((p) => p && isKey(p.key) && typeof p.label === "string"
+        && length(p.label) <= 3 && isAnchor(p.anchor))
+        .map((p) => ({ key: p.key, label: p.label, anchor: p.anchor, own: p.own === true,
+          draft: p.draft === true, lit: p.lit === true }));
       schedule(true);
-    } else if (m.type === "show" && Number.isInteger(m.n)) {
-      // 0 is the draft pin.
-      const anchor = m.n === 0 ? draft : (pins.find((p) => p.n === m.n) || {}).anchor;
-      if (anchor) reveal(anchor);
+    } else if (m.type === "show" && isKey(m.key)) {
+      const pin = pins.find((p) => p.key === m.key);
+      if (pin) reveal(pin.anchor);
     }
   });
   window.addEventListener("scroll", () => schedule(), { capture: true, passive: true });

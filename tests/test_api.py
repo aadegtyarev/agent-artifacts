@@ -441,18 +441,38 @@ def test_viewer_page_has_every_element_its_scripts_use(env):
         name: set(re.findall(r'\$\("([\w-]+)"\)', (static / name).read_text()))
         for name in ("comments.js", "viewer.js")
     }
+    # The data the comments script reads from the sheet.
+    datasets = set(re.findall(r"sheet\.dataset\.(\w+)", (static / "comments.js").read_text()))
+    assert datasets == {"artifact", "pin", "pos"}
     # Shown only for images, or only for pages in a frame.
     image_only = {"image", "image-box", "image-link", "pins"}
     for filename, data, missing in (
         ("a.html", b"<p>x", image_only),
         ("b.png", PNG, {"frame"}),
+        ("c.zip", b"PK\x03\x04", image_only | {"frame"}),
     ):
         art = upload(client, keys["alice"], filename, data).json()
         page = client.get(f"/a/{art['id']}").text
         ids = set(re.findall(r'\bid="([\w-]+)"', page))
         for name, wanted in used.items():
             assert wanted - missing - ids == set(), (filename, name)
-        # comments.js reads the page's link from the panel.
+        assert {
+            "comments",
+            "comments-toggle",
+            "sheet-strip",
+            "strip-text",
+            "sheet-grip",
+            "sheet-body",
+            "sheet-foot",
+            "name-dialog",
+            "name-form",
+            "name-input",
+            "name-skip",
+            "toast",
+            "toast-text",
+            "toast-undo",
+        } <= ids, filename
+        assert f'data-artifact="{art["id"]}"' in page
         assert f'data-url="https://art.example.org/a/{art["id"]}"' in page
 
 
@@ -684,20 +704,27 @@ def test_own_pages_escape_values_and_load_only_static_code(env):
 
 def test_viewer_page_has_comments_on_every_type(env):
     client, store, keys = env
-    for name, data in (("a.html", b"<p>x"), ("b.png", PNG), ("c.zip", b"PK\x03\x04")):
+    for name, data, pin in (
+        ("a.html", b"<p>x", "element"),
+        ("b.png", PNG, "point"),
+        ("c.zip", b"PK\x03\x04", ""),
+    ):
         art = upload(client, keys["alice"], name, data).json()
+        page = client.get(f"/a/{art['id']}")
+        # No comments yet: the sheet waits for comment mode, folded.
+        assert '<aside id="comments" class="sheet" data-pos="strip"' in page.text, name
+        assert f'data-pin="{pin}"' in page.text, name
+        assert re.search(r'<aside id="comments"[^>]* hidden>', page.text), name
         for _ in range(2):
             store.add_draft(art["id"], "h", author="x", text="y", anchor=None)
         store.publish(art["id"], "h", author="x", text=None)
         store.resolve_comment(art["id"], 1, True, owner="alice")
         page = client.get(f"/a/{art['id']}")
-        assert 'id="comments-toggle"' in page.text, name
-        assert '<span id="comments-count" hidden>1</span>' in page.text, name
-        assert '<span id="strip-text">2 · 1 resolved</span>' in page.text, name
-        assert 'aria-label="Comments: 2, 1 resolved. Open"' in page.text, name
-        assert 'id="card-menu" class="card-menu" hidden' in page.text, name
-        assert 'id="typing-context" class="typing-context" hidden' in page.text, name
-        assert ('id="composer"' in page.text) == (name != "c.zip"), name
+        assert 'id="comments-toggle"' in page.text and 'aria-pressed="false"' in page.text, name
+        # The strip counts the comments the viewer shows: open ones.
+        assert '<span id="strip-text" class="strip-text">Comments · 1</span>' in page.text, name
+        assert not re.search(r'<aside id="comments"[^>]* hidden>', page.text), name
+        assert 'id="name-dialog" class="scrim" hidden' in page.text, name
         assert 'id="toast" class="toast" role="status"' in page.text, name
         assert re.search(
             r'<script src="/static/comments\.js\?v=[0-9a-f]{12}"></script>', page.text
