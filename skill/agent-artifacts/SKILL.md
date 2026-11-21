@@ -43,6 +43,25 @@ If the file already held a different key, `setup` keeps the old file as
   `.gif` `.webp` `.svg` `.zip` `.tar.gz` `.tgz`, up to 25 MB by default;
   Markdown and text up to 2 MB.
 
+## Choosing the form
+
+Pick the form by what the person will do with it, not by what is quickest to
+produce:
+
+| The person wants | Make |
+| --- | --- |
+| to judge an interface, a screen or a flow that does not exist yet | an interactive HTML mockup: clickable states, realistic sample data, phone and desktop widths. Offer it up front instead of describing the idea in words or drawing a static picture |
+| to see or point at a real, existing interface | a screenshot (`.png`); people can pin comments on it |
+| a report, a comparison, an overview with structure | an HTML page: headings, tables, charts as inline SVG |
+| mostly text to read or copy | Markdown |
+| a log, a config, raw output | `.txt` |
+| a diagram | inline SVG in an HTML page, or an `.svg` file |
+| something to print or sign | a PDF if you can produce one, otherwise HTML laid out for print |
+| data to open in a spreadsheet or tool | the files in a `.zip`, plus an HTML page that shows the data |
+
+When the person is going to review and comment, prefer a form that takes
+pins: an image or, for mockups, HTML.
+
 ## Upload, replace, delete
 
 ```bash
