@@ -118,10 +118,13 @@
     if (message && !error) timers[where] = setTimeout(() => { node.textContent = ""; }, 4000);
   }
 
-  // A toast over the page, with an Undo button when `undo` is given.
+  // A toast over the page, with an Undo button when `undo` is given. When it
+  // goes with focus on its Undo, focus returns to the element `back` (an id).
   let undoAction = null;
-  function toast(message, { undo = null, ms = 4000, error = false } = {}) {
+  let toastBack = null;
+  function toast(message, { undo = null, ms = 4000, error = false, back = null } = {}) {
     clearTimeout(timers.toast);
+    toastBack = back;
     toastText.textContent = message;
     toastBox.classList.toggle("error", error);
     undoAction = undo;
@@ -154,7 +157,23 @@
     document.body.classList.remove("toast-on");
     undoAction = null;
     toastUndo.hidden = true;
-    if (focused) (panel.hidden ? (phone.matches ? strip : toggle) : $("comments-title")).focus();
+    if (focused) focusBack(toastBack);
+  }
+
+  // Focus to the element `id` if it is shown, else to the panel's title or
+  // the button that opens the panel.
+  function focusBack(id) {
+    const target = id && $(id);
+    if (target && target.getClientRects().length) target.focus({ preventScroll: true });
+    else (panel.hidden ? (phone.matches ? strip : toggle) : $("comments-title")).focus({ preventScroll: true });
+  }
+
+  // The comment row next to `n` (or before it), where focus goes when `n`
+  // leaves the list.
+  function neighbour(n) {
+    const li = $(`comment-${n}`);
+    const next = li && (li.nextElementSibling || li.previousElementSibling);
+    return next ? next.id : null;
   }
 
   toastUndo.addEventListener("click", () => {
@@ -391,11 +410,6 @@
       if (c.resolved) pin.classList.add("resolved");
       if (lit.pin === c.n) pin.classList.add("lit");
       pin.setAttribute("aria-label", `Comment ${c.n}${c.resolved ? ", resolved" : ""}`);
-      pin.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        showComment(c.n);
-      });
       return pin;
     });
     if (draft) {
@@ -403,16 +417,38 @@
       const pin = pinAt(draft, "+");
       pin.classList.add("new");
       pin.setAttribute("aria-label", "The spot of the comment you are writing");
-      pin.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        $("composer-text").focus();
-      });
       shown.push(pin);
     }
     pins.replaceChildren(...shown);
     pins.hidden = shown.length === 0;
     fitPins();
+  }
+
+  // On a phone a pin's tap area is larger than the pin, so the areas of
+  // pins close together overlap: a tap goes to the pin nearest to it.
+  function nearestPin(x, y) {
+    let best = null;
+    let distance = Infinity;
+    for (const pin of pins.children) {
+      const r = pin.getBoundingClientRect();
+      const d = (r.left + r.width / 2 - x) ** 2 + (r.top + r.height / 2 - y) ** 2;
+      if (d < distance) { distance = d; best = pin; }
+    }
+    return best;
+  }
+
+  if (mode) {
+    pins.addEventListener("click", (e) => {
+      const hit = e.target.closest(".pin");
+      if (!hit) return;
+      e.preventDefault();
+      e.stopPropagation();
+      // A keyboard press has no point (detail 0): it is the focused pin.
+      const pin = e.detail ? nearestPin(e.clientX, e.clientY) || hit : hit;
+      if (!pin.classList.contains("new")) showComment(Number(pin.dataset.n));
+      else if (minimized) closePanel(); // brings the composer back
+      else $("composer-text").focus();
+    });
   }
 
   function pinAt(anchor, label) {
@@ -537,13 +573,31 @@
     composer.style.top = `${clamp(top, 12, Math.max(12, vh - h - 12))}px`;
   }
 
+  // On a phone the composer and the sheet never show together: the sheet
+  // opened over a composer hides it with its draft (the "+" pin stays), and
+  // folding the sheet brings it back.
+  let minimized = false;
+
+  function minimizeComposer() {
+    minimized = true;
+    composer.hidden = true;
+    imageBox.style.paddingBottom = "";
+  }
+
+  function restoreComposer() {
+    minimized = false;
+    composer.hidden = false;
+    placeComposer();
+    $("composer-text").focus({ preventScroll: true });
+  }
+
   function openComposer(anchor) {
+    // On a phone the composer takes the bottom; the sheet folds to the strip.
+    if (phone.matches && !panel.hidden) closePanel();
     const wasOpen = !composer.hidden;
     draft = anchor;
     lit.pin = null;
     if (!wasOpen) {
-      // On a phone the composer takes the bottom; the sheet folds to the strip.
-      if (phone.matches && !panel.hidden) closePanel();
       const name = $("composer-author");
       if (!name.value) name.value = storage.get(NAME_KEY) || "";
       say("composer-status", "");
@@ -558,16 +612,35 @@
     }
   }
 
+  // Closes the composer; focus goes to the content unless the caller moves it.
   function closeComposer() {
     const inside = composer.contains(document.activeElement);
     composer.hidden = true;
-    if (inside) $("image-link").focus({ preventScroll: true });
+    minimized = false;
+    if (inside) imageBox.focus({ preventScroll: true });
     draft = null;
     $("composer-text").value = "";
     imageBox.style.paddingBottom = "";
     dockToast();
     say("composer-status", "");
     drawPins();
+  }
+
+  // Cancel or Escape. Typed text is not lost silently: Undo brings the
+  // composer back with the same spot and text.
+  function cancelComposer() {
+    const kept = { anchor: draft, text: $("composer-text").value };
+    closeComposer();
+    if (!kept.text.trim()) return;
+    toast("Comment discarded", {
+      undo: () => {
+        openComposer(kept.anchor);
+        $("composer-text").value = kept.text;
+      },
+      ms: UNDO_MS,
+      back: "image-box",
+    });
+    toastUndo.focus({ preventScroll: true });
   }
 
   // Names are one line; the text keeps its line breaks.
@@ -612,6 +685,10 @@
           light("comment", c.n);
           light("pin", c.n);
           render();
+          // Focus on the new comment: its row, or its pin with the panel closed.
+          const row = $(`comment-${c.n}`);
+          if (row && row.getClientRects().length) row.focus({ preventScroll: true });
+          else pins.querySelector(`[data-n="${c.n}"]`).focus({ preventScroll: true });
           toast(sentMessage(c.n, kept), { ms: 5000 });
         } catch (err) {
           say("composer-status", err.message, true);
@@ -624,12 +701,12 @@
         composer.requestSubmit();
       }
     });
-    $("composer-cancel").addEventListener("click", closeComposer);
+    $("composer-cancel").addEventListener("click", cancelComposer);
 
-    // A plain click places the spot (or moves it while writing); a Ctrl/Cmd,
-    // Shift or middle click still opens the image full size.
+    // A click places the spot (or moves it while writing); a Ctrl/Cmd or
+    // middle click still opens the image full size.
     $("image-link").addEventListener("click", (e) => {
-      if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      if (e.button !== 0 || e.ctrlKey || e.metaKey) return;
       e.preventDefault();
       const box = image.getBoundingClientRect();
       if (!box.width || !box.height) return;
@@ -644,7 +721,11 @@
     if (window.ResizeObserver) new ResizeObserver(() => { fitPins(); placeComposer(); }).observe(image);
     window.addEventListener("resize", () => { fitPins(); placeComposer(); });
     imageBox.addEventListener("scroll", () => { if (!phone.matches) placeComposer(); });
-    phone.addEventListener("change", placeComposer);
+    phone.addEventListener("change", () => {
+      // A computer has room for both: a hidden draft comes back.
+      if (minimized && !phone.matches) restoreComposer();
+      placeComposer();
+    });
     if (window.visualViewport) {
       window.visualViewport.addEventListener("resize", () => {
         placeComposer();
@@ -745,12 +826,13 @@
   async function resolve(c, b) {
     flushPending();
     const resolving = !c.resolved;
+    const back = neighbour(c.n);
     await busy(b, resolving ? "Resolving…" : "Reopening…", async () => {
       try {
         replace(await call("PATCH", `${base}/${c.n}`, { resolved: resolving }));
         render();
         if (resolving) {
-          toast(`${named(c.n)} resolved`, { undo: () => reopen(c.n), ms: UNDO_MS });
+          toast(`${named(c.n)} resolved`, { undo: () => reopen(c.n), ms: UNDO_MS, back });
           toastUndo.focus({ preventScroll: true });
         } else {
           toast(`${named(c.n)} reopened`);
@@ -767,6 +849,7 @@
       replace(await call("PATCH", `${base}/${n}`, { resolved: false }));
       light("comment", n);
       render();
+      focusBack(`comment-${n}`);
       toast(`${named(n)} reopened`);
     } catch (e) {
       if (e.status === 404) await load();
@@ -815,9 +898,10 @@
   // only when the Undo time is over.
   function remove(c, token) {
     flushPending();
+    const back = neighbour(c.n);
     pending = { c, token, timer: setTimeout(flushPending, UNDO_MS) };
     render();
-    toast(`${named(c.n)} deleted`, { undo: undoDelete, ms: UNDO_MS });
+    toast(`${named(c.n)} deleted`, { undo: undoDelete, ms: UNDO_MS, back });
     toastUndo.focus({ preventScroll: true });
   }
 
@@ -828,6 +912,7 @@
     pending = null;
     light("comment", n);
     render();
+    focusBack(`comment-${n}`);
     toast(`${named(n)} restored`);
   }
 
@@ -838,6 +923,8 @@
     const { c, token, timer } = pending;
     clearTimeout(timer);
     pending = null;
+    // Its Undo is over: the toast offering it goes.
+    if (undoAction === undoDelete) hideToast();
     deleting.add(c.n);
     let failure = null;
     try {
@@ -865,7 +952,8 @@
     if (lost) load();
   }
 
-  // Leaving the page or the tab sends a waiting delete right away.
+  // Leaving the page sends a waiting delete right away. A switch to another
+  // tab does not: the Undo stays possible until its time is over.
   window.addEventListener("pagehide", flushPending);
 
   // --- The panel, a bottom sheet with a strip on a phone ---------------------
@@ -876,6 +964,7 @@
   }
 
   function openPanel(focus = true) {
+    if (mode && phone.matches && !composer.hidden) minimizeComposer();
     panel.hidden = false;
     setExpanded(true);
     fitPins();
@@ -891,8 +980,9 @@
     setExpanded(false);
     if (!text.value.trim()) fold(true);
     fitPins();
+    if (minimized) restoreComposer();
+    else if (inside) (phone.matches ? strip : toggle).focus();
     dockToast();
-    if (inside) (phone.matches ? strip : toggle).focus();
   }
 
   toggle.addEventListener("click", () => (panel.hidden ? openPanel() : closePanel()));
@@ -933,13 +1023,12 @@
 
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
-    if (mode && !composer.hidden) closeComposer();
+    if (mode && !composer.hidden) cancelComposer();
     else if (!panel.hidden) closePanel();
   });
+  // Others may have commented while this tab was in the background.
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") flushPending();
-    // Others may have commented while this tab was in the background.
-    else load();
+    if (document.visibilityState === "visible") load();
   });
 
   if (/Mac|iPhone|iPad/.test(navigator.platform)) {

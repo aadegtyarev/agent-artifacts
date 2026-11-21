@@ -23,7 +23,7 @@
 {%- elif kind.viewable %}
   {#- A click places the spot of a new comment; a Ctrl/Cmd or middle click
       still opens the image full size. Pins are drawn in the layer on top. #}
-  <div class="center" id="image-box"><a id="image-link" href="{{ raw }}" target="_blank" rel="noopener"><img id="image" src="{{ raw }}" alt="{{ a.name }}"></a><div class="pins" id="pins" hidden></div></div>
+  <div class="center" id="image-box" tabindex="-1"><a id="image-link" href="{{ raw }}" target="_blank" rel="noopener"><img id="image" src="{{ raw }}" alt="{{ a.name }}"></a><div class="pins" id="pins" hidden></div></div>
 {%- else %}
   <div class="center">Archive: download it to see the contents.</div>
 {%- endif %}

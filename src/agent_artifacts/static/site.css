@@ -130,7 +130,9 @@ button.primary:disabled { opacity: 0.6; cursor: default; }
   padding: 8px 14px; font-size: 13px; color: #fff; background: #1d1d1f;
   border-radius: 18px; box-shadow: 0 4px 16px rgb(0 0 0 / 0.25);
   visibility: hidden; opacity: 0; transition: opacity 0.2s, visibility 0.2s; }
-.toast.on { visibility: visible; opacity: 1; }
+/* Visible at once when shown, so its Undo can take focus right away; on
+   hiding, visibility waits for the fade. */
+.toast.on { visibility: visible; opacity: 1; transition: opacity 0.2s; }
 .toast.error { background: var(--error); }
 .toast button.text { color: #8ec5ff; font-size: 13px; font-weight: 600; }
 .toast.error button.text { color: #fff; }
@@ -189,6 +191,8 @@ button.primary:disabled { opacity: 0.6; cursor: default; }
    On a phone the image fits the width and scrolls, so a pin can be brought
    into view above the sheet or the composer. */
 #image-box { overflow: auto; align-items: flex-start; justify-content: flex-start; }
+/* Focus lands here when the composer closes; no ring around the whole image. */
+#image-box:focus { outline: none; }
 #image-box img { margin: auto; cursor: crosshair; }
 @media (max-width: 640px) { #image-box { padding: 4px; } #image-box img { max-height: none; } }
 /* Clipped to the image, so a pin at an edge never widens the page. */
@@ -208,6 +212,9 @@ button.primary:disabled { opacity: 0.6; cursor: default; }
 @keyframes pulse { from { box-shadow: 0 0 0 0 rgb(255 176 32 / 0.8); }
   to { box-shadow: 0 0 0 14px rgb(255 176 32 / 0); } }
 @media (prefers-reduced-motion: reduce) { .pin.lit { animation: none; } }
+/* A finger-sized tap area around the small pin; the nearest pin wins where
+   areas overlap (see the script). */
+@media (max-width: 640px) { .pin::before { content: ""; position: absolute; inset: -12px; } }
 .badge { display: inline-flex; align-items: center; gap: 2px; min-width: 20px; height: 18px;
   padding: 0 5px; font-size: 11px; font-weight: 600; color: #fff; background: var(--accent);
   border: 0; border-radius: 9px; }

@@ -352,20 +352,27 @@ head reads "Comments · N open" and has a "Resolved (N)" toggle; resolved
 comments are hidden until it is used, then shown dimmed with a grey checked
 number. Each comment has its actions as icon buttons on its first line
 (resolve or reopen; edit and delete for the author's own unread comment).
-At the bottom is a folded form for a comment about the whole file. The name is remembered by the browser.
+At the bottom is a folded form for a comment about the whole file. The
+name is remembered by the browser.
 
 Where a pin is possible, a click on the content places a draft pin and opens
 a composer at that spot: a popover next to the pin on a computer, docked
-above the keyboard on a phone; Ctrl/Cmd+Enter sends, Escape cancels. On an
-image a Ctrl/Cmd or middle click still opens it full size. Pins of open
+above the keyboard on a phone; Ctrl/Cmd+Enter sends, Escape or Cancel
+closes it, with Undo if text was typed. On an image a Ctrl/Cmd or middle
+click still opens it full size; any other click places the pin. On a phone
+the composer and the sheet never show at once: opening the sheet hides the
+composer with its draft, and folding the sheet brings it back. Pins of open
 comments show over the content, and pins of resolved ones in grey while the
-resolved list is shown. A click on a pin opens the panel at its comment; a
-click on a comment highlights its pin and scrolls it into view, leaving the
-panel or sheet open. Resolve shows a toast with Undo, which reopens the
-comment. Delete by token hides the comment at once with Undo; the DELETE is
-sent when the Undo time ends, with the next action, or when the page is
-left, and if it fails the comment comes back with the reason. The panel
-renders texts and names as text nodes, never as HTML.
+resolved list is shown; on a phone a pin takes taps from a finger-sized area
+around it, the nearest pin winning. A click on a pin opens the panel at its
+comment; a click on a comment highlights its pin and scrolls it into view,
+leaving the panel or sheet open. Resolve shows a toast with Undo, which
+reopens the comment. Delete by token hides the comment at once with Undo;
+the DELETE is sent when the Undo time ends, before the next send, save,
+resolve or delete, or on pagehide when the page is left (a switch to
+another tab keeps the Undo), and if it fails the comment comes back with
+the reason. The panel renders texts and names as text nodes, never as
+HTML.
 
 | Type | Pin |
 | --- | --- |
