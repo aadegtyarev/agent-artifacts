@@ -7,7 +7,7 @@ import time
 import pytest
 from starlette.testclient import TestClient
 
-from agent_artifacts.config import Config, check_public_url
+from agent_artifacts.config import Config, check_public_url, check_raw_url
 from agent_artifacts.kinds import KindError, clean_name, detect
 from agent_artifacts.pages import PINS_SCRIPT, SANDBOX_CSP
 from agent_artifacts.store import Store
@@ -51,7 +51,7 @@ def test_upload_view_download(env):
     page = client.get(f"/a/{art['id']}")
     assert page.status_code == 200
     assert f'src="/a/{art["id"]}/raw"' in page.text and "sandbox=" in page.text
-    assert 'aria-label="Download"' in page.text and 'aria-label="Copy link"' in page.text
+    assert f'href="/a/{art["id"]}/download"' in page.text and "Copy link" in page.text
 
     raw = client.get(f"/a/{art['id']}/raw")
     assert raw.content == b"<h1 id=x>Hi</h1>" + PINS_SCRIPT
@@ -315,6 +315,103 @@ def test_image_opens_full_size_on_its_own(env):
     assert (r.status_code, r.headers["content-type"]) == (200, "image/png")
 
 
+@pytest.mark.parametrize(
+    ("url", "public", "result"),
+    [
+        ("", "https://art.example.org", ""),
+        ("  ", "https://art.example.org", ""),
+        ("https://raw.example.net/", "https://art.example.org", "https://raw.example.net"),
+        (
+            "https://raw.art.example.org:8443",
+            "https://art.example.org",
+            "https://raw.art.example.org:8443",
+        ),
+        ("http://localhost:8090", "http://127.0.0.1:8090", "http://localhost:8090"),
+        ("https://raw.example.net/files", "https://art.example.org", None),
+        ("https://raw.example.net/?a=1", "https://art.example.org", None),
+        ("https://art.example.org", "https://art.example.org", None),
+        ("https://ART.example.org:8443", "https://art.example.org", None),
+        ("http://raw.example.net", "https://art.example.org", None),
+        ("raw.example.net", "https://art.example.org", None),
+    ],
+)
+def test_raw_url_checks(url, public, result):
+    if result is None:
+        with pytest.raises(ValueError):
+            check_raw_url(url, public)
+    else:
+        assert check_raw_url(url, public) == result
+
+
+@pytest.fixture
+def raw_env(tmp_path):
+    config = Config(
+        data_dir=tmp_path, public_url="https://art.example.org", raw_url="https://raw.example.net"
+    )
+    store = Store(tmp_path, max_total_bytes=config.max_total_bytes)
+    key = store.add_agent("alice")
+    with TestClient(create_app(config, store), base_url="https://art.example.org") as client:
+        raw = TestClient(client.app, base_url="https://raw.example.net")
+        yield client, raw, key
+
+
+def test_open_separately_links_to_the_raw_origin(raw_env):
+    client, _, key = raw_env
+    art = upload(client, key, "a.html", b"<p>x</p>").json()
+    zipped = upload(client, key, "a.zip", b"PK\x03\x04" + b"\x00" * 26).json()
+    link = f'href="https://raw.example.net/a/{art["id"]}/raw" target="_blank" rel="noopener"'
+    assert link in client.get(f"/a/{art['id']}").text
+    assert "Open separately" not in client.get(f"/a/{zipped['id']}").text
+
+
+def test_no_raw_origin_no_open_separately(env):
+    client, _, keys = env
+    art = upload(client, keys["alice"], "a.html", b"<p>x</p>").json()
+    page = client.get(f"/a/{art['id']}").text
+    assert "Open separately" not in page and "Copy link" in page
+    # Without a raw origin, no Host is treated as one.
+    r = client.get(f"/a/{art['id']}/raw", headers={"Host": "raw.example.net"})
+    assert r.status_code == 200
+
+
+def test_raw_origin_serves_only_raw(raw_env):
+    client, raw, key = raw_env
+    art = upload(client, key, "a.html", b"<p>x</p>").json()
+    img = upload(client, key, "a.png", PNG).json()
+    zipped = upload(client, key, "a.zip", b"PK\x03\x04" + b"\x00" * 26).json()
+    # Opened as a page it shows the content itself, with the sandbox.
+    r = raw.get(f"/a/{art['id']}/raw", headers={"Sec-Fetch-Dest": "document"})
+    assert (r.status_code, r.content) == (200, b"<p>x</p>" + PINS_SCRIPT)
+    assert r.headers["content-security-policy"] == SANDBOX_CSP
+    assert r.headers["x-content-type-options"] == "nosniff"
+    assert "set-cookie" not in r.headers
+    assert raw.head(f"/a/{art['id']}/raw").status_code == 200
+    assert raw.get(f"/a/{img['id']}/raw").headers["content-type"] == "image/png"
+    # Host names are case-insensitive and may carry the port.
+    port = raw.get(f"/a/{art['id']}/raw", headers={"Host": "RAW.example.net:443"})
+    assert port.status_code == 200
+    for method, path in [
+        ("GET", f"/a/{zipped['id']}/raw"),
+        ("GET", "/a/AAAAAAAAAAAAAAAAAAAAAA/raw"),
+        ("POST", f"/a/{art['id']}/raw"),
+        ("GET", f"/a/{art['id']}"),
+        ("GET", f"/a/{art['id']}/download"),
+        ("GET", f"/a/{art['id']}/comments"),
+        ("GET", "/api/v1/artifacts"),
+        ("GET", "/static/site.css"),
+        ("GET", "/health"),
+        ("GET", "/"),
+    ]:
+        r = raw.request(method, path, headers={"Authorization": f"Bearer {key}"})
+        assert (method, path, r.status_code) == (method, path, 404)
+        assert "set-cookie" not in r.headers
+    # The main origin is unchanged: a page opened on its own goes to the viewer.
+    r = client.get(
+        f"/a/{art['id']}/raw", headers={"Sec-Fetch-Dest": "document"}, follow_redirects=False
+    )
+    assert r.status_code == 303
+
+
 def test_quota_per_agent_and_me(tmp_path):
     config = Config(data_dir=tmp_path, public_url="https://art.example.org", max_file_bytes=2000)
     store = Store(tmp_path, max_total_bytes=10_000, user_quota_bytes=1500)
@@ -549,7 +646,7 @@ def test_viewer_page_has_comments_on_every_type(env):
         client.patch(f"/a/{art['id']}/comments/1", json={"resolved": True})
         page = client.get(f"/a/{art['id']}")
         assert 'id="comments-toggle"' in page.text, name
-        assert '<span id="comments-count">1</span>' in page.text, name
+        assert '<span id="comments-count" hidden>1</span>' in page.text, name
         assert '<span id="strip-text">2 · 1 resolved</span>' in page.text, name
         assert 'aria-label="Comments: 2, 1 resolved. Open"' in page.text, name
         assert 'id="card-menu" class="card-menu" hidden' in page.text, name

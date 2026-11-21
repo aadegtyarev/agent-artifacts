@@ -6,10 +6,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
@@ -24,7 +25,7 @@ from starlette.responses import (
     RedirectResponse,
     Response,
 )
-from starlette.routing import Mount, Route
+from starlette.routing import Mount, Route, request_response
 from starlette.staticfiles import StaticFiles
 
 from . import kinds, pages
@@ -166,7 +167,10 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         a = live(request)
         if a is None:
             return pages.not_found()
-        return pages.viewer_page(a, f"{config.public_url}/a/{a.id}")
+        kind = kinds.get(a.kind)
+        # "Open separately": the file at the raw origin, if there is one.
+        separate = f"{config.raw_url}/a/{a.id}/raw" if config.raw_url and kind.viewable else None
+        return pages.viewer_page(a, f"{config.public_url}/a/{a.id}", separate)
 
     async def raw(request: Request) -> Response:
         a = live(request)
@@ -180,6 +184,24 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             # show it with the viewer's header instead. Images and PDFs open
             # as they are, in the browser's own viewer.
             return RedirectResponse(f"/a/{a.id}", status_code=303)
+        return await content(a, kind)
+
+    async def raw_origin(request: Request) -> Response:
+        """Every request to the raw origin: /a/{id}/raw of a file that can be
+        shown, as it is, and 404 for anything else."""
+        match = _RAW_PATH.fullmatch(request.url.path)
+        if request.method not in ("GET", "HEAD") or match is None:
+            return _raw_origin_not_found()
+        a = store.get(match[1])
+        if a is None or not store.path(a.id).exists():
+            return _raw_origin_not_found()
+        kind = kinds.get(a.kind)
+        if not kind.viewable:
+            return _raw_origin_not_found()
+        response = await content(a, kind)
+        return _raw_origin_not_found() if response.status_code == 404 else response
+
+    async def content(a: Artifact, kind: kinds.Kind) -> Response:
         csp = pages.SANDBOX_CSP if kind.sandboxed else pages.RAW_CSP
         headers = {"Cache-Control": "no-store", "Content-Security-Policy": csp}
         # Pages get the pin script: appended to HTML, inside the Markdown and
@@ -244,12 +266,49 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             *admin_routes(store, config.public_url),
             *comment_routes(store),
         ],
-        middleware=[Middleware(_CommonHeaders)],
+        middleware=[
+            Middleware(_CommonHeaders),
+            Middleware(_RawOrigin, host=urlsplit(config.raw_url).hostname, app_there=raw_origin),
+        ],
         exception_handlers={ApiError: on_api_error},
         lifespan=lifespan,
     )
 
     return app
+
+
+_RAW_PATH = re.compile(rf"/a/({ID_RE})/raw")
+
+
+def _raw_origin_not_found() -> Response:
+    return Response(
+        "Not found", status_code=404, media_type="text/plain", headers={"Cache-Control": "no-store"}
+    )
+
+
+class _RawOrigin:
+    """Sends requests whose Host is the raw origin's to its own handler, so
+    none of the service's other paths answer there."""
+
+    def __init__(self, app, host: str | None, app_there) -> None:  # noqa: ANN001
+        self.app = app
+        self.host = host.lower() if host else None
+        self.there = request_response(app_there)
+
+    async def __call__(self, scope, receive, send) -> None:  # noqa: ANN001
+        if self.host and scope["type"] == "http" and _host(scope) == self.host:
+            await self.there(scope, receive, send)
+        else:
+            await self.app(scope, receive, send)
+
+
+def _host(scope) -> str:  # noqa: ANN001
+    """The Host header's name, without the port."""
+    for name, value in scope["headers"]:
+        if name == b"host":
+            host = value.decode("latin-1").lower()
+            return host[1:].split("]")[0] if host.startswith("[") else host.rsplit(":", 1)[0]
+    return ""
 
 
 class _CommonHeaders:

@@ -7,12 +7,29 @@
     <div class="meta">{{ size }} · expires {{ expires }}</div>
   </div>
   <div class="actions">
-    <button type="button" id="comments-toggle" aria-controls="comments" aria-expanded="false" title="Comments" aria-label="Comments, {{ a.open_comments }} open">{{ icon.comment() }}<span id="comments-count">{{ a.open_comments }}</span></button>
-    <a class="btn" href="/a/{{ a.id }}/download" title="Download" aria-label="Download">{{ icon.download() }}</a>
-    <input id="url" class="copy-source" readonly value="{{ url }}" aria-hidden="true" tabindex="-1">
-    <button type="button" data-copy="url" title="Copy link" aria-label="Copy link">{{ icon.link() }}{{ icon.check() }}</button>
+    {#- Comment mode; for now it opens and closes the comments panel. #}
+    <button type="button" id="comments-toggle" class="sq" aria-controls="comments" aria-expanded="false" aria-pressed="false" title="Comments" aria-label="Comments, {{ a.open_comments }} open">{{ icon.bubble() }}<span id="comments-count" hidden>{{ a.open_comments }}</span></button>
+    <button type="button" id="menu-button" class="sq" aria-haspopup="menu" aria-controls="fan" aria-expanded="false" title="Menu" aria-label="Menu">{{ icon.menu() }}</button>
   </div>
 </header>
+{#- The menu of the header's ≡ and of the floating ≡ in full screen: square
+    buttons with labels, fanned out over the dimmed page. #}
+<div id="fan" class="fan" hidden>
+  <div class="fan-scrim"></div>
+  <div id="fan-list" class="fan-list" role="menu" aria-label="Menu">
+    <button type="button" role="menuitem" class="fan-item" data-act="full" data-when="normal"><span class="fan-label">Full screen</span><span class="fan-sq">{{ icon.expand() }}</span></button>
+    <button type="button" role="menuitem" class="fan-item" data-act="exit" data-when="full"><span class="fan-label">Exit full screen</span><span class="fan-sq">{{ icon.shrink() }}</span></button>
+    <button type="button" role="menuitem" class="fan-item" data-act="comment" data-when="full"><span class="fan-label">Comment</span><span class="fan-sq">{{ icon.bubble() }}</span></button>
+    <a role="menuitem" class="fan-item" href="/a/{{ a.id }}/download" data-act="download"><span class="fan-label">Download</span><span class="fan-sq">{{ icon.download() }}</span></a>
+    <button type="button" role="menuitem" class="fan-item" data-act="copy" data-url="{{ url }}"><span class="fan-label">Copy link</span><span class="fan-sq">{{ icon.link() }}</span></button>
+    {%- if separate %}
+    <a role="menuitem" class="fan-item" href="{{ separate }}" target="_blank" rel="noopener" data-act="separate"><span class="fan-label">Open separately</span><span class="fan-sq">{{ icon.external() }}</span></a>
+    {%- endif %}
+  </div>
+</div>
+{#- Full screen: this button takes the header's place. Dragged, it snaps
+    to the nearer side edge. #}
+<button type="button" id="float-button" class="float-button" hidden aria-haspopup="menu" aria-controls="fan" aria-expanded="false" title="Menu" aria-label="Menu">{{ icon.menu() }}{{ icon.close() }}</button>
 <div class="stage">
 <main>
 {%- if kind.sandboxed %}

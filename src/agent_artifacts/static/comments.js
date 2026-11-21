@@ -1255,6 +1255,7 @@
 
   function setExpanded(open) {
     toggle.setAttribute("aria-expanded", String(open));
+    toggle.setAttribute("aria-pressed", String(open));
     strip.setAttribute("aria-expanded", String(open));
   }
 
