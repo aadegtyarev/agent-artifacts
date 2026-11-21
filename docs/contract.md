@@ -382,8 +382,10 @@ links work only with `target="_blank"`.
 
 ## Comments
 
-Not built yet: this section is the approved design. The owner calls under
-`/api/v1` exist, except `DELETE /api/v1/artifacts/{id}/drafts`.
+The server side is built: the public and owner calls, their rules and
+limits. The viewer is not built yet: it still has the earlier panel, which
+sends a comment as one draft and publishes it at once, and has no sheet
+heights, drafts, Finish review or draft pins.
 
 Anyone with the link can read the published comments and write their own,
 the same people who can see the file. A person writes comments as drafts,
@@ -512,8 +514,9 @@ it tells nothing about other people's drafts.
   `X-Author-Key` sent, false without a key and for the owner.
 - An artifact holds at most 200 comments; a review that would pass that gets
   `409 too_many_comments`. A key holds at most 50 drafts on a file, and a
-  file at most 200 drafts in all; the next gets `409 too_many_drafts`, which
-  reveals only that the file is full. A draft not changed for 7 days is
+  file at most 200 drafts in all; the next gets `409 too_many_drafts`. So
+  the answer tells anyone with the link how many drafts the file holds in
+  all, though never their texts or ids. A draft not changed for 7 days is
   deleted.
 
 The owner agent reads the comments with `GET /api/v1/artifacts/{id}/comments`,
@@ -685,7 +688,7 @@ or else from the file `setup` writes with mode 600:
 `~/.config/agent-artifacts/env`, `%APPDATA%\agent-artifacts\env` on Windows,
 or `AGENT_ARTIFACTS_ENV`. The key never appears in a command line. Comments
 get the commands `comments ID`, `resolve ID N`, `reopen ID N` and
-`delete-comment ID N`, and `drop-drafts ID` (not built yet) deletes every
+`delete-comment ID N`, and `drop-drafts ID` deletes every
 draft on a file;
 `list` shows each file's open comments. Projects get
 `project-new TITLE`, `projects`, `project ID`, `project-rename ID TITLE`,

@@ -32,7 +32,7 @@ from pathlib import Path
 
 # The date of the last change to this script or the skill; bump it with
 # every such change. `version` prints it.
-VERSION = "2026-11-21"
+VERSION = "2026-11-22"
 
 USAGE = """usage: artifacts_cli.py <command> [args]
 
@@ -47,6 +47,7 @@ USAGE = """usage: artifacts_cli.py <command> [args]
   resolve ID N              mark comment N done
   reopen ID N               mark comment N open again
   delete-comment ID N       delete comment N; the other numbers stay
+  drop-drafts ID            delete every unpublished draft on a file, unread
   me                        your name, space used and quota, admin or not
   new-key                   replace your key (after a leak) and save the new one
   version                   this skill's version
@@ -276,6 +277,10 @@ def run(argv: list[str]) -> str | None:
             need(2, "ID N")
             c.call("DELETE", f"{api}/{args[0]}/comments/{_number(args[1])}")
             return "deleted"
+        case "drop-drafts":
+            need(1, "ID")
+            c.call("DELETE", f"{api}/{args[0]}/drafts")
+            return "drafts deleted"
         case "me":
             return c.call("GET", "/api/v1/me")
         case "new-key":

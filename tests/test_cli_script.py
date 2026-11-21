@@ -148,14 +148,15 @@ def test_plain_http_only_for_a_local_server(tmp_path):
     assert code == 2 and "https://" in err
 
 
-def test_comments_resolve_and_delete(server):
+def test_comments_resolve_delete_and_drop_drafts(server):
     url, store, home = server
     env = {"AGENT_ARTIFACTS_URL": url, "AGENT_ARTIFACTS_KEY": store.add_agent("alice")}
     page = home / "a.html"
     page.write_text("<p>hi</p>")
     art_id = json.loads(cli(home, "upload", str(page), env=env)[1])["id"]
     for text in ("one", "two"):
-        store.add_comment(art_id, author="p", text=text, anchor=None, token_hash="h")  # noqa: S106
+        store.add_draft(art_id, "h", author="p", text=text, anchor=None)
+    store.publish(art_id, "h", author="p", text=None)
     code, out, _ = cli(home, "comments", art_id, env=env)
     assert code == 0 and [(c["text"], c["read"]) for c in json.loads(out)] == [
         ("one", True),
@@ -166,3 +167,6 @@ def test_comments_resolve_and_delete(server):
     assert json.loads(cli(home, "reopen", art_id, "1", env=env)[1])["resolved"] is False
     assert cli(home, "delete-comment", art_id, "2", env=env)[1].strip() == "deleted"
     assert cli(home, "resolve", art_id, "x", env=env)[0] == 2
+    store.add_draft(art_id, "h", author="p", text="unsent", anchor=None)
+    assert cli(home, "drop-drafts", art_id, env=env)[1].strip() == "drafts deleted"
+    assert store.drafts(art_id, "h") == []
