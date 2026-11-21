@@ -16,6 +16,10 @@ deleted. Agents use it through a skill and its `artifacts_cli.py` command.
    The person views the first three in the browser and downloads the zip.
 4. The person forwards the link to a colleague, who opens it without any login.
 5. Two days later the file is gone. The link shows "expired or not found".
+6. The agent uploads a mockup. The person and colleagues click spots on it and
+   leave comments there. The person tells the agent to look at the comments;
+   the agent reads them with the spot each one points at, fixes the mockup,
+   replaces it at the same link and marks those comments resolved.
 
 ## Out of scope
 
@@ -23,6 +27,8 @@ deleted. Agents use it through a skill and its `artifacts_cli.py` command.
 - Multi-file sites. An HTML artifact is one self-contained file.
 - Browsing the contents of an archive. Archives are download-only.
 - Keeping files beyond the TTL, versions, or history of replaced files.
+- Comment threads, mentions, notifications, editing a posted comment, and
+  pins on PDFs, SVG and archives (those get comments without a pin).
 
 ## File types
 
@@ -80,16 +86,26 @@ Artifact JSON:
   "type": "html",
   "size": 48213,
   "created_at": "2026-11-20T10:00:00Z",
-  "expires_at": "2026-11-22T10:00:00Z"
+  "expires_at": "2026-11-22T10:00:00Z",
+  "comments": 3,
+  "open_comments": 1
 }
 ```
 
 Errors are `{"error": "<code>", "message": "<text>"}` with codes
 `bad_request`, `unauthorized`, `not_found`, `too_large`, `unsupported_type`,
-`type_mismatch`, `quota_exceeded`, `storage_full`. `quota_exceeded` also
+`type_mismatch`, `quota_exceeded`, `storage_full`, `too_many_comments`. `quota_exceeded` also
 carries `used_bytes` and `quota_bytes`; a replace counts only the new file's
 size. Uploads must carry `Content-Length`; a body
 larger than the file limit is refused before it is read.
+
+Comments on the caller's own artifact (see [Comments](#comments)):
+
+| Call | Purpose | Answer |
+| --- | --- | --- |
+| `GET /api/v1/artifacts/{id}/comments` | all comments, oldest first | `200` + list of comment JSON |
+| `PATCH /api/v1/artifacts/{id}/comments/{n}` | `{"resolved": true or false}` | `200` + comment JSON |
+| `DELETE /api/v1/artifacts/{id}/comments/{n}` | delete one; the other numbers stay | `204` |
 
 ### Admin calls
 
@@ -130,6 +146,9 @@ lifetime applies to uploads from then on.
 | `/a/{id}` | page with the name, expiry, the content, and buttons: Download, Copy link |
 | `/a/{id}/raw` | the content itself, with the sandbox headers below; opened as a page on its own, HTML, SVG, Markdown and text redirect to `/a/{id}`, while images and PDFs open in the browser's own viewer |
 | `/a/{id}/download` | the original file as an attachment under its name |
+| `GET /a/{id}/comments` | the comments, as for the owner | `200` + list of comment JSON |
+| `POST /a/{id}/comments` | `{"author", "text", "anchor"}`, JSON only | `201` + comment JSON; `409 too_many_comments` |
+| `PATCH /a/{id}/comments/{n}` | `{"resolved": true or false}`, JSON only | `200` + comment JSON |
 
 A missing or expired id gives a `404` page saying so. Pages carry
 `X-Robots-Tag: noindex` and `Referrer-Policy: no-referrer`.
@@ -148,6 +167,70 @@ cancelled.
 Opening the link does not use it up, because chat apps and link checkers fetch
 links themselves (GET or HEAD) to build a preview. Only the POST does.
 
+## Comments
+
+Anyone with the link can read comments, post one and mark one resolved or
+open again, the same people who can see the file. Only the owner agent can
+delete a comment. Comments are deleted with the artifact.
+
+**On the viewer page.** The header has a Comments button with the number of
+open comments, on every file type. It opens a panel at the side on a
+computer and at the bottom on a phone: the comments, with resolved ones
+hidden behind a toggle, and a form with a name (the browser remembers it) and
+the text. Where a pin is possible, the form starts with "click a spot": the
+next click on the content places a numbered pin there, and the comment is
+tied to it. Pins of open comments show over the content; a click on a pin
+opens its comment, a click on a comment scrolls to its pin. Elsewhere the
+comment is about the whole file.
+
+| Type | Pin |
+| --- | --- |
+| HTML, Markdown, text | on an element of the page, see below |
+| PNG, JPEG, GIF, WebP | on a point of the image |
+| PDF, SVG, archives | none, the comment is about the whole file |
+
+Comment JSON:
+
+```json
+{"n": 3, "author": "Petrov", "text": "Make this button green",
+ "anchor": {"type": "element", "selector": "main > form > button.primary",
+            "text": "Send", "x": 0.42, "y": 0.5, "width": 1280},
+ "created_at": "2026-11-20T10:00:00Z", "resolved": false, "before_replace": false}
+```
+
+- `n` numbers the artifact's comments from 1 and is never reused.
+- `author` is at most 64 characters; empty becomes `anonymous`. `text` is 1 to
+  2000 characters of plain text, shown as text, never as HTML or Markdown.
+- `anchor` is `null` for a comment about the whole file. On an image it is
+  `{"type": "point", "x", "y"}`, the point as fractions (0 to 1) of the
+  image's width and height. On a page it is `{"type": "element", "selector",
+  "text", "x", "y", "width"}`: a CSS selector of the element clicked (at most
+  512 characters), the start of its visible text (at most 200), the point as
+  fractions of the element's box, and the window width at the time.
+- `before_replace` is true when the file was replaced after the comment was
+  posted, so the comment may be about the old version.
+- An artifact holds at most 200 comments; the next gets `409
+  too_many_comments`.
+
+**Pins on pages.** The content runs in a sandbox the viewer page cannot look
+into, so `/a/{id}/raw` appends a small inline script to HTML, and includes it
+in its Markdown and text pages. The file itself and its download are not
+changed. The script and the viewer page talk only through `postMessage`:
+
+- the viewer turns pin mode on and off and sends the pins to draw: numbers,
+  anchors and resolved flags, never comment texts or names;
+- the script answers with the anchor of the clicked spot. In pin mode it
+  takes that one click in the capture phase and cancels it, so a link or a
+  button under it does not fire;
+- the script reports when it is ready. If it never does, for example because
+  the page's own `<meta>` CSP blocks inline scripts, the viewer offers
+  comments without pins.
+
+The viewer accepts messages only from its own iframe's window, checks their
+shape and limits, and treats them as untrusted data. The page's own scripts
+can forge the anchor of the next comment, but not its text, which the person
+types into the viewer's form outside the sandbox.
+
 ## Security
 
 **Links.** `id` is 128 random bits, URL-safe base64. It cannot be listed or
@@ -163,6 +246,14 @@ hash, so it is never compared byte by byte.
 same as keys. It is used up in the same transaction that creates the agent, so
 two presses cannot both get a key. The pages send `Cache-Control: no-store`,
 `Referrer-Policy: no-referrer` and a CSP allowing only their own form.
+
+**Comments.** Posting needs no key, so it is limited: the sizes and the count
+above, and a request rate per address in the reverse proxy (the nginx example
+allows 10 a minute with a burst of 5). The calls accept only
+`Content-Type: application/json`, which another site cannot send without a
+CORS preflight the service never answers, and the service sets no cookies.
+Texts and names are escaped like every other value. The viewer page adds
+`connect-src 'self'` to its CSP for these calls.
 
 **The service's own pages.** Rendered from Jinja templates
 (`src/agent_artifacts/templates/`) with autoescaping on, so names and other
@@ -216,7 +307,7 @@ behind a TLS reverse proxy.
 ## Storage and cleanup
 
 Files under `<data>/files/<id>`,
-metadata and key hashes in `<data>/meta.sqlite`. A background task deletes
+metadata, comments and key hashes in `<data>/meta.sqlite`. A background task deletes
 expired artifacts every 10 minutes, and expired ids already answer `404` before
 that.
 
@@ -235,7 +326,9 @@ reads its inline metadata). Usable from any agent that runs shell commands.
 It reads `AGENT_ARTIFACTS_URL` and `AGENT_ARTIFACTS_KEY` from the environment,
 or else from the file `setup` writes with mode 600:
 `~/.config/agent-artifacts/env`, `%APPDATA%\agent-artifacts\env` on Windows,
-or `AGENT_ARTIFACTS_ENV`. The key never appears in a command line. The skill
+or `AGENT_ARTIFACTS_ENV`. The key never appears in a command line. Comments
+get the commands `comments ID`, `resolve ID N`, `reopen ID N` and
+`delete-comment ID N`; `list` shows each file's open comments. The skill
 teaches:
 
 - upload, replace and delete with `artifacts_cli.py`, and how to give the
@@ -244,5 +337,9 @@ teaches:
 - HTML must be one self-contained file: inline CSS and JS, images as `data:`
   URIs, no CDN or web fonts, internal navigation by `#anchor`, no
   `localStorage`;
-- what the person can do with the link (view, download, forward) and that
-  it expires.
+- what the person can do with the link (view, download, forward, comment)
+  and that it expires;
+- on "look at the comments": read them with `artifacts_cli.py comments ID`,
+  find each spot by its anchor's selector and text, fix the file, replace it,
+  mark what was done with `resolve ID N`, and tell the person what changed
+  and what was left open.
