@@ -50,7 +50,7 @@ produce:
 
 | The person wants | Make |
 | --- | --- |
-| to judge an interface, a screen or a flow that does not exist yet | an interactive HTML mockup: clickable states, realistic sample data, phone and desktop widths, built by the rules in [Writing HTML that works there](#writing-html-that-works-there). Make it without waiting to be asked, instead of describing the idea in words or drawing a static picture |
+| to judge an interface, a screen or a flow that does not exist yet | first a user flow with wireframes, then an interactive mockup; see [Designing an interface](#designing-an-interface). Make it without waiting to be asked, instead of describing the idea in words |
 | to see or point at a real, existing interface | a screenshot (`.png`); people can pin comments on it. Check it shows nothing secret |
 | a report, a comparison, an overview with structure | an HTML page: headings, tables, charts as inline SVG |
 | mostly text to read or copy | Markdown (up to 2 MB) |
@@ -64,6 +64,21 @@ report, and to what the person asked for: tables for figures to compare,
 charts (inline SVG) for trends and shares, sections with headings for a long
 read. A plain page with lists is fine when that is all the content needs; do
 not add tables or charts for their own sake.
+
+### Designing an interface
+
+Start with the user flow, not the finished look:
+
+1. **User flow with wireframes.** Numbered steps from the person's first
+   action to the result, one schematic screen per step: grey blocks for the
+   content, real labels on the controls, arrows between steps, one line
+   under each step saying what happens and why. Phone first; desktop once the
+   phone flow is agreed. Render them to `.png` images (two or three steps per
+   image) and upload those, so the person can look and pin comments on a
+   phone. List the decisions you made yourself under the links.
+2. **Interactive mockup**, only after the flow is agreed: clickable states,
+   realistic sample data, phone and desktop widths, built by the rules in
+   [Writing HTML that works there](#writing-html-that-works-there).
 
 When the person is going to review and comment on a spot, pages (HTML,
 Markdown, text) and images take pins; PDF, SVG and archives take comments
