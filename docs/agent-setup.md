@@ -76,42 +76,55 @@ through `setup`.
 
 ## Update
 
-The key is not in the skill folder, so replacing the folder keeps it. Do not
-run `setup` again.
+The key is not in the skill folder, so replacing the folder keeps it. Run
+`setup` only in the one case step 4 names. Paths below use `/`; on Windows use
+`\`, as in [Connect](#connect).
 
-1. Note the version you have:
-
-   ```bash
-   run <skills folder>/agent-artifacts/scripts/artifacts_cli.py version
-   ```
-
-   A version without this command prints a usage error; call it "older".
-
-2. Get the new files:
-
-   - If `<skills folder>/agent-artifacts` is a symlink into a clone of the
-     repository, run `git -C <clone> pull --ff-only` and go to step 3.
-   - Otherwise clone into a temporary folder, as in [Connect](#connect) step
-     1, delete `<skills folder>/agent-artifacts` and copy the new
-     `skill/agent-artifacts` in its place. If the skill is installed in more
-     than one skills folder, do each of them.
-
-3. Check it:
+1. Note what you have now:
 
    ```bash
    run <skills folder>/agent-artifacts/scripts/artifacts_cli.py version
    run <skills folder>/agent-artifacts/scripts/artifacts_cli.py me
    ```
 
-   `version` prints the new date, and `me` answers with the same name as
-   before. An `unauthorized` error means the key file was lost: ask the person
-   for their key again instead of guessing.
+   Keep the name `me` prints. A version from before this command exits with
+   an error; call it "older". That is not a broken install.
 
-4. Tell the person the old and new versions and what changed for them. The
-   repository's history of the skill shows it:
-   `git -C <clone> log --oneline --since=<old version> -- skill/`.
-   Delete the temporary clone. Some harnesses load a changed skill only after
-   a restart; say so if yours does.
+2. Find every copy. Check each skills folder from the table in
+   [Connect](#connect) step 2 for an `agent-artifacts` folder, and note
+   whether it is a symlink (`ls -l`; on Windows `dir` shows `<SYMLINK>` or
+   `<JUNCTION>`). Several folders may be links to one real folder or clone;
+   update each real one once.
+
+3. Get the new files:
+
+   - A symlink into a clone of the repository: run
+     `git -C <clone> pull --ff-only`. If it fails, stop and tell the person;
+     do not reset the clone.
+   - A plain folder: clone into a temporary folder, as in Connect step 1.
+     Copy the new `skill/agent-artifacts` next to the old one as
+     `agent-artifacts.new`, rename the old one to `agent-artifacts.old`, then
+     `agent-artifacts.new` to `agent-artifacts`. If a step fails, put the old
+     folder back.
+
+4. Check it, in every folder you updated:
+
+   ```bash
+   run <skills folder>/agent-artifacts/scripts/artifacts_cli.py version
+   run <skills folder>/agent-artifacts/scripts/artifacts_cli.py me
+   ```
+
+   `me` must print the same name as in step 1. `no key` means the key file
+   is gone; `unauthorized` means the key was revoked or changed on the
+   server. In both cases ask the person for their two lines and run Connect
+   step 3.
+
+5. Tell the person the old and new versions and what changed for them. To
+   see it, compare `agent-artifacts.old/SKILL.md` with the new one, or for a
+   clone run `git -C <clone> log --oneline ORIG_HEAD..HEAD -- skill/`. The
+   version is the date of the last change, so treat it as a hint. Then delete
+   `agent-artifacts.old` and the temporary clone. Some harnesses load a
+   changed skill only after a restart; say so if yours does.
 
 ## Deploy
 

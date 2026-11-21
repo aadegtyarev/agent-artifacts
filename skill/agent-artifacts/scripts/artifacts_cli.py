@@ -30,7 +30,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-# The date of the last change to this script or the skill; `version` prints it.
+# The date of the last change to this script or the skill; bump it with
+# every such change. `version` prints it.
 VERSION = "2026-11-21"
 
 USAGE = """usage: artifacts_cli.py <command> [args]
