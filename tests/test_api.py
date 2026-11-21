@@ -9,7 +9,7 @@ from starlette.testclient import TestClient
 
 from agent_artifacts.config import Config, check_public_url
 from agent_artifacts.kinds import KindError, clean_name, detect
-from agent_artifacts.pages import SANDBOX_CSP
+from agent_artifacts.pages import PINS_SCRIPT, SANDBOX_CSP
 from agent_artifacts.store import Store
 from agent_artifacts.web import create_app
 
@@ -54,8 +54,9 @@ def test_upload_view_download(env):
     assert 'aria-label="Download"' in page.text and 'aria-label="Copy link"' in page.text
 
     raw = client.get(f"/a/{art['id']}/raw")
-    assert raw.content == b"<h1 id=x>Hi</h1>"
+    assert raw.content == b"<h1 id=x>Hi</h1>" + PINS_SCRIPT
     assert raw.headers["content-security-policy"] == SANDBOX_CSP
+    assert raw.headers["content-type"] == "text/html; charset=utf-8"
 
     dl = client.get(f"/a/{art['id']}/download")
     assert dl.content == b"<h1 id=x>Hi</h1>"
@@ -82,6 +83,20 @@ def test_markdown_is_sent_for_the_browser_to_render(env):
     assert json.dumps(text).replace("<", "\\u003c") in raw.text
 
 
+@pytest.mark.parametrize(
+    ("filename", "data"),
+    [("a.html", b"<p>Hi"), ("a.md", b"# Hi"), ("a.txt", b"Hi")],
+)
+def test_pages_get_the_pin_script_the_download_stays_the_file(env, filename, data):
+    client, _, keys = env
+    art = upload(client, keys["alice"], filename, data).json()
+    raw = client.get(f"/a/{art['id']}/raw").text.rstrip()
+    script = PINS_SCRIPT.decode()
+    assert raw.count(script) == 1
+    assert raw.endswith(script if filename == "a.html" else script + "</body></html>")
+    assert client.get(f"/a/{art['id']}/download").content == data
+
+
 def test_image_is_shown_inline_archive_is_download_only(env):
     client, _, keys = env
     img = upload(client, keys["alice"], "a.png", PNG).json()
@@ -100,7 +115,7 @@ def test_replace_keeps_the_link_and_resets_expiry(env):
     body = second.json()
     assert body["id"] == first["id"] and body["type"] == "html"
     assert body["expires_at"] > first["expires_at"]
-    assert client.get(f"/a/{first['id']}/raw").content == b"two"
+    assert client.get(f"/a/{first['id']}/raw").content == b"two" + PINS_SCRIPT
 
 
 def test_other_agents_cannot_touch_an_artifact(env):
@@ -229,7 +244,7 @@ def test_raw_opened_as_a_page_goes_to_the_viewer(env):
     )
     assert (r.status_code, r.headers["location"]) == (303, f"/a/{art['id']}")
     framed = client.get(f"/a/{art['id']}/raw", headers={"Sec-Fetch-Dest": "iframe"})
-    assert framed.content == b"<p>x</p>"
+    assert framed.content == b"<p>x</p>" + PINS_SCRIPT
 
 
 def test_replace_of_an_expired_artifact_is_not_found(env):
@@ -539,7 +554,7 @@ def test_viewer_page_has_comments_on_every_type(env):
         assert 'aria-label="Comments: 2, 1 resolved. Open"' in page.text, name
         assert 'id="card-menu" class="card-menu" hidden' in page.text, name
         assert 'id="typing-context" class="typing-context" hidden' in page.text, name
-        assert ('id="composer"' in page.text) == (name == "b.png"), name
+        assert ('id="composer"' in page.text) == (name != "c.zip"), name
         assert 'id="toast" class="toast" role="status"' in page.text, name
         assert re.search(
             r'<script src="/static/comments\.js\?v=[0-9a-f]{12}"></script>', page.text
@@ -647,6 +662,8 @@ def test_comment_delete_by_token_before_read(env):
         ("a.png", PNG, {"type": "point", "x": 0.1, "y": 0.1, "z": 0}, False),
         ("a.png", PNG, ELEMENT, False),
         ("a.md", b"# Hi", ELEMENT, True),
+        ("a.html", b"<p>", ELEMENT, True),
+        ("a.txt", b"x", ELEMENT, True),
         ("a.md", b"# Hi", ELEMENT | {"selector": "x" * 513}, False),
         ("a.md", b"# Hi", ELEMENT | {"width": "1280"}, False),
         ("a.html", b"<p>", {"type": "point", "x": 0, "y": 0}, False),

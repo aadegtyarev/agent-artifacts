@@ -74,6 +74,9 @@ INVITE_GONE = "This invite was used, has expired or never existed. Ask for a new
 
 # Our vendored file, put into a <script> as is.
 _MARKED_JS = Markup((STATIC_DIR / "marked.umd.js").read_text(encoding="utf-8"))  # noqa: S704
+# The script that draws pins inside a sandboxed page, see static/pins.js.
+_PINS = Markup(f"<script>{(STATIC_DIR / 'pins.js').read_text(encoding='utf-8')}</script>")  # noqa: S704
+PINS_SCRIPT = str(_PINS).encode()
 
 
 def _page(template: str, csp: str, status: int = 200, **context: object) -> HTMLResponse:
@@ -143,10 +146,17 @@ def not_found() -> HTMLResponse:
     return message(404, "This link has expired or never existed.")
 
 
+def html_page(path: Path, title: str) -> bytes:
+    """An HTML artifact for /raw inside the sandbox: the file with the pin
+    script appended; the download stays the file as it is. (The title is the
+    page's own; the argument is there to match the other builders.)"""
+    return path.read_bytes() + PINS_SCRIPT
+
+
 def text_page(path: Path, title: str) -> str:
     """A text artifact, for /raw inside the sandbox."""
     text = path.read_bytes().decode("utf-8", "replace")
-    return _env.get_template("text.html").render(title=title, text=text)
+    return _env.get_template("text.html").render(title=title, text=text, pins=_PINS)
 
 
 def markdown_page(path: Path, title: str) -> str:
@@ -165,6 +175,7 @@ def markdown_page(path: Path, title: str) -> str:
         title=title,
         marked=_MARKED_JS,
         source=Markup(source),  # noqa: S704 (JSON with "<" escaped, see above)
+        pins=_PINS,
     )
 
 

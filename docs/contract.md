@@ -201,6 +201,8 @@ links themselves (GET or HEAD) to build a preview. Only the POST does.
 
 ## Projects
 
+Not built yet: this section is the approved design.
+
 A project groups one agent's files under a title and gives them one page.
 Files in a project have no lifetime: they stay until the agent deletes them
 or the project. They count toward the agent's quota and the total limit like
@@ -372,17 +374,24 @@ a composer at that spot: a popover next to the pin on a computer, docked at
 the bottom on a phone; Ctrl/Cmd+Enter sends, Escape or Cancel closes it,
 with Undo if text was typed. On an image a Ctrl/Cmd or middle click still
 opens it full size; any other click places the pin, on a phone while the
-sheet is folded as well. On a phone the composer and the sheet never show
-at once: opening the sheet hides the composer with its draft, and folding
-the sheet brings it back.
+sheet is folded as well. On a page (HTML, Markdown, text) a click places a
+pin only while the panel or sheet is open, and then does nothing else: a
+link or a button under it does not fire, and on a computer the element
+under the pointer has a dashed outline. With the panel closed or the sheet
+folded, the page works as usual. While pins work there, the top of the list
+says "Click the page to pin a comment" ("Tap" on a phone). Comment fields
+are one line tall while empty and grow with the text. On a phone the
+composer and the sheet never show at once: opening the sheet hides the
+composer with its draft, and folding the sheet brings it back.
 
 On a phone with a touch screen (a coarse pointer, up to 640 px wide),
 typing in a comment field (the composer, the form, an edit) switches to
 typing mode: the header, the content and the sheet step aside, and the form
 sits at the top of the page under a line saying what is being written ("New
-comment on the image", "Editing #N") and, for a comment with a pin, a strip
-of the image around it; the text field grows to a few lines, with Send or
-Save beside it and Cancel under it. Leaving the field brings the page back
+comment on the image", "On “See plans”" for a page's element, "Editing #N")
+and, for a comment with a pin on an image, a strip of the image around it;
+the text field grows to a few lines, with Send or Save beside it and Cancel
+under it. Leaving the field brings the page back
 with the text kept, and so does hiding the keyboard (on Android the field
 keeps the focus, so the page watches the visible height come back, a pinch
 zoom aside); Cancel there does the same, or closes the composer or the edit
@@ -460,26 +469,29 @@ whether or not the agent has read the comment. Errors are JSON, never a page:
 **Pins on pages.** The content runs in a sandbox the viewer page cannot look
 into, so `/a/{id}/raw` appends a small inline script to the end of HTML, and
 includes it in its Markdown and text pages. The file itself and its download
-are not changed. The script draws pins in its own absolutely positioned layer
-on top of the page and does not touch the page's elements. The script and the
-viewer page talk only through `postMessage`:
+are not changed. The script draws pins in its own fixed layer on top of the
+page and does not touch the page's elements. The script and the viewer page
+talk only through `postMessage`:
 
-- the script reports when it is ready, and the viewer sends nothing before
-  that. If it never does, for example because the page's own `<meta>` CSP
-  blocks inline scripts or the page leaves a tag unclosed, the viewer offers
-  comments without pins;
-- the viewer turns pin mode on and off and sends the pins to draw: numbers,
-  anchors and resolved flags, never comment texts or names;
+- the script reports when it is ready. Before that the viewer only asks it
+  to report, when the viewer starts and each time the frame loads (the frame
+  may be ready before the viewer listens, and a link or a refresh can load
+  another document). If it never answers, for example because the page's
+  own `<meta>` CSP blocks inline scripts or the page leaves a tag unclosed,
+  the viewer offers comments without pins: no hint, no pin placement, and a
+  comment with an anchor shows its anchor's text;
+- the viewer turns pin mode on while its panel is open and off when it
+  closes, and sends the pins to draw: numbers, anchors, resolved and lit
+  flags, and the anchor of the draft, never comment texts or names;
 - the script answers with the anchor of the clicked spot. In pin mode it
-  takes that one click in the capture phase and cancels it, so a link or a
-  button under it does not fire;
-- outside pin mode, the script sends the path and fragment of a clicked link
-  to another file, see [Links between files](#projects).
+  takes each click in the capture phase and cancels it, so a link or a
+  button under it does not fire.
 
 A pin is placed by its selector; if that matches nothing, by the first
 element whose visible text starts with the anchor's `text`; if neither, it is
 not drawn, and the panel marks the comment "spot not found" and shows the
 anchor's text. Pins are placed again when the page's size or content changes.
+Showing a pin scrolls its point, not just its element, to the middle.
 
 The sandboxed frame's origin is opaque (`null`), so both sides check the
 sender's window instead: the viewer accepts messages only when `event.source`
