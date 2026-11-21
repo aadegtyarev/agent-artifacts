@@ -1276,6 +1276,8 @@
   menu.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     if (!e.target.closest(".menu-scrim")) return;
+    // The browser's own long-press menu event on a phone: keep our sheet.
+    if (phone.matches && touch.matches) return;
     closeMenu(false);
     const under = document.elementFromPoint(e.clientX, e.clientY);
     const hit = under && listBox.contains(under) ? cardOf(under) : null;
