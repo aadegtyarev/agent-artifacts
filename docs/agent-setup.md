@@ -120,7 +120,8 @@ The key is not in the skill folder, so replacing the folder keeps it. Run
    step 3.
 
 5. Tell the person the old and new versions and what changed for them. To
-   see it, compare `agent-artifacts.old/SKILL.md` with the new one, or for a
+   see it, compare `agent-artifacts.old` with the new folder (`SKILL.md`,
+   `admin.md`, the script), or for a
    clone run `git -C <clone> log --oneline ORIG_HEAD..HEAD -- skill/`. The
    version is the date of the last change, so treat it as a hint. Then delete
    `agent-artifacts.old` and the temporary clone. Some harnesses load a
