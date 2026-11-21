@@ -27,8 +27,9 @@ deleted. Agents use it through a skill and its `artifacts_cli.py` command.
 - Multi-file sites. An HTML artifact is one self-contained file.
 - Browsing the contents of an archive. Archives are download-only.
 - Keeping files beyond the TTL, versions, or history of replaced files.
-- Comment threads, mentions, notifications, editing a posted comment, and
-  pins on PDFs, SVG and archives (those get comments without a pin).
+- Comment threads, mentions, notifications, editing a comment after the agent
+  has read it, and pins on PDFs, SVG and archives (those get comments without
+  a pin).
 
 ## File types
 
@@ -94,7 +95,8 @@ Artifact JSON:
 
 Errors are `{"error": "<code>", "message": "<text>"}` with codes
 `bad_request`, `unauthorized`, `not_found`, `too_large`, `unsupported_type`,
-`type_mismatch`, `quota_exceeded`, `storage_full`, `too_many_comments`. `quota_exceeded` also
+`type_mismatch`, `quota_exceeded`, `storage_full`, `too_many_comments`,
+`already_read`. `quota_exceeded` also
 carries `used_bytes` and `quota_bytes`; a replace counts only the new file's
 size. Uploads must carry `Content-Length`; a body
 larger than the file limit is refused before it is read.
@@ -103,7 +105,7 @@ Comments on the caller's own artifact (see [Comments](#comments)):
 
 | Call | Purpose | Answer |
 | --- | --- | --- |
-| `GET /api/v1/artifacts/{id}/comments` | all comments, oldest first | `200` + list of comment JSON |
+| `GET /api/v1/artifacts/{id}/comments` | all comments, oldest first; marks them read | `200` + list of comment JSON |
 | `PATCH /api/v1/artifacts/{id}/comments/{n}` | `{"resolved": true or false}` | `200` + comment JSON |
 | `DELETE /api/v1/artifacts/{id}/comments/{n}` | delete one; the other numbers stay | `204` |
 
@@ -147,8 +149,9 @@ lifetime applies to uploads from then on.
 | `/a/{id}/raw` | the content itself, with the sandbox headers below; opened as a page on its own, HTML, SVG, Markdown and text redirect to `/a/{id}`, while images and PDFs open in the browser's own viewer |
 | `/a/{id}/download` | the original file as an attachment under its name |
 | `GET /a/{id}/comments` | the comments, as for the owner | `200` + list of comment JSON |
-| `POST /a/{id}/comments` | `{"author", "text", "anchor"}`, JSON only | `201` + comment JSON; `409 too_many_comments` |
-| `PATCH /a/{id}/comments/{n}` | `{"resolved": true or false}`, JSON only | `200` + comment JSON |
+| `POST /a/{id}/comments` | `{"author", "text", "anchor"}`, JSON only | `201` + comment JSON with its `edit_token`; `409 too_many_comments` |
+| `PATCH /a/{id}/comments/{n}` | `{"resolved": true or false}`, or `{"edit_token", "text"}` to edit, JSON only | `200` + comment JSON; `403` wrong token, `409 already_read` |
+| `DELETE /a/{id}/comments/{n}` | header `X-Edit-Token`; delete your own comment | `204`; `403`, `409 already_read` |
 
 A missing or expired id gives a `404` page saying so. Pages carry
 `X-Robots-Tag: noindex` and `Referrer-Policy: no-referrer`.
@@ -170,8 +173,16 @@ links themselves (GET or HEAD) to build a preview. Only the POST does.
 ## Comments
 
 Anyone with the link can read comments, post one and mark one resolved or
-open again, the same people who can see the file. Only the owner agent can
-delete a comment. Comments are deleted with the artifact.
+open again, the same people who can see the file. Comments are deleted with
+the artifact.
+
+Until the owner agent reads the comments, the person who posted one can edit
+its text or delete it from the same browser. Posting returns an `edit_token`
+(128 random bits; only its SHA-256 is stored), which the viewer page keeps in
+`localStorage` for that comment, and shows "edit" and "delete" on it. Once the agent has fetched the comments,
+each one it saw is marked read and is final: the panel shows "read by the
+agent" and edits get `409 already_read`. The owner agent can delete any
+comment at any time.
 
 **On the viewer page.** The header has a Comments button with the number of
 open comments, on every file type. It opens a panel at the side on a
@@ -195,7 +206,8 @@ Comment JSON:
 {"n": 3, "author": "Petrov", "text": "Make this button green",
  "anchor": {"type": "element", "selector": "main > form > button.primary",
             "text": "Send", "x": 0.42, "y": 0.5, "width": 1280},
- "created_at": "2026-11-20T10:00:00Z", "resolved": false, "before_replace": false}
+ "created_at": "2026-11-20T10:00:00Z", "edited_at": null, "read": false,
+ "resolved": false, "before_replace": false}
 ```
 
 - `n` numbers the artifact's comments from 1 and is never reused.
@@ -207,6 +219,9 @@ Comment JSON:
   "text", "x", "y", "width"}`: a CSS selector of the element clicked (at most
   512 characters), the start of its visible text (at most 200), the point as
   fractions of the element's box, and the window width at the time.
+- `read` is true once the owner agent has fetched the comment; `edited_at` is
+  set when its text was changed. `edit_token` appears only in the answer to
+  the POST and is never returned again.
 - `before_replace` is true when the file was replaced after the comment was
   posted, so the comment may be about the old version.
 - An artifact holds at most 200 comments; the next gets `409
