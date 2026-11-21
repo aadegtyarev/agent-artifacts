@@ -50,17 +50,17 @@ produce:
 
 | The person wants | Make |
 | --- | --- |
-| to judge an interface, a screen or a flow that does not exist yet | an interactive HTML mockup: clickable states, realistic sample data, phone and desktop widths. Offer it up front instead of describing the idea in words or drawing a static picture |
-| to see or point at a real, existing interface | a screenshot (`.png`); people can pin comments on it |
+| to judge an interface, a screen or a flow that does not exist yet | an interactive HTML mockup: clickable states, realistic sample data, phone and desktop widths, built by the rules in [Writing HTML that works there](#writing-html-that-works-there). Make it without waiting to be asked, instead of describing the idea in words or drawing a static picture |
+| to see or point at a real, existing interface | a screenshot (`.png`); people can pin comments on it. Check it shows nothing secret |
 | a report, a comparison, an overview with structure | an HTML page: headings, tables, charts as inline SVG |
-| mostly text to read or copy | Markdown |
-| a log, a config, raw output | `.txt` |
+| mostly text to read or copy | Markdown (up to 2 MB) |
+| a log, a config, raw output | `.txt` (up to 2 MB; larger goes in a `.zip`) |
 | a diagram | inline SVG in an HTML page, or an `.svg` file |
-| something to print or sign | a PDF if you can produce one, otherwise HTML laid out for print |
+| something to print or sign | HTML with print styles and a Print button (see below); upload a `.pdf` only if you already have one |
 | data to open in a spreadsheet or tool | the files in a `.zip`, plus an HTML page that shows the data |
 
-When the person is going to review and comment, prefer a form that takes
-pins: an image or, for mockups, HTML.
+When the person is going to review and comment on a spot, an image is the
+form that takes pins today; other types take comments on the whole file.
 
 ## Upload, replace, delete
 
@@ -99,8 +99,8 @@ view it, download it, forward the link and leave comments on it. On an error
 
 ## Comments
 
-Anyone with the link can comment, on any file type. On a page or an image a
-comment may be pinned to a spot. When the person says "look at the comments":
+Anyone with the link can comment, on any file type. On an image a comment
+may be pinned to a spot. When the person says "look at the comments":
 
 ```bash
 artifacts_cli.py comments <id>           # all comments, oldest first; marks them read
