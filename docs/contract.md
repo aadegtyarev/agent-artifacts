@@ -32,8 +32,9 @@ deleted. Agents use it through a skill and its `artifacts_cli.py` command.
 - Accounts, logins or passwords for viewers. Knowing the link is the access.
 - Multi-file sites. An HTML artifact is one self-contained file.
 - Browsing the contents of an archive. Archives are download-only.
-- Keeping files outside a project beyond the TTL, versions, or history of
-  replaced files.
+- Keeping files outside a project beyond the TTL.
+- Versions or a history of replaced files. A replace overwrites; an agent
+  that wants to keep the old one uploads a new file instead.
 - Projects shared between agents, nested sections, hand-set ordering, and
   comments on a project as a whole.
 - Comment threads, mentions, notifications, editing a comment after the agent
@@ -485,7 +486,9 @@ teaches:
 
 - upload, replace and delete with `artifacts_cli.py`, and how to give the
   person the link;
-- one link per piece of work: keep the id and replace, don't upload again;
+- one link per piece of work: keep the id and replace by default; upload a
+  new file (in a project, with the version in its title) only when the old
+  one should stay, for example to compare variants;
 - HTML must be one self-contained file: inline CSS and JS, images as `data:`
   URIs, no CDN or web fonts, internal navigation by `#anchor`, no
   `localStorage`; links to other files of the service as `/a/{id}` or
