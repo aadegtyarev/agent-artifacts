@@ -1450,8 +1450,55 @@
   const banner = el("div", "banner");
   banner.hidden = true;
   banner.setAttribute("role", "status");
-  banner.append(el("span", "", "The file was updated"), button("Show", () => location.reload(), "btn pri"));
+  banner.append(el("span", "", "The file was updated"), button("Show", () => showNewFile(), "btn pri"));
   document.body.append(banner);
+  // Only the content is loaded again, not the page: a reload would end full
+  // screen and fold the sheet. The page is fetched for the file's new name
+  // and size; a file of another kind (an image now, say) needs the page
+  // itself. The new file's time is taken from the next answer.
+  let showing = false;
+  async function showNewFile() {
+    if (showing) return;
+    const content = document.querySelector("main iframe");
+    const img = $("image");
+    let fresh = null;
+    showing = true;
+    try {
+      const r = await fetch(location.pathname, { cache: "no-store" });
+      if (r.ok) fresh = new DOMParser().parseFromString(await r.text(), "text/html");
+      else if (r.status !== 404) throw new Error(String(r.status));
+    } catch {
+      // Offline, say: the page stays as it is, with the banner.
+      toast("Could not load the new file. Try again.", { error: true });
+      return;
+    } finally {
+      showing = false;
+    }
+    const sheetThere = fresh && fresh.getElementById("comments");
+    if ((!content && !img) || !sheetThere || sheetThere.dataset.kind !== sheet.dataset.kind) {
+      location.reload();
+      return;
+    }
+    for (const sel of ["header h1", "header .meta"]) {
+      const now = document.querySelector(sel);
+      const then = fresh.querySelector(sel);
+      if (now && then) {
+        now.textContent = then.textContent;
+        if (then.title) now.title = then.title;
+      }
+    }
+    if (fresh.title) document.title = fresh.title;
+    banner.hidden = true;
+    fileAt = null;
+    // Replaced, not pushed: Back still leaves the viewer in one step.
+    if (content) content.contentWindow.location.replace(content.src);
+    else {
+      const again = fresh.getElementById("image");
+      if (again) img.alt = again.alt;
+      img.src = `${img.src.split("?")[0]}?v=${Date.now()}`;
+    }
+    load();
+  }
   // The first answer sets what the page shows; a later different one means
   // the file was replaced.
   function noteFile(at) {

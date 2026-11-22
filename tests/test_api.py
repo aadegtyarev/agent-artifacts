@@ -448,7 +448,7 @@ def test_viewer_page_has_every_element_its_scripts_use(env):
     }
     # The data the comments script reads from the sheet.
     datasets = set(re.findall(r"sheet\.dataset\.(\w+)", (static / "comments.js").read_text()))
-    assert datasets == {"artifact", "pin", "pos"}
+    assert datasets == {"artifact", "kind", "pin", "pos"}
     # Shown only for images, or only for pages in a frame.
     image_only = {"image", "image-box", "image-link", "pins"}
     for filename, data, missing in (
