@@ -74,6 +74,10 @@
     const item = e.target.closest(".fan-item");
     if (!item) return;
     const act = item.dataset.act;
+    if (act === "theme") {
+      nextTheme();
+      return;
+    }
     // Download and Open separately are links and go on by themselves.
     closeFan(act === "download" || act === "separate" || act === "copy");
     if (act === "full") enterFull();
@@ -81,6 +85,29 @@
     else if (act === "comment") commentsToggle.click();
     else if (act === "copy") copyLink(item.dataset.url);
   });
+
+  // Theme: Auto (the system's), Light, Dark, in turn; kept in this browser.
+  // theme.js applies it before the page is drawn.
+  const THEMES = ["auto", "light", "dark"];
+  const themeLabel = document.getElementById("theme-label");
+  const theme = () => document.documentElement.dataset.theme || "auto";
+  const showTheme = () => {
+    const t = theme();
+    themeLabel.textContent = `Theme: ${t[0].toUpperCase()}${t.slice(1)}`;
+  };
+  function nextTheme() {
+    const t = THEMES[(THEMES.indexOf(theme()) + 1) % THEMES.length];
+    if (t === "auto") delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = t;
+    try {
+      if (t === "auto") localStorage.removeItem("aa-theme");
+      else localStorage.setItem("aa-theme", t);
+    } catch {
+      // No storage: the theme lasts while the page is open.
+    }
+    showTheme();
+  }
+  showTheme();
 
   // Escape closes the menu before anything else on the page sees it.
   window.addEventListener("keydown", (e) => {

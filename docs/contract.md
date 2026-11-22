@@ -199,6 +199,11 @@ out downwards from it over the dimmed page:
 - **Open separately**: the file at [the raw origin](#the-raw-origin) in a
   new tab, with `rel="noopener"`; shown only when `AA_RAW_URL` is set, and
   not for archives.
+- **Theme: Auto / Light / Dark**: each tap moves on to the next and the
+  menu stays open; Auto follows the system. The choice is kept in this
+  browser (`localStorage`) and applied before the page is drawn. The dark
+  theme is a palette of its own for the viewer's header, menu, sheet, dialog
+  and toasts; the file itself is shown as its author made it.
 
 A tap outside the menu or Escape closes it.
 
