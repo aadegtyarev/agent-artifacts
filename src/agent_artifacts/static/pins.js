@@ -16,36 +16,13 @@
   host.style.cssText = "all:initial;position:fixed;left:0;top:0;width:100%;height:100%;"
     + "z-index:2147483647;pointer-events:none;overflow:hidden";
   const root = host.attachShadow({ mode: "closed" });
-  // The same pins as on an image in the viewer (site.css). Colour: whose
-  // (blue this browser, orange others). Fill: the stage (dashed hollow a
-  // draft, an outline awaiting approval, solid in force, grey rejected).
-  // One badge at the corner: the agent's state or the person's decision.
-  root.innerHTML = "<style>"
+  // The pins themselves are pin.css, the same as on an image in the viewer:
+  // pages.py puts its text before this script as `pinCss`. Here only the
+  // outline of the element under the pointer and of a new draft's element.
+  root.innerHTML = "<style>" + pinCss
     + ".box{position:absolute;display:none;box-sizing:border-box;border-radius:4px;pointer-events:none}"
     + ".hover{border:2px dashed #0a84ff;background:rgb(10 132 255/.07)}"
     + ".fresh{border:1.5px dashed #0a84ff;background:rgb(10 132 255/.05)}"
-    + ".pin{--c:#e8890c;position:absolute;box-sizing:border-box;margin:0;padding:0;transform:translateY(-100%);"
-    + "display:flex;align-items:center;justify-content:center;width:26px;height:26px;"
-    + "font:600 13px/1 -apple-system,system-ui,Roboto,sans-serif;color:#fff;background:var(--c);border:0;"
-    + "border-radius:50% 50% 50% 4px;box-shadow:0 0 0 2px #fff,0 2px 6px rgb(0 0 0/.28);"
-    + "pointer-events:auto;cursor:pointer;-webkit-tap-highlight-color:transparent}"
-    + ".pin::before{content:'';position:absolute;inset:-10px}"
-    + ".pin.own{--c:#0a84ff}"
-    + ".pin.draft,.pin.pend{color:var(--c);background:#fff;border:2px dashed var(--c);box-shadow:0 2px 6px rgb(0 0 0/.2)}"
-    + ".pin.pend{border-style:solid}"
-    + ".pin.rej{background:#8e8e93}"
-    + ".pin.left{transform:translate(-100%,-100%);border-radius:50% 50% 4px 50%}"
-    + ".pin.down{transform:none;border-radius:4px 50% 50% 50%}"
-    + ".pin.left.down{transform:translateX(-100%);border-radius:50% 4px 50% 50%}"
-    + ".pin.lit{z-index:2;width:32px;height:32px;font-size:15px;box-shadow:0 0 0 2px #fff,0 0 0 6px rgb(28 28 30/.18),0 2px 6px rgb(0 0 0/.25)}"
-    + ".pin.draft.lit,.pin.pend.lit{box-shadow:0 0 0 6px rgb(28 28 30/.18),0 2px 6px rgb(0 0 0/.25)}"
-    + ".bdg{position:absolute;right:-10px;top:-10px;width:20px;height:20px;border-radius:50%;"
-    + "box-shadow:0 0 0 2px #fff;display:flex;align-items:center;justify-content:center;pointer-events:none}"
-    + ".bdg svg{width:12px;height:12px;display:block}"
-    + ".bdg.wait{background:#8e8e93}.bdg.work{background:#5e5ce6}.bdg.fin,.bdg.wrote{background:#34c759}"
-    + ".bdg.ask{background:#ff9f0a}.bdg.ok,.bdg.re{background:#0a84ff}.bdg.no{background:#636366}"
-    + ".bdg.work::after{content:'';position:absolute;inset:-5px;border-radius:50%;border:2px solid rgb(94 92 230/.4)}"
-    + ".bdg.new{right:-4px;top:-4px;width:12px;height:12px;background:#ff3b30}"
     + "</style><div class='box hover'></div><div class='box fresh'></div><div class='pins'></div>";
   const hoverBox = root.querySelector(".hover");
   const draftBox = root.querySelector(".fresh");
