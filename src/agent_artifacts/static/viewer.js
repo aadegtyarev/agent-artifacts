@@ -14,6 +14,7 @@
   const items = () => [...list.querySelectorAll(".fan-item")].filter((i) => i.getClientRects().length);
   const GAP = 8; // between a button and its menu, and from the window's edges
   const DRAG_PX = 8; // a move shorter than this is a tap
+  const LONG_MS = 500; // held this long, still: comment mode on or off
   const PLACE_KEY = "aa-float-button";
 
   // --- The menu ---------------------------------------------------------------
@@ -250,11 +251,44 @@
     floatButton.setPointerCapture(e.pointerId);
     // A mouse over the content's frame would move inside the frame instead.
     document.body.classList.add("float-pressed");
+    // Held still: comment mode on or off, the button's second action.
+    const held = drag;
+    held.timer = setTimeout(() => {
+      if (drag !== held || held.moved) return;
+      held.long = true;
+      draggedAt = performance.now(); // its click does not open the menu
+      closeFan(false);
+      commentsToggle.click();
+      // The press's own click, on letting go, does not land on what this
+      // opened (the name dialog's backdrop); see swallowUntil.
+      swallowUntil = Infinity; // until released; releaseSoon sets the end
+      // Asked for a name first: the dialog is the answer, the mode comes after.
+      if ($("name-dialog")?.hidden === false) return;
+      if (navigator.vibrate) navigator.vibrate(12);
+      toast(document.body.classList.contains("commenting") ? "Commenting on" : "Commenting off");
+    }, LONG_MS);
   });
+  // After a long press, the click its release makes is dropped: while the
+  // finger is down and a moment after it is lifted or the press cancelled
+  // (release, cancel, lost capture and blur all end it). A time, not a
+  // one-off listener, so a cancelled press never leaves a later tap eaten.
+  let swallowUntil = -Infinity;
+  window.addEventListener("click", (ev) => {
+    if (performance.now() > swallowUntil) return;
+    swallowUntil = -Infinity;
+    ev.stopPropagation();
+    ev.preventDefault();
+  }, true);
+  const releaseSoon = () => {
+    if (swallowUntil > performance.now()) swallowUntil = performance.now() + 350;
+  };
+  // A long press is not the browser's menu.
+  floatButton.addEventListener("contextmenu", (e) => e.preventDefault());
   floatButton.addEventListener("pointermove", (e) => {
-    if (!drag || e.pointerId !== drag.id) return;
+    if (!drag || e.pointerId !== drag.id || drag.long) return;
     if (!drag.moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < DRAG_PX) return;
     if (!drag.moved) {
+      clearTimeout(drag.timer);
       drag.moved = true;
       closeFan(false);
       floatButton.classList.add("dragging");
@@ -268,6 +302,8 @@
   });
   function endDrag(e) {
     if (!drag || e.pointerId !== drag.id) return;
+    clearTimeout(drag.timer);
+    if (drag.long) releaseSoon();
     const moved = drag.moved;
     drag = null;
     document.body.classList.remove("float-pressed");
@@ -286,6 +322,8 @@
   // Never leave the content's frame without pointer events.
   function cancelDrag() {
     if (drag && drag.moved && !floatButton.hidden) applyPlace(); // back where it was
+    if (drag) clearTimeout(drag.timer);
+    if (drag && drag.long) releaseSoon();
     drag = null;
     floatButton.classList.remove("dragging");
     document.body.classList.remove("float-pressed");

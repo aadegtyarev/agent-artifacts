@@ -355,17 +355,23 @@ body.full > header { display: none !important; }
 body.float-pressed iframe { pointer-events: none; }
 .float-button.dragging { transform: scale(1.08); background: rgb(28 28 30 / 0.75); }
 .float-button[aria-expanded="true"] { background: var(--float-open); }
-/* In comment mode the floating button is blue, like the header's bubble,
-   and the menu's Comment is pressed. */
-body.commenting .float-button { background: rgb(10 132 255 / 0.85); }
-body.commenting .float-button.dragging,
-body.commenting .float-button[aria-expanded="true"] { background: #0a84ff; }
+/* In comment mode the floating button has a blue ring inside its edge and a
+   small blue bubble in its corner. */
+body.commenting .float-button { box-shadow: inset 0 0 0 2px #0a84ff,
+  0 2px 12px rgb(0 0 0 / 0.25); }
+.float-mode { display: none; position: absolute; top: 5px; right: 5px; line-height: 0; }
+/* A thin white edge keeps it apart from a grey or blue backdrop. */
+.float-button .float-mode svg { width: 12px; height: 12px; fill: #0a84ff; stroke: #fff;
+  stroke-width: 2; overflow: visible; }
+body.commenting .float-mode { display: block; }
+.float-button { -webkit-touch-callout: none; }
+/* The menu's Comment is pressed in comment mode, like the header's bubble. */
 .fan-item .when-on, body.commenting .fan-item .when-off { display: none; }
 body.commenting .fan-item .when-on { display: inline; }
 body.commenting .fan-item[data-act="comment"] .fan-sq { color: #fff; background: #0a84ff;
   box-shadow: inset 0 1.5px 3px rgb(0 0 0 / 0.28); }
-.float-button svg:last-child, .float-button[aria-expanded="true"] .menu-icon { display: none; }
-.float-button[aria-expanded="true"] svg:last-child { display: block; }
+.float-button > svg:last-child, .float-button[aria-expanded="true"] .menu-icon { display: none; }
+.float-button[aria-expanded="true"] > svg:last-child { display: block; }
 
 /* Invite pages. */
 .join { max-width: 560px; margin: 0 auto; padding: 24px 16px; }
