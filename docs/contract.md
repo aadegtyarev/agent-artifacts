@@ -217,7 +217,9 @@ place of **Full screen** and **Comment** added. In comment mode the floating
 button has a blue ring inside its edge and a small blue bubble in its corner,
 and **Comment** is a checked item reading **Commenting**; a tap turns the mode
 off. A long press (500 ms, still) on the floating button turns comment mode
-on or off, with a short vibration where the device has one and a toast. When the browser leaves full
+on or off, with a short vibration where the device has one and a toast
+("Commenting on" / "off"); with no name yet it asks for one first, and the
+mode comes on after it. The click of that press's release is dropped. When the browser leaves full
 screen by itself (Escape, a system gesture), the viewer stays in its own full
 screen until Exit full screen.
 

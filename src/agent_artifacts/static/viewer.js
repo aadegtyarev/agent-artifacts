@@ -260,17 +260,28 @@
       closeFan(false);
       commentsToggle.click();
       // The press's own click, on letting go, does not land on what this
-      // opened (the name dialog's backdrop).
-      const swallow = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
-      window.addEventListener("click", swallow, { capture: true, once: true });
-      floatButton.addEventListener("pointerup", () => setTimeout(() => {
-        window.removeEventListener("click", swallow, { capture: true });
-      }, 0), { once: true });
+      // opened (the name dialog's backdrop); see swallowUntil.
+      swallowUntil = performance.now() + 1500;
+      // Asked for a name first: the dialog is the answer, the mode comes after.
+      if ($("name-dialog")?.hidden === false) return;
       if (navigator.vibrate) navigator.vibrate(12);
-      const on = document.body.classList.contains("commenting");
-      if ($("name-dialog")?.hidden !== false) toast(on ? "Commenting · tap a spot to add" : "Commenting off");
+      toast(document.body.classList.contains("commenting") ? "Commenting on" : "Commenting off");
     }, LONG_MS);
   });
+  // After a long press, the click its release makes is dropped: up to a
+  // moment after the finger is lifted, or the press is cancelled, at most
+  // 1.5 s after it fired. A time, not a one-off listener, so a cancelled
+  // press never leaves a later tap eaten.
+  let swallowUntil = -Infinity;
+  window.addEventListener("click", (ev) => {
+    if (performance.now() > swallowUntil) return;
+    swallowUntil = -Infinity;
+    ev.stopPropagation();
+    ev.preventDefault();
+  }, true);
+  const releaseSoon = () => {
+    if (swallowUntil > performance.now()) swallowUntil = Math.min(swallowUntil, performance.now() + 350);
+  };
   // A long press is not the browser's menu.
   floatButton.addEventListener("contextmenu", (e) => e.preventDefault());
   floatButton.addEventListener("pointermove", (e) => {
@@ -292,6 +303,7 @@
   function endDrag(e) {
     if (!drag || e.pointerId !== drag.id) return;
     clearTimeout(drag.timer);
+    if (drag.long) releaseSoon();
     const moved = drag.moved;
     drag = null;
     document.body.classList.remove("float-pressed");
@@ -311,6 +323,7 @@
   function cancelDrag() {
     if (drag && drag.moved && !floatButton.hidden) applyPlace(); // back where it was
     if (drag) clearTimeout(drag.timer);
+    if (drag && drag.long) releaseSoon();
     drag = null;
     floatButton.classList.remove("dragging");
     document.body.classList.remove("float-pressed");

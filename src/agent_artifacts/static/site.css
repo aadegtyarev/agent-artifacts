@@ -359,9 +359,10 @@ body.float-pressed iframe { pointer-events: none; }
    small blue bubble in its corner. */
 body.commenting .float-button { box-shadow: inset 0 0 0 2px #0a84ff,
   0 2px 12px rgb(0 0 0 / 0.25); }
-.float-mode { display: none; position: absolute; top: 7px; right: 7px; line-height: 0; }
-.float-button .float-mode svg { width: 12px; height: 12px; fill: #0a84ff; stroke: #0a84ff;
-  stroke-width: 1.5; }
+.float-mode { display: none; position: absolute; top: 5px; right: 5px; line-height: 0; }
+/* A thin white edge keeps it apart from a grey or blue backdrop. */
+.float-button .float-mode svg { width: 12px; height: 12px; fill: #0a84ff; stroke: #fff;
+  stroke-width: 2; overflow: visible; }
 body.commenting .float-mode { display: block; }
 .float-button { -webkit-touch-callout: none; }
 /* The menu's Comment is pressed in comment mode, like the header's bubble. */
