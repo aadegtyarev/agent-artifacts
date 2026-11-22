@@ -209,6 +209,8 @@
       b.dataset.label = label;
       b.dataset.badge = badgeName;
       b.replaceChildren(inside(label));
+      // The star is a picture: the button says what it is.
+      b.setAttribute("aria-label", label === "*" ? "Comment with the agent" : label ? `Comment by ${label}` : "The spot of the new draft");
       if (badgeName) b.append(badge(badgeName));
     }
     if (b.style.left !== `${x}px`) b.style.left = `${x}px`;

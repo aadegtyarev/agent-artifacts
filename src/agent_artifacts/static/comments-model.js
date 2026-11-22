@@ -42,7 +42,11 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
   // STAR while it is the agent's work. One badge only: "new", a red dot
   // for a colleague's unread reply or the agent's question.
   const STAR = "*";
-  const initial = (name) => ([...String(name || "").trim()][0] || "?").toUpperCase();
+  // A name starting with the star's sign does not pass for the agent.
+  const initial = (name) => {
+    const first = ([...String(name || "").trim()][0] || "?").toUpperCase();
+    return first === STAR ? "?" : first;
+  };
   function stateOf(c) {
     // Awaiting approval: someone else's comment nothing was asked of the
     // agent about yet: no `agent` state (the agent's own reply to an
@@ -75,12 +79,12 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
   function items() {
     const list = [];
     commentDrafts().forEach((d) => list.push({
-      key: `d${d.id}`, draft: true, own: true, tone: "own", label: initial(d.author),
+      key: `d${d.id}`, draft: true, tone: "own", label: initial(d.author),
       anchor: d.anchor, text: d.text, d, fill: "line", badge: "",
     }));
     for (const c of state.comments) {
       const st = stateOf(c);
-      list.push({ key: `c${c.n}`, draft: false, own: st.tone === "own", tone: st.tone, label: st.label,
+      list.push({ key: `c${c.n}`, draft: false, tone: st.tone, label: st.label,
         anchor: c.anchor, text: c.text, c, fill: st.fill, badge: st.badge, pend: st.pend });
     }
     return list;

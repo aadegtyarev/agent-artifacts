@@ -669,7 +669,7 @@
       const rw = el("span", "who", r.agent ? "Agent" : r.mine ? "You" : r.author);
       rw.append(el("span", "when", when(r.created_at)));
       rb.append(rw, el("div", "text", r.text));
-      const av = r.agent ? el("span", "ai") : el("span", `av${r.mine ? " own" : ""}`, [...(r.author || "?")][0].toUpperCase());
+      const av = r.agent ? el("span", "ai") : el("span", `av${r.mine ? " own" : ""}`, model.initial(r.author));
       if (r.agent) av.append(mark("star"));
       m.append(av, rb);
       out.push(m);

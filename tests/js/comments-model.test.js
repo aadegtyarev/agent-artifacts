@@ -43,6 +43,8 @@ test("own, approved and rejected comments do not await approval", () => {
   assert.equal(m.stateOf(comment(1, { approved_by: "alice" })).pend, false);
   assert.deepEqual(m.stateOf(comment(1, { rejected_by: "alice" })),
     { tone: "other", fill: "rej", label: "B", badge: "", pend: false });
+  // A name that starts with the star's sign gets no star.
+  assert.equal(m.stateOf(comment(1, { author: "*bob" })).label, "?");
   // Accepted, a colleague's comment is blue: it is in force here.
   assert.equal(m.stateOf(comment(1, { approved_by: "alice" })).tone, "own");
   const rejected = model([comment(1, { rejected_by: "alice" })]);
