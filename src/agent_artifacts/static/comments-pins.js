@@ -234,6 +234,12 @@ const commentsPins = ({
   for (const type of ["pointerdown", "keydown"]) {
     document.addEventListener(type, () => { ownInput = performance.now(); }, true);
   }
+  // A tap into the frame after that takes the focus there: from then on the
+  // activation is the frame's, and a link tapped right after closing the
+  // file list (Escape, a tap on its scrim) opens at once.
+  window.addEventListener("blur", () => {
+    if (frame && document.activeElement === frame) ownInput = -Infinity;
+  });
   function openLink(path, fragment) {
     // Comment mode wins, even while its name dialog is open.
     if (picking() || document.body.classList.contains("commenting")) return;
