@@ -24,7 +24,7 @@
     fan.hidden = false;
     from.setAttribute("aria-expanded", "true");
     // Comment shows whether comment mode is on, like the header's bubble.
-    list.querySelector('[data-act="comment"]').setAttribute("aria-checked",
+    list.querySelector('[data-act="comment"]')?.setAttribute("aria-checked",
       String(document.body.classList.contains("commenting")));
     place(from);
     items()[0].focus({ preventScroll: true });
