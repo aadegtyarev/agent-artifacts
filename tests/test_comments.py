@@ -7,6 +7,7 @@ import time
 import pytest
 from starlette.testclient import TestClient
 
+from agent_artifacts import store as store_module
 from agent_artifacts.config import Config
 from agent_artifacts.store import DRAFT_TTL_SECONDS, Store
 from agent_artifacts.web import create_app
@@ -667,6 +668,37 @@ CREATE TABLE settings (
 ART = "a" * 22
 
 
+def db_schema(path):
+    """The version, the columns and the indexes of the database in ``path``."""
+    db = sqlite3.connect(path / "meta.sqlite")
+    try:
+        names = db.execute("SELECT type, name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'")
+        names = names.fetchall()
+        columns = {
+            (table, *r[1:])
+            for kind, table in names
+            if kind == "table"
+            for r in db.execute(f"PRAGMA table_info({table})")
+        }
+        indexes = {name for kind, name in names if kind == "index"}
+        return db.execute("PRAGMA user_version").fetchone()[0], columns, indexes
+    finally:
+        db.close()
+
+
+def todays_schema(tmp_path):
+    Store(tmp_path / "fresh", max_total_bytes=10**6)
+    return db_schema(tmp_path / "fresh")
+
+
+def dump(path):
+    db = sqlite3.connect(path / "meta.sqlite")
+    try:
+        return list(db.iterdump()), db.execute("PRAGMA user_version").fetchone()[0]
+    finally:
+        db.close()
+
+
 def make_old_database(tmp_path, schema, comment_seq):
     db = sqlite3.connect(tmp_path / "meta.sqlite")
     db.executescript(schema)
@@ -694,10 +726,26 @@ def test_earlier_databases_open_and_work(tmp_path, schema):
     with_comments = schema == "b249ca8"
     make_old_database(tmp_path, SCHEMA_B249CA8 if with_comments else SCHEMA_A255FF7, with_comments)
     store = Store(tmp_path, max_total_bytes=10**6)
+    migrated = dump(tmp_path)
     Store(tmp_path, max_total_bytes=10**6)  # opening again changes nothing
+    assert dump(tmp_path) == migrated
+    # Today's schema; b249ca8's edited_at stays, unused.
+    version, columns, indexes = todays_schema(tmp_path)
+    if with_comments:
+        columns |= {("comments", "edited_at", "REAL", 0, None, 0)}
+    assert db_schema(tmp_path) == (version, columns, indexes)
+    assert version == len(store_module._MIGRATIONS)
     with store._conn() as db:
-        columns = {r[1] for r in db.execute("PRAGMA table_info(comments)")}
-    assert {"author_key_hash", "written_at"} <= columns and "edit_token_hash" not in columns
+        rows = db.execute(
+            "SELECT author, text, author_key_hash, created_at, written_at, for_agent, agent "
+            "FROM comments"
+        ).fetchall()
+        seq = db.execute("SELECT comment_seq, replaced_at FROM artifacts").fetchall()
+    if with_comments:
+        assert rows == [("p", "old one", "tokenhash", 50, None, 0, None)]
+        assert seq == [(2, 100)]
+    else:
+        assert (rows, seq) == ([], [(0, None)])
     config = Config(data_dir=tmp_path, public_url="https://art.example.org")
     with TestClient(create_app(config, store)) as client:
         before = client.get(f"/a/{ART}/comments", headers=as_author()).json()
@@ -744,7 +792,9 @@ def test_a_database_from_before_chats_keeps_its_drafts(tmp_path):
             ("comments", "agent"),
         ):
             db.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
+        db.execute("PRAGMA user_version = 0")  # made before numbered versions
     store = Store(tmp_path, max_total_bytes=10**6)
+    assert db_schema(tmp_path) == todays_schema(tmp_path)
     # What was sent to the agent and is still open waits for it.
     _, found = store.comments(art.id, owner="old")
     assert [(c.n, c.agent) for c in found] == [
@@ -790,9 +840,83 @@ def test_a_counter_added_behind_existing_comments_starts_after_them(tmp_path):
     db.commit()
     db.close()
     store = Store(tmp_path, max_total_bytes=10**6)
+    assert db_schema(tmp_path)[0] == len(store_module._MIGRATIONS)
     for art_id, expected in ((ART, 6), ("b" * 22, 1)):
         store.add_draft(art_id, "h", author="x", text="new", anchor=None)
         assert [c.n for c in store.publish(art_id, "h", author="x", text=None)] == [expected]
+
+
+def test_todays_database_without_a_version_is_only_stamped(tmp_path, monkeypatch):
+    # Production before numbered versions: today's schema, user_version 0,
+    # plus an unused column left by an older one.
+    store = Store(tmp_path, max_total_bytes=10**6)
+    store.add_agent("old")
+    art = store.put(io.BytesIO(b"x"), owner="old", name="a.txt", kind="txt", size=1)
+    for text in ("taken", "resolved"):
+        store.add_draft(art.id, "h", author="p", text=text, anchor=None)
+    store.publish(art.id, "h", author="p", text=None, for_agent=True)
+    store.take(art.id, owner="old")
+    store.resolve_comment(art.id, 2, True, owner="old")
+    store.add_draft(art.id, "h", author="p", text="pending", anchor=None)
+    with store._conn() as db:
+        db.execute("ALTER TABLE comments ADD COLUMN edited_at REAL")
+        db.execute("PRAGMA user_version = 0")
+    before, _ = dump(tmp_path)
+
+    def must_not_run(db):
+        raise AssertionError("version 1 migrated again")
+
+    monkeypatch.setattr(store_module, "_MIGRATIONS", (must_not_run,))
+    Store(tmp_path, max_total_bytes=10**6)
+    assert dump(tmp_path) == (before, 1)
+
+
+def test_a_migration_cut_short_is_finished_by_the_next_start(tmp_path, monkeypatch):
+    make_old_database(tmp_path, SCHEMA_A255FF7, False)
+    migrations = store_module._MIGRATIONS
+    today = todays_schema(tmp_path)
+
+    def add_column(db):
+        db.execute("ALTER TABLE agents ADD COLUMN later REAL")
+
+    def cut_short(db):
+        add_column(db)
+        raise RuntimeError("stopped")
+
+    monkeypatch.setattr(store_module, "_MIGRATIONS", (*migrations, cut_short))
+    with pytest.raises(RuntimeError):
+        Store(tmp_path, max_total_bytes=10**6)
+    # The finished one stays; the one cut short left nothing.
+    assert db_schema(tmp_path) == today
+    monkeypatch.setattr(store_module, "_MIGRATIONS", (*migrations, add_column))
+    Store(tmp_path, max_total_bytes=10**6)
+    Store(tmp_path, max_total_bytes=10**6)
+    version, columns, _ = db_schema(tmp_path)
+    assert version == len(migrations) + 1 and ("agents", "later", "REAL", 0, None, 0) in columns
+
+
+def test_a_database_newer_than_the_code_is_left_alone_and_logged(tmp_path, caplog):
+    Store(tmp_path, max_total_bytes=10**6)
+    with sqlite3.connect(tmp_path / "meta.sqlite") as db:
+        db.execute(f"PRAGMA user_version = {len(store_module._MIGRATIONS) + 1}")
+    before = dump(tmp_path)
+    Store(tmp_path, max_total_bytes=10**6)
+    assert dump(tmp_path) == before
+    assert "newer than this code" in caplog.text
+
+
+def test_a_counter_behind_after_a_rollback_is_repaired_on_start(tmp_path):
+    # Comments written by an older version (no counter) after this one ran.
+    store = Store(tmp_path, max_total_bytes=10**6)
+    store.add_agent("a")
+    art = store.put(io.BytesIO(b"x"), owner="a", name="a.txt", kind="txt", size=1)
+    store.add_draft(art.id, "h", author="p", text="one", anchor=None)
+    store.publish(art.id, "h", author="p", text=None)
+    with sqlite3.connect(tmp_path / "meta.sqlite") as db:
+        db.execute("UPDATE artifacts SET comment_seq = 0")
+    store = Store(tmp_path, max_total_bytes=10**6)
+    store.add_draft(art.id, "h", author="p", text="two", anchor=None)
+    assert [c.n for c in store.publish(art.id, "h", author="p", text=None)] == [2]
 
 
 def test_an_element_anchor_keeps_its_screen_and_hash(env):
