@@ -81,6 +81,8 @@
     compose: null,
     // the id of the draft being edited
     edit: null,
+    // Finish review sends to the agent, or only publishes
+    toAgent: true,
     comments: [],
     // drafts: the server's, with `gone` while a Delete waits for its Undo
     drafts: [],
@@ -470,11 +472,11 @@
       for (const it of drafts) out.push(row(it, where(it)));
       const general = el("div", "general");
       general.append(fields.general);
-      out.push(general, el("p", "note", "Everyone will see them. Ask the agent to look at the comments."));
+      out.push(general, toWhom());
       const bar = el("div", "foot2");
       const done = button("Finish review", () => finish(done), "btn pri big");
       finishButton = done;
-      done.disabled = !drafts.length && !fields.general.value.trim();
+      done.disabled = sending || (!drafts.length && !fields.general.value.trim());
       bar.append(button("Back", () => go("list", "h")), done);
       return [out, [bar]];
     },
@@ -482,6 +484,37 @@
 
   // Finish review on the finish view, enabled by a general comment.
   let finishButton = null;
+  // A review on its way: no second one, and the choice holds.
+  let sending = false;
+
+  // Where the review goes: to the agent (the default) or only published.
+  function toWhom() {
+    const box = el("div", "towhom");
+    const seg = el("div", "seg");
+    seg.setAttribute("role", "radiogroup");
+    seg.setAttribute("aria-label", "Where the comments go");
+    const note = el("p", "note");
+    const show = () => {
+      for (const b of seg.children) b.setAttribute("aria-checked", String(b.agent === S.toAgent));
+      note.textContent = S.toAgent
+        ? "Everyone will see them, and the agent gets them to work on."
+        : "Everyone will see them. Ask the agent to look at the comments.";
+    };
+    for (const [agent, label] of [[true, "Send to agent"], [false, "Only publish"]]) {
+      // Changed in place, not by render(), so focus stays on the option.
+      const b = button(label, () => {
+        if (sending) return;
+        S.toAgent = agent;
+        show();
+      }, "opt");
+      b.agent = agent;
+      b.setAttribute("role", "radio");
+      seg.append(b);
+    }
+    show();
+    box.append(seg, note);
+    return box;
+  }
 
   function status(it) {
     if (it.draft) return lost(it) && !page.off ? `your draft · ${lostText(it)}` : "your draft";
@@ -1074,6 +1107,8 @@
   }
 
   async function finish(done) {
+    if (sending) return;
+    sending = true;
     done.disabled = true;
     try {
       if (!(await flushDeletes())) {
@@ -1085,7 +1120,10 @@
       const payload = { author: name || "" };
       // Omitted when empty: the review is then the drafts alone.
       if (general.trim()) payload.text = general;
+      if (S.toAgent) payload.agent = true;
+      const sent = S.toAgent;
       const made = await call("POST", "/review", payload);
+      S.toAgent = true;
       changed();
       S.comments = [...S.comments, ...made];
       S.drafts = [];
@@ -1096,12 +1134,14 @@
       S.view = "list";
       S.pos = "strip";
       render();
-      toast(`Published ${made.length} ${made.length === 1 ? "comment" : "comments"}`);
+      const what = `${made.length} ${made.length === 1 ? "comment" : "comments"}`;
+      toast(sent ? `Sent ${what} to the agent` : `Published ${what}`);
     } catch (e) {
       if (!nameRefused(e)) toast(e.message, { error: true, ms: 8000 });
       // The drafts on the server may differ now (one gone, say).
       load();
     } finally {
+      sending = false;
       if (done.isConnected) done.disabled = !liveDrafts().length && !fields.general.value.trim();
     }
   }
@@ -1115,7 +1155,7 @@
   fields.general.addEventListener("input", () => {
     grow(fields.general);
     const done = finishButton;
-    if (done && done.isConnected) done.disabled = !liveDrafts().length && !fields.general.value.trim();
+    if (done && done.isConnected) done.disabled = sending || (!liveDrafts().length && !fields.general.value.trim());
   });
   // Enter adds the draft; Shift+Enter is a new line.
   fields.compose.addEventListener("keydown", (e) => {

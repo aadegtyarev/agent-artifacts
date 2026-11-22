@@ -55,7 +55,7 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
   --other-text: #ffb340; --sheet-bg: #1c1c1e; --raised: #2c2c2e; --field: #3a3a3c;
   --grip: #545458; --send-off: #3a3a3c; --toast-bg: rgb(58 58 60 / 0.96);
   --fan-label: #48484a; --fan-sq: #2c2c2e; --float-open: #3a3a3c;
-  --draft-bg: rgb(10 132 255 / 0.16); --draft-bg2: rgb(10 132 255 / 0.26); } }
+  --draft-bg: rgb(10 132 255 / 0.16); --draft-bg2: rgb(10 132 255 / 0.26); --seg-on: #636366; } }
 :root[data-theme="dark"] { --fg: #f2f2f4; --bg: #1c1c1e;
   --muted: #a1a1a6; --line: #3a3a3c; --btn: #2c2c2e; --accent: #4c9bff;
   --error: #ff6b5e; --fill: #2c2c2e; --fill2: #3a3a3c;
@@ -63,7 +63,7 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
   --other-text: #ffb340; --sheet-bg: #1c1c1e; --raised: #2c2c2e; --field: #3a3a3c;
   --grip: #545458; --send-off: #3a3a3c; --toast-bg: rgb(58 58 60 / 0.96);
   --fan-label: #48484a; --fan-sq: #2c2c2e; --float-open: #3a3a3c;
-  --draft-bg: rgb(10 132 255 / 0.16); --draft-bg2: rgb(10 132 255 / 0.26); }
+  --draft-bg: rgb(10 132 255 / 0.16); --draft-bg2: rgb(10 132 255 / 0.26); --seg-on: #636366; }
 
 .stage { flex: 1; min-height: 0; display: flex; }
 /* The content fills main by absolute position, not height: 100%, which
@@ -193,6 +193,17 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
 .send:not(:disabled):active { transform: scale(0.92); }
 .send svg { stroke-width: 2.4; }
 .general { margin: 10px 0; }
+/* Finish review: to the agent or only published, a segmented control. */
+.towhom { margin: 0 0 12px; }
+.seg { display: flex; padding: 2px; background: var(--fill); border-radius: 10px; }
+.seg .opt { position: relative; flex: 1; min-height: 36px; padding: 0 8px; color: var(--fg);
+  background: none; border: 0; border-radius: 8px; font: inherit; font-size: 15px;
+  cursor: pointer; transition: background 0.15s; }
+.seg .opt::before { content: ""; position: absolute; inset: -4px 0; }
+.seg .opt[aria-checked="true"] { background: var(--seg-on, var(--raised)); font-weight: 600;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12), 0 0 0 0.5px var(--hair); }
+.seg .opt:focus-visible { outline: 2px solid var(--send); outline-offset: 1px; }
+.towhom .note { margin-top: 6px; }
 .general textarea { min-height: 60px; }
 
 /* Pins: 26px to the eye, 44px to a finger; the sharp corner marks the spot.
