@@ -160,6 +160,9 @@
   const root = document.documentElement;
   const request = root.requestFullscreen || root.webkitRequestFullscreen;
 
+  // Full screen sits in the header too, beside the menu.
+  $("full-button").addEventListener("click", () => enterFull());
+
   function enterFull() {
     document.body.classList.add("full");
     floatButton.hidden = false;
