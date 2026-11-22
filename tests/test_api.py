@@ -740,6 +740,7 @@ def test_viewer_page_has_comments_on_every_type(env):
             r'<script src="/static/pin-marks\.js\?v=[0-9a-f]{12}"></script>\n'
             r'<script src="/static/comments-model\.js\?v=[0-9a-f]{12}"></script>\n'
             r'<script src="/static/sheet-drag\.js\?v=[0-9a-f]{12}"></script>\n'
+            r'<script src="/static/comments-pins\.js\?v=[0-9a-f]{12}"></script>\n'
             r'<script src="/static/comments\.js\?v=[0-9a-f]{12}"></script>',
             page.text,
         ), name
@@ -748,6 +749,7 @@ def test_viewer_page_has_comments_on_every_type(env):
     assert client.get("/static/pin-marks.js").status_code == 200
     assert client.get("/static/comments-model.js").status_code == 200
     assert client.get("/static/sheet-drag.js").status_code == 200
+    assert client.get("/static/comments-pins.js").status_code == 200
     pin_css = re.search(r'<link rel="stylesheet" href="(/static/pin\.css\?v=[0-9a-f]{12})">\n<link rel="stylesheet" href="/static/site\.css', page.text)
     assert pin_css and client.get(pin_css.group(1)).status_code == 200
     css = re.search(r'href="(/static/site\.css\?v=[0-9a-f]{12})"', page.text)
