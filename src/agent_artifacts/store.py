@@ -165,6 +165,7 @@ MAX_DRAFTS_PER_KEY = 50  # one author key's drafts on one file
 MAX_DRAFTS = 200  # all drafts on one file
 DRAFT_TTL_SECONDS = 7 * 24 * 3600  # a draft not changed for this long is deleted
 MAX_REPLIES = 100  # replies in one comment's chat
+MAX_FILE_REPLIES = 1000  # replies in all the chats of one file
 
 # What the owner agent is doing about a comment; NULL: nothing asked of it.
 # waiting: sent to it; working: taken; done, wrote, asked: answered.
@@ -345,11 +346,19 @@ class Store:
                     if old in have and new not in have:
                         db.execute(f"ALTER TABLE {table} RENAME COLUMN {old} TO {new}")
             db.executescript(_SCHEMA)
+            added = set()
             for table, columns in _ADDED_COLUMNS.items():
                 have = {r[1] for r in db.execute(f"PRAGMA table_info({table})")}
                 for column, decl in columns.items():
                     if column not in have:
                         db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+                        added.add((table, column))
+            if ("comments", "agent") in added:
+                # Sent to the agent before its state was kept: still its work.
+                db.execute(
+                    "UPDATE comments SET agent = 'waiting' "
+                    "WHERE for_agent = 1 AND resolved_at IS NULL"
+                )
             # A counter behind its comments (added to a database that had
             # comments) would hand out their numbers again.
             last = "(SELECT MAX(n) FROM comments WHERE artifact_id = artifacts.id)"
@@ -691,11 +700,7 @@ class Store:
                 "SELECT 1 FROM comments WHERE artifact_id = :id AND n = :n", args
             ).fetchone():
                 return None
-            (replies,) = db.execute(
-                "SELECT COUNT(*) FROM replies WHERE artifact_id = :id AND n = :n", args
-            ).fetchone()
-            if replies >= MAX_REPLIES:
-                raise TooManyReplies
+            self._check_replies(db, artifact_id, [n])
             db.execute(
                 "INSERT INTO replies (artifact_id, n, author, text, author_key_hash, created_at, "
                 "by_agent) VALUES (:id, :n, 'agent', :text, NULL, :now, 1)",
@@ -823,10 +828,13 @@ class Store:
         the artifact, in the order made, then ``text`` as a comment about the
         whole file, become comments with the next numbers; its replies join
         their comments' chats; its decisions take effect: approve and reject
-        record the draft's author (the later one clears the other), accept
-        resolves the comment. Replies and decisions about a comment no longer
-        open are dropped. When ``for_agent``, the new comments and those
-        replied to or approved go to the agent: for_agent, agent "waiting".
+        record the draft's author (the later one clears the other; reject
+        also takes the comment off the agent's work), accept resolves the
+        comment. Replies and decisions about a comment no longer open are
+        dropped. When ``for_agent``, the new comments and those replied to or
+        approved go to the agent: for_agent, agent "waiting". An accept takes
+        effect only on a comment the agent has answered, after the rest of the
+        review, and not on one this review replies to (a reply asks for more).
 
         Returns the comments made or touched and still open, by number; None
         if the artifact is gone. Raises NothingToPublish, TooManyComments,
@@ -894,16 +902,19 @@ class Store:
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 [(artifact_id, n, a, t, key_hash, args["now"]) for n, a, t in replies],
             )
-            to_agent = {n for n, _, _ in replies}
+            replied = {n for n, _, _ in replies}
+            to_agent = set(replied)
+            accepts = []
             for kind, n, d_author, _ in about:
                 if kind == "approve":
                     sql = "approved_by = :name, rejected_by = NULL"
                     to_agent.add(n)
                 elif kind == "reject":
-                    sql = "approved_by = NULL, rejected_by = :name"
-                elif kind == "accept":
-                    sql = "resolved_at = COALESCE(resolved_at, :now)"
+                    sql = "approved_by = NULL, rejected_by = :name, agent = NULL"
+                    to_agent.discard(n)
                 else:
+                    if kind == "accept" and n not in replied:
+                        accepts.append(n)
                     continue
                 db.execute(
                     f"UPDATE comments SET {sql} WHERE artifact_id = :id AND n = :n",  # noqa: S608
@@ -917,6 +928,13 @@ class Store:
                     "WHERE artifact_id = ? AND n = ? AND resolved_at IS NULL",
                     [(artifact_id, n) for n in to_agent],
                 )
+            # Last, on the state the rest left: someone may have sent the
+            # comment back to the agent since the accept was drafted.
+            db.executemany(
+                "UPDATE comments SET resolved_at = COALESCE(resolved_at, ?) "
+                "WHERE artifact_id = ? AND n = ? AND agent IN ('done', 'wrote', 'asked')",
+                [(args["now"], artifact_id, n) for n in accepts],
+            )
             db.executemany("DELETE FROM drafts WHERE rowid = ?", [(d[0],) for d in drafts])
             if not touched:
                 return []
@@ -925,7 +943,15 @@ class Store:
 
     def _check_replies(self, db: sqlite3.Connection, artifact_id: str, numbers: list[int]) -> None:
         """Raise TooManyReplies if adding a reply to each of ``numbers`` (one
-        per mention) would pass MAX_REPLIES on any comment."""
+        per mention) would pass MAX_REPLIES on any comment or
+        MAX_FILE_REPLIES on the file."""
+        if not numbers:
+            return
+        (total,) = db.execute(
+            "SELECT COUNT(*) FROM replies WHERE artifact_id = ?", (artifact_id,)
+        ).fetchone()
+        if total + len(numbers) > MAX_FILE_REPLIES:
+            raise TooManyReplies
         for n in set(numbers):
             (have,) = db.execute(
                 "SELECT COUNT(*) FROM replies WHERE artifact_id = ? AND n = ?", (artifact_id, n)

@@ -152,8 +152,11 @@ who approved or rejected someone else's comment.
 
 `agent` says what is asked of you. Comments with `"agent": "waiting"` are
 your work: the person sent them with **Send to agent**, or replied to or
-approved them in such a review. All the others, and the chats, are context:
-act on them only when the person asks. The workflow:
+approved them in such a review. So are comments in `working` whose chat has
+no reply from you (`agent: true`) after the person's last word: a session
+may have ended after `take`. A rejected comment has `agent` `null`: not your
+work. All the others, and the chats, are context: act on them only when the
+person asks. The workflow:
 
 1. `comments <id>`, then `take <id>`: the waiting comments become `working`,
    so the person sees you started.

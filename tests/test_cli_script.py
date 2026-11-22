@@ -185,7 +185,14 @@ def test_take_and_reply(server):
     code, out, _ = cli(home, "reply", art_id, "1", "Green now", env=env)
     c = json.loads(out)
     assert code == 0 and c["agent"] == "done" and c["replies"][0]["text"] == "Green now"
-    for args, state in ((("--asked", "Which?"), "asked"), (("Hm", "--wrote"), "wrote")):
-        assert json.loads(cli(home, "reply", art_id, "1", *args, env=env)[1])["agent"] == state
+    for args, state, text in (
+        (("--asked", art_id, "1", "Which?"), "asked", "Which?"),
+        ((art_id, "1", "Hm", "--wrote"), "wrote", "Hm"),
+        # A text that looks like the option is still the text.
+        ((art_id, "1", "--wrote"), "done", "--wrote"),
+    ):
+        c = json.loads(cli(home, "reply", *args, env=env)[1])
+        assert (c["agent"], c["replies"][-1]["text"]) == (state, text)
     assert cli(home, "reply", art_id, "1", "x", "--wrote", "--asked", env=env)[0] == 2
+    assert cli(home, "reply", art_id, "1", "--asked", "x", env=env)[0] == 2
     assert cli(home, "reply", art_id, "1", env=env)[0] == 2

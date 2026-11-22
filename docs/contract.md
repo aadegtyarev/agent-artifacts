@@ -570,8 +570,9 @@ the file was replaced while it was open.
   the answer tells anyone with the link how many drafts the file holds in
   all, though never their texts or ids. Drafts of every kind count. A draft
   not changed for 7 days is deleted.
-- A comment holds at most 100 replies; a review or an agent reply that would
-  pass that gets `409 too_many_replies`, and the review publishes nothing.
+- A comment holds at most 100 replies and a file at most 1000 in all; a
+  review or an agent reply that would pass either gets `409
+  too_many_replies`, and the review publishes nothing.
 
 **Chats and decisions.** Each comment is a thread: the comment and its
 replies. Besides comments, a person's drafts can be replies (`reply`) and
@@ -596,8 +597,8 @@ Finishing a review, in one transaction:
 | comment, general comment | new comment, `for_agent`, `agent` `waiting` | new comment |
 | reply | added to the chat; the comment gets `for_agent`, `agent` `waiting` | added to the chat |
 | approve | `approved_by` the draft's author; `for_agent`, `agent` `waiting` | `approved_by` the draft's author |
-| reject | `rejected_by` the draft's author; the comment stays listed | the same |
-| accept | the comment is resolved and leaves the viewer | the same |
+| reject | `rejected_by` the draft's author, `agent` `null` (no work for the agent); the comment stays listed | the same |
+| accept | the comment is resolved and leaves the viewer, applied last and only if its `agent` is then `done`, `wrote` or `asked`; dropped otherwise, and when the same review replies to it (a reply asks for more) | the same |
 
 The answer lists the comments made or touched and still open, by number;
 accepted ones are not in it.
@@ -818,7 +819,9 @@ teaches:
 - on "look at the comments": the person finishes their review in the viewer
   first, since drafts are invisible to the agent. Read the comments with
   `artifacts_cli.py comments ID`; those with `"agent": "waiting"` are the
-  work, the others (and the chats) are context. `take ID` first, so the
+  work, and so are those `working` without a reply from the agent after the
+  person's last word (an earlier session may have ended after `take`); the
+  others (and the chats) are context. `take ID` first, so the
   person sees the work started; find each spot by its anchor's selector and
   text, fix the file, `replace` it, then for each comment taken
   `reply ID N "what was done"` (`--wrote` when done but with a remark or a
