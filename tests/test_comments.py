@@ -895,6 +895,30 @@ def test_a_migration_cut_short_is_finished_by_the_next_start(tmp_path, monkeypat
     assert version == len(migrations) + 1 and ("agents", "later", "REAL", 0, None, 0) in columns
 
 
+def test_a_database_newer_than_the_code_is_left_alone_and_logged(tmp_path, caplog):
+    Store(tmp_path, max_total_bytes=10**6)
+    with sqlite3.connect(tmp_path / "meta.sqlite") as db:
+        db.execute(f"PRAGMA user_version = {len(store_module._MIGRATIONS) + 1}")
+    before = dump(tmp_path)
+    Store(tmp_path, max_total_bytes=10**6)
+    assert dump(tmp_path) == before
+    assert "newer than this code" in caplog.text
+
+
+def test_a_counter_behind_after_a_rollback_is_repaired_on_start(tmp_path):
+    # Comments written by an older version (no counter) after this one ran.
+    store = Store(tmp_path, max_total_bytes=10**6)
+    store.add_agent("a")
+    art = store.put(io.BytesIO(b"x"), owner="a", name="a.txt", kind="txt", size=1)
+    store.add_draft(art.id, "h", author="p", text="one", anchor=None)
+    store.publish(art.id, "h", author="p", text=None)
+    with sqlite3.connect(tmp_path / "meta.sqlite") as db:
+        db.execute("UPDATE artifacts SET comment_seq = 0")
+    store = Store(tmp_path, max_total_bytes=10**6)
+    store.add_draft(art.id, "h", author="p", text="two", anchor=None)
+    assert [c.n for c in store.publish(art.id, "h", author="p", text=None)] == [2]
+
+
 def test_an_element_anchor_keeps_its_screen_and_hash(env):
     client, _, keys = env
     art = upload(client, keys["alice"], "a.html", b"<p>")

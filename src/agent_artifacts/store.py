@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import secrets
 import shutil
@@ -24,6 +25,8 @@ from pathlib import Path
 from typing import BinaryIO
 
 from . import kinds
+
+log = logging.getLogger(__name__)
 
 ID_RE = r"[A-Za-z0-9_-]{22}"
 # Not starting with a dot: "." and ".." would never reach the app in a URL.
@@ -185,8 +188,13 @@ def _migrate_to_v1(db: sqlite3.Connection) -> None:
         db.execute(
             "UPDATE comments SET agent = 'waiting' WHERE for_agent = 1 AND resolved_at IS NULL"
         )
-    # A counter behind its comments (added to a database that had comments)
-    # would hand out their numbers again.
+    _repair_comment_seq(db)
+
+
+def _repair_comment_seq(db: sqlite3.Connection) -> None:
+    """A counter behind its comments (added to a database that had comments,
+    or comments written by an older version after a rollback) would hand out
+    their numbers again. Cheap, and a no-op when nothing is behind."""
     last = "(SELECT MAX(n) FROM comments WHERE artifact_id = artifacts.id)"
     db.execute(
         f"UPDATE artifacts SET comment_seq = {last} "  # noqa: S608 (a constant)
@@ -207,7 +215,16 @@ def _migrate(db: sqlite3.Connection) -> None:
         try:
             version = db.execute("PRAGMA user_version").fetchone()[0]
             if version >= len(_MIGRATIONS):
-                # Up to date, or made by a newer version: left as it is.
+                # Up to date, or made by a newer version: left as it is, said
+                # in the log, since older code may not understand it.
+                if version > len(_MIGRATIONS):
+                    log.warning(
+                        "the database is at version %d, newer than this code (%d)",
+                        version,
+                        len(_MIGRATIONS),
+                    )
+                else:
+                    _repair_comment_seq(db)
                 db.execute("COMMIT")
                 return
             # Already at version 1 without the number: only stamped, so its
