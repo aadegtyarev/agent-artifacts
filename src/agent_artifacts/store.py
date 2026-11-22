@@ -191,6 +191,14 @@ def _migrate_to_v1(db: sqlite3.Connection) -> None:
     _repair_comment_seq(db)
 
 
+def _migrate_to_v2(db: sqlite3.Connection) -> None:
+    """Comments lose for_agent and read_at: ``agent`` already says which are
+    the agent's work, and nothing used when the owner had read a comment.
+    DROP COLUMN needs SQLite 3.35; python:3.13-slim (Debian 13) has 3.46."""
+    for column in ("for_agent", "read_at"):
+        db.execute(f"ALTER TABLE comments DROP COLUMN {column}")
+
+
 def _repair_comment_seq(db: sqlite3.Connection) -> None:
     """A counter behind its comments (added to a database that had comments,
     or comments written by an older version after a rollback) would hand out
@@ -205,7 +213,10 @@ def _repair_comment_seq(db: sqlite3.Connection) -> None:
 # _MIGRATIONS[i] takes a database from version i (PRAGMA user_version) to
 # i + 1. Append only: each runs once, in one transaction with its version bump,
 # so a start cut short leaves a version the next start goes on from.
-_MIGRATIONS: tuple[Callable[[sqlite3.Connection], None], ...] = (_migrate_to_v1,)
+_MIGRATIONS: tuple[Callable[[sqlite3.Connection], None], ...] = (
+    _migrate_to_v1,
+    _migrate_to_v2,
+)
 
 
 def _migrate(db: sqlite3.Connection) -> None:
@@ -298,11 +309,9 @@ class Comment:
     text: str
     anchor: str | None  # JSON
     created_at: float
-    read_at: float | None
     resolved_at: float | None
     before_replace: bool
     mine: bool
-    for_agent: bool
     approved_by: str | None = None
     rejected_by: str | None = None
     agent: str | None = None  # one of AGENT_STATES
@@ -311,9 +320,9 @@ class Comment:
 
 # :key is the author key hash asking, or NULL: then no comment is its own.
 _COMMENT_SQL = (
-    "SELECT c.n, c.author, c.text, c.anchor, c.created_at, c.read_at, c.resolved_at, "
+    "SELECT c.n, c.author, c.text, c.anchor, c.created_at, c.resolved_at, "
     "a.replaced_at IS NOT NULL AND COALESCE(c.written_at, c.created_at) < a.replaced_at, "
-    "COALESCE(c.author_key_hash = :key, 0), c.for_agent, "
+    "COALESCE(c.author_key_hash = :key, 0), "
     "c.approved_by, c.rejected_by, c.agent "
     "FROM comments c JOIN artifacts a ON a.id = c.artifact_id "
     "WHERE c.artifact_id = :id AND a.expires_at > :now"
@@ -711,20 +720,14 @@ class Store:
         """When a live artifact was last uploaded and its comments, oldest
         first; None if there is no such artifact (of ``owner``'s). The time
         comes from the same lookup, read before the comments, so a replace in
-        between shows on the next poll. The owner gets them all and marks them
-        read in the same transaction, so it marks exactly what it returns;
-        anyone else gets the open ones, each marked as ``key_hash``'s or not."""
-        with self._conn(write=owner is not None) as db:
+        between shows on the next poll. The owner gets them all; anyone else
+        gets the open ones, each marked as ``key_hash``'s or not."""
+        with self._conn() as db:
             artifact = self._artifact(db, artifact_id, owner)
             if artifact is None:
                 return None
             args = {"id": artifact_id, "now": self.clock(), "key": key_hash}
             if owner is not None:
-                db.execute(
-                    "UPDATE comments SET read_at = :now "
-                    "WHERE artifact_id = :id AND read_at IS NULL",
-                    args,
-                )
                 return artifact.updated_at, _load(db, "ORDER BY c.n", args)
             return artifact.updated_at, _load(db, "AND c.resolved_at IS NULL ORDER BY c.n", args)
 
@@ -915,8 +918,9 @@ class Store:
         record the draft's author (the later one clears the other; reject
         also takes the comment off the agent's work), accept resolves the
         comment. Replies and decisions about a comment no longer open are
-        dropped. When ``for_agent``, the new comments and those replied to or
-        approved go to the agent: for_agent, agent "waiting". An accept takes
+        dropped. When ``for_agent`` (the review is sent to the agent), the new
+        comments and those replied to or approved go to the agent: agent
+        "waiting". An accept takes
         effect only on a comment the agent has answered, after the rest of the
         review, and not on one this review replies to (a reply asks for more).
 
@@ -971,11 +975,11 @@ class Store:
                 first = last - len(items) + 1
                 db.executemany(
                     "INSERT INTO comments (artifact_id, n, author, text, anchor, "
-                    "author_key_hash, created_at, written_at, for_agent, agent) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "author_key_hash, created_at, written_at, agent) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     [
                         (artifact_id, first + i, a, t, anchor, key_hash, args["now"], written)
-                        + (for_agent, "waiting" if for_agent else None)
+                        + ("waiting" if for_agent else None,)
                         for i, (a, t, anchor, written) in enumerate(items)
                     ],
                 )
@@ -1007,7 +1011,7 @@ class Store:
             touched |= to_agent
             if for_agent and to_agent:
                 db.executemany(
-                    "UPDATE comments SET for_agent = 1, agent = 'waiting' "
+                    "UPDATE comments SET agent = 'waiting' "
                     "WHERE artifact_id = ? AND n = ? AND resolved_at IS NULL",
                     [(artifact_id, n) for n in to_agent],
                 )
@@ -1094,12 +1098,11 @@ def _load(db: sqlite3.Connection, where: str, args: dict) -> list[Comment]:
 
 
 def _comment(row: tuple, replies: tuple[Reply, ...] = ()) -> Comment:
-    *fields, before_replace, mine, for_agent, approved_by, rejected_by, agent = row
+    *fields, before_replace, mine, approved_by, rejected_by, agent = row
     return Comment(
         *fields,
         before_replace=bool(before_replace),
         mine=bool(mine),
-        for_agent=bool(for_agent),
         approved_by=approved_by,
         rejected_by=rejected_by,
         agent=agent,

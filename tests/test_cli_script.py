@@ -158,10 +158,7 @@ def test_comments_resolve_delete_and_drop_drafts(server):
         store.add_draft(art_id, "h", author="p", text=text, anchor=None)
     store.publish(art_id, "h", author="p", text=None)
     code, out, _ = cli(home, "comments", art_id, env=env)
-    assert code == 0 and [(c["text"], c["read"]) for c in json.loads(out)] == [
-        ("one", True),
-        ("two", True),
-    ]
+    assert code == 0 and [c["text"] for c in json.loads(out)] == ["one", "two"]
     assert json.loads(cli(home, "resolve", art_id, "1", env=env)[1])["resolved"] is True
     assert json.loads(cli(home, "list", env=env)[1])[0]["open_comments"] == 1
     assert json.loads(cli(home, "reopen", art_id, "1", env=env)[1])["resolved"] is False

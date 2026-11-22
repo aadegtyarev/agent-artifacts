@@ -248,7 +248,7 @@ def test_review_publishes_drafts_in_order_and_the_general_comment_last(env):
         (2, "anonymous", "2nd", None),
         (3, "Petrov", "Overall fine", None),
     ]
-    assert all(c["mine"] and not c["read"] and not c["resolved"] for c in made)
+    assert all(c["mine"] and not c["resolved"] for c in made)
     assert all(c["created_at"] for c in made)
     assert drafts(client, art["id"]).json() == []
     assert len(drafts(client, art["id"], OTHER).json()) == 1
@@ -258,27 +258,23 @@ def test_review_publishes_drafts_in_order_and_the_general_comment_last(env):
     assert [c["mine"] for c in client.get(base, headers=as_author(OTHER)).json()] == [False] * 3
     assert [c["mine"] for c in client.get(base).json()] == [False] * 3
     owner = owner_comments(client, keys["alice"], art["id"]).json()
-    assert [(c["n"], c["mine"], c["read"]) for c in owner] == [(1, False, True)] + [
-        (n, False, True) for n in (2, 3)
-    ]
-    # The public list never marks read, and its answer has no edit fields.
+    assert [(c["n"], c["mine"]) for c in owner] == [(1, False), (2, False), (3, False)]
+    # The answer has no edit fields.
     assert set(made[0]) == {
         "n",
         "author",
         "text",
         "anchor",
         "created_at",
-        "read",
         "resolved",
         "before_replace",
         "mine",
-        "for_agent",
         "agent",
         "approved_by",
         "rejected_by",
         "replies",
     }
-    assert not any(c["for_agent"] for c in made)
+    assert not any(c["agent"] for c in made)
     # Only the general comment, no drafts: fine too.
     r = review(client, art["id"], {"author": "", "text": "One more"})
     assert [(c["n"], c["author"]) for c in r.json()] == [(4, "anonymous")]
@@ -292,9 +288,9 @@ def test_a_review_sent_to_the_agent_marks_its_comments(env):
     add_draft(client, art["id"], {"text": "for the agent"})
     sent = review(client, art["id"], {"author": "Ivan", "agent": True}).json()
     published = review(client, art["id"], {"author": "Ivan", "text": "just a note"}).json()
-    assert [c["for_agent"] for c in sent + published] == [True, False]
+    assert [c["agent"] for c in sent + published] == ["waiting", None]
     owner = owner_comments(client, keys["alice"], art["id"]).json()
-    assert [(c["n"], c["for_agent"]) for c in owner] == [(1, True), (2, False)]
+    assert [(c["n"], c["agent"]) for c in owner] == [(1, "waiting"), (2, None)]
     r = review(client, art["id"], {"author": "Ivan", "text": "x", "agent": "yes"})
     assert r.status_code == 400
 
@@ -545,7 +541,6 @@ def test_head_old_calls_and_other_methods_never_write(env):
     assert not c["resolved"] and drafts(client, art["id"]).json() == []
     r = client.head(f"/api/v1/artifacts/{art['id']}/comments", headers=auth(keys["alice"]))
     assert r.status_code == 405
-    assert client.get(f"{base}/comments").json()[0]["read"] is False
 
 
 # The owner's calls
@@ -565,8 +560,7 @@ def test_owner_comment_and_draft_calls_are_for_the_owner_only(env):
     r = client.patch(f"{base}/comments/1", json={"resolved": True}, headers=auth(keys["bob"]))
     assert r.status_code == 404
     assert client.delete(f"{base}/comments/1", headers=auth(keys["bob"])).status_code == 404
-    # Bob's look did not mark it read, nor drop the draft.
-    assert client.get(f"/a/{art['id']}/comments").json()[0]["read"] is False
+    # Bob's look did not drop the draft.
     assert len(drafts(client, art["id"]).json()) == 1
 
 
@@ -727,6 +721,12 @@ def dump(path):
         db.close()
 
 
+def v1_store(tmp_path, monkeypatch):
+    """A store whose database stops at version 1; undo the patch to go on."""
+    monkeypatch.setattr(store_module, "_MIGRATIONS", store_module._MIGRATIONS[:1])
+    return Store(tmp_path, max_total_bytes=10**6)
+
+
 def make_old_database(tmp_path, schema, comment_seq):
     db = sqlite3.connect(tmp_path / "meta.sqlite")
     db.executescript(schema)
@@ -765,12 +765,11 @@ def test_earlier_databases_open_and_work(tmp_path, schema):
     assert version == len(store_module._MIGRATIONS)
     with store._conn() as db:
         rows = db.execute(
-            "SELECT author, text, author_key_hash, created_at, written_at, for_agent, agent "
-            "FROM comments"
+            "SELECT author, text, author_key_hash, created_at, written_at, agent FROM comments"
         ).fetchall()
         seq = db.execute("SELECT comment_seq, replaced_at FROM artifacts").fetchall()
     if with_comments:
-        assert rows == [("p", "old one", "tokenhash", 50, None, 0, None)]
+        assert rows == [("p", "old one", "tokenhash", 50, None, None)]
         assert seq == [(2, 100)]
     else:
         assert (rows, seq) == ([], [(0, None)])
@@ -797,10 +796,10 @@ def test_earlier_databases_open_and_work(tmp_path, schema):
     assert store.drop_drafts(ART, owner="old")
 
 
-def test_a_database_from_before_chats_keeps_its_drafts(tmp_path):
-    # Made by the current code, then the chat columns and table taken away:
-    # the schema of f21924c, with a draft and a comment in it.
-    store = Store(tmp_path, max_total_bytes=10**6)
+def test_a_database_from_before_chats_keeps_its_drafts(tmp_path, monkeypatch):
+    # Made at version 1, then the chat columns and table taken away: the
+    # schema of f21924c, with a draft and a comment in it.
+    store = v1_store(tmp_path, monkeypatch)
     store.add_agent("old")
     art = store.put(io.BytesIO(b"x"), owner="old", name="a.txt", kind="txt", size=1)
     store.add_draft(art.id, "h", author="p", text="published", anchor=None)
@@ -811,6 +810,8 @@ def test_a_database_from_before_chats_keeps_its_drafts(tmp_path):
     store.resolve_comment(art.id, 3, True, owner="old")
     store.add_draft(art.id, "h", author="p", text="pending", anchor=None)
     with store._conn() as db:
+        # What that code marked on a review sent to the agent.
+        db.execute("UPDATE comments SET for_agent = 1 WHERE n IN (2, 3)")
         db.execute("DROP TABLE replies")
         for table, column in (
             ("drafts", "kind"),
@@ -821,6 +822,7 @@ def test_a_database_from_before_chats_keeps_its_drafts(tmp_path):
         ):
             db.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
         db.execute("PRAGMA user_version = 0")  # made before numbered versions
+    monkeypatch.undo()
     store = Store(tmp_path, max_total_bytes=10**6)
     assert db_schema(tmp_path) == todays_schema(tmp_path)
     # What was sent to the agent and is still open waits for it.
@@ -875,9 +877,9 @@ def test_a_counter_added_behind_existing_comments_starts_after_them(tmp_path):
 
 
 def test_todays_database_without_a_version_is_only_stamped(tmp_path, monkeypatch):
-    # Production before numbered versions: today's schema, user_version 0,
-    # plus an unused column left by an older one.
-    store = Store(tmp_path, max_total_bytes=10**6)
+    # Production before numbered versions: version 1's schema, user_version
+    # 0, plus an unused column left by an older one.
+    store = v1_store(tmp_path, monkeypatch)
     store.add_agent("old")
     art = store.put(io.BytesIO(b"x"), owner="old", name="a.txt", kind="txt", size=1)
     for text in ("taken", "resolved"):
@@ -897,6 +899,56 @@ def test_todays_database_without_a_version_is_only_stamped(tmp_path, monkeypatch
     monkeypatch.setattr(store_module, "_MIGRATIONS", (must_not_run,))
     Store(tmp_path, max_total_bytes=10**6)
     assert dump(tmp_path) == (before, 1)
+
+
+def test_version_2_drops_for_agent_and_read_at_and_keeps_the_rest(tmp_path, monkeypatch):
+    store = v1_store(tmp_path, monkeypatch)
+    store.add_agent("old")
+    art = store.put(io.BytesIO(b"x"), owner="old", name="a.txt", kind="txt", size=1)
+    for text in ("working", "resolved"):  # 1 and 2
+        store.add_draft(art.id, "h", author="p", text=text, anchor=None)
+    store.publish(art.id, "h", author="p", text=None, for_agent=True)
+    store.take(art.id, owner="old")
+    store.agent_reply(art.id, 2, "done", "done", owner="old")
+    store.resolve_comment(art.id, 2, True, owner="old")
+    store.add_draft(art.id, "h", author="p", text="waiting", anchor=None)  # 3
+    store.publish(art.id, "h", author="p", text=None, for_agent=True)
+    store.add_draft(art.id, "h", author="p", text="only published", anchor=None)  # 4
+    store.publish(art.id, "h", author="p", text=None)
+    store.add_draft(art.id, "k", author="q", text="me too", anchor=None, kind="reply", of_n=4)
+    store.add_draft(art.id, "k", author="q", text="", anchor=None, kind="approve", of_n=4)
+    store.publish(art.id, "k", author="q", text=None)
+    store.add_draft(art.id, "h", author="p", text="pending", anchor=None)
+    kept = (
+        "SELECT artifact_id, n, author, text, anchor, author_key_hash, created_at, "
+        "written_at, resolved_at, approved_by, rejected_by, agent FROM comments ORDER BY n",
+        "SELECT * FROM replies ORDER BY rowid",
+        "SELECT * FROM drafts ORDER BY rowid",
+        "SELECT * FROM artifacts",
+    )
+    with store._conn() as db:
+        # What version 1's code wrote: sent to the agent, read by the owner.
+        db.execute("UPDATE comments SET for_agent = 1, read_at = 70 WHERE n IN (1, 2, 3)")
+        before = [db.execute(sql).fetchall() for sql in kept]
+    assert [r[-1] for r in before[0]] == ["working", "done", "waiting", None]
+    monkeypatch.undo()
+    store = Store(tmp_path, max_total_bytes=10**6)
+    assert db_schema(tmp_path) == todays_schema(tmp_path)
+    version, columns, _ = db_schema(tmp_path)
+    assert version == 2
+    assert not {c for c in columns if c[0] == "comments" and c[1] in ("for_agent", "read_at")}
+    with store._conn() as db:
+        assert [db.execute(sql).fetchall() for sql in kept] == before
+        assert db.execute("PRAGMA foreign_key_check").fetchall() == []
+    # The work goes on: the waiting one is taken, the decided one stays.
+    assert [c.n for c in store.take(art.id, owner="old")] == [3]
+    _, found = store.comments(art.id, owner="old")
+    assert [(c.n, c.agent, c.approved_by, len(c.replies)) for c in found] == [
+        (1, "working", None, 0),
+        (2, "done", None, 1),
+        (3, "working", None, 0),
+        (4, None, "q", 1),
+    ]
 
 
 def test_a_migration_cut_short_is_finished_by_the_next_start(tmp_path, monkeypatch):
@@ -1056,12 +1108,12 @@ def test_a_review_sent_to_the_agent_makes_new_replied_and_approved_comments_wait
     decide(client, art["id"], "reject", 3)
     add_draft(client, art["id"], {"text": "new"}, OTHER)
     made = review(client, art["id"], {"author": "Olga", "agent": True}, key=OTHER).json()
-    state = {c["n"]: (c["for_agent"], c["agent"], c["approved_by"], c["rejected_by"]) for c in made}
+    state = {c["n"]: (c["agent"], c["approved_by"], c["rejected_by"]) for c in made}
     assert state == {
-        1: (True, "waiting", None, None),
-        2: (True, "waiting", "Olga", None),
-        3: (False, None, None, "Olga"),
-        5: (True, "waiting", None, None),
+        1: ("waiting", None, None),
+        2: ("waiting", "Olga", None),
+        3: (None, None, "Olga"),
+        5: ("waiting", None, None),
     }
     [r] = public(client, art["id"])[1]["replies"]
     assert (r["author"], r["text"], r["mine"], r["agent"]) == ("Olga", "me too", False, False)
@@ -1079,9 +1131,9 @@ def test_a_review_only_published_changes_no_agent_state(env):
     reply_draft(client, art["id"], 1, "note")
     decide(client, art["id"], "approve", 2)
     made = review(client, art["id"], {"author": "Olga"}, key=OTHER).json()
-    assert [(c["n"], c["for_agent"], c["agent"], c["approved_by"]) for c in made] == [
-        (1, False, None, None),
-        (2, False, None, "Olga"),
+    assert [(c["n"], c["agent"], c["approved_by"]) for c in made] == [
+        (1, None, None),
+        (2, None, "Olga"),
     ]
     assert len(made[0]["replies"]) == 1
     # A later rejection replaces the approval.
@@ -1279,7 +1331,6 @@ def test_every_write_holds_the_write_lock_from_its_first_statement(tmp_path, mon
         "add_draft": lambda: store.add_draft(art(), "k", author="q", text="t", anchor=None).id,
         "edit_draft": lambda: store.edit_draft(art(), "k", calls_out["add_draft"], "u"),
         "publish": lambda: store.publish(art(), "k", author="q", text="t", for_agent=True),
-        "comments (owner)": lambda: store.comments(art(), owner="a"),
         "take": lambda: store.take(art(), owner="a"),
         "agent_reply": lambda: store.agent_reply(art(), 1, "ok", "done", owner="a"),
         "resolve_comment": lambda: store.resolve_comment(art(), 1, True, owner="a"),

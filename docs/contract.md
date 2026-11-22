@@ -111,7 +111,7 @@ Comments on the caller's own artifact (see [Comments](#comments)):
 
 | Call | Purpose | Answer |
 | --- | --- | --- |
-| `GET /api/v1/artifacts/{id}/comments` | all comments, oldest first; marks them read | `200` + list of comment JSON, header `X-Artifact-Updated` |
+| `GET /api/v1/artifacts/{id}/comments` | all comments, oldest first | `200` + list of comment JSON, header `X-Artifact-Updated` |
 | `POST /api/v1/artifacts/{id}/take` | take the open comments whose `agent` is `waiting`: they become `working` | `200` + list of the comments taken |
 | `POST /api/v1/artifacts/{id}/comments/{n}/reply` | `{"text", "state"}`: the agent's reply in comment n's chat; `state` is `done` (default), `wrote` or `asked` and becomes the comment's `agent` | `201` + comment JSON; `409 too_many_replies` |
 | `PATCH /api/v1/artifacts/{id}/comments/{n}` | `{"resolved": true or false}` | `200` + comment JSON |
@@ -318,7 +318,7 @@ decided or replied to, a field for a general comment
 (optional, about the whole file), a choice **Send to agent** (the default) or
 **Only publish** with a line saying what follows, and **Back** / **Finish
 review**. Sent to the agent,
-the comments are marked `for_agent`: the agent takes them to work on; only
+the comments wait for the agent (`agent` `waiting`): it takes them to work on; only
 published, they are there for everyone to read. Finishing
 publishes all the person's drafts on this file and the general comment in one
 transaction: each becomes a comment with the next number, in the order the
@@ -363,7 +363,7 @@ Pins and cards show texts and names as text nodes, never as HTML.
 
 | Call | Purpose | Answer |
 | --- | --- | --- |
-| `GET /a/{id}/comments` | the published comments, oldest first, without resolved ones; never marks them read | `200` + list of comment JSON, header `X-Artifact-Updated` |
+| `GET /a/{id}/comments` | the published comments, oldest first, without resolved ones | `200` + list of comment JSON, header `X-Artifact-Updated` |
 | `GET /a/{id}/drafts` | the key's drafts on this file, oldest first | `200` + list of draft JSON |
 | `POST /a/{id}/drafts` | a comment `{"author", "text", "anchor"}`, a reply `{"author", "kind": "reply", "of": n, "text"}` or a decision `{"author", "kind": "approve" or "reject" or "accept", "of": n}` | `201` + draft JSON; `409 too_many_drafts` |
 | `PATCH /a/{id}/drafts/{d}` | `{"text"}`, comment and reply drafts | `200` + draft JSON |
@@ -380,9 +380,9 @@ Comment JSON, the same for the owner:
 {"n": 3, "author": "Petrov", "text": "Make this button green",
  "anchor": {"type": "element", "selector": "main > form > button.primary",
             "text": "Send", "x": 0.42, "y": 0.5, "width": 1280},
- "created_at": "2026-11-20T10:00:00Z", "read": false,
+ "created_at": "2026-11-20T10:00:00Z",
  "resolved": false, "before_replace": false, "mine": true,
- "for_agent": true, "agent": "waiting", "approved_by": null, "rejected_by": null,
+ "agent": "waiting", "approved_by": null, "rejected_by": null,
  "replies": [{"author": "Ivan", "text": "Same on the second screen",
               "created_at": "2026-11-20T10:05:00Z", "mine": false, "agent": false}]}
 ```
@@ -424,12 +424,9 @@ the file was replaced while it was open.
   sets the page's hash to it first (replacing the history entry, so Back
   leaves the viewer), so a page that routes screens by hash opens that screen,
   and shows the pin once it is drawn. Its item reads "on “screen”" while it is elsewhere.
-- `created_at` of a comment is when it was published. `read` is true once
-  the owner agent has fetched it; `resolved` once a person accepted it or the agent resolved it.
+- `created_at` of a comment is when it was published. `resolved` is true once a person accepted it or the agent resolved it.
 - `before_replace` is true when the file was replaced after the comment, or
   the draft it came from, was written, so it may be about the old version.
-- `for_agent` is true when the review that published the comment was sent
-  to the agent, false when it was only published.
 - `mine` is always present: true when the comment was published by the
   `X-Author-Key` sent, false without a key and for the owner.
 - `agent` is what the owner agent is doing about the comment: `null`
@@ -438,8 +435,8 @@ the file was replaced while it was open.
   until the person answers).
 - `approved_by` and `rejected_by` are the name of the person who last
   approved or rejected the comment, else `null`; a later decision clears the
-  other one. A comment sent to the agent by its own author counts as
-  approved by them without a name: `approved_by` `null`, `for_agent` true.
+  other one. A comment sent to the agent by its own author needs no
+  approval: it has an `agent` state and `approved_by` `null`.
 - `replies` is the comment's chat, oldest first: `author`, `text`,
   `created_at`, `mine` as for comments, and `agent`, true for the owner
   agent's replies, whose `author` is `agent`.
@@ -473,9 +470,9 @@ Finishing a review, in one transaction:
 
 | Draft | Sent to the agent | Only published |
 | --- | --- | --- |
-| comment, general comment | new comment, `for_agent`, `agent` `waiting` | new comment |
-| reply | added to the chat; the comment gets `for_agent`, `agent` `waiting` | added to the chat |
-| approve | `approved_by` the draft's author; `for_agent`, `agent` `waiting` | `approved_by` the draft's author |
+| comment, general comment | new comment, `agent` `waiting` | new comment |
+| reply | added to the chat; the comment gets `agent` `waiting` | added to the chat |
+| approve | `approved_by` the draft's author; `agent` `waiting` | `approved_by` the draft's author |
 | reject | `rejected_by` the draft's author, `agent` `null` (no work for the agent); the comment stays listed | the same |
 | accept | the comment is resolved and leaves the viewer, applied last and only if its `agent` is then `done`, `wrote` or `asked`; dropped otherwise, and when the same review replies to it (a reply asks for more) | the same |
 
@@ -490,8 +487,7 @@ work (the comment closes), or replies and sends the review to the agent
 again (it waits again).
 
 The owner agent reads the comments with `GET /api/v1/artifacts/{id}/comments`,
-which marks read exactly what it returns, in the same transaction, resolved
-ones included. It resolves, reopens and deletes them by number at any time.
+resolved ones included. It resolves, reopens and deletes them by number at any time.
 It never sees drafts; `DELETE /api/v1/artifacts/{id}/drafts` deletes all of
 them on the file unread, for example when they fill it.
 

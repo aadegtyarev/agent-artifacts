@@ -182,5 +182,17 @@ docker compose up -d --build
 curl -s http://127.0.0.1:8090/health
 ```
 
-Back up the database first: a new release may add columns on its first start,
-and an older release cannot use the database afterwards.
+Back up the database first: a new release migrates it on its first start
+(numbered versions, `PRAGMA user_version`), and an older release cannot use
+it afterwards. A newer database is left untouched and logged, but the old
+code's queries fail on it.
+
+To roll back across the migration to version 2 (comments without
+`for_agent` and `read_at`) without losing what was written since, add the
+columns back before starting the older image:
+
+```bash
+docker compose exec app python -c "import sqlite3; d=sqlite3.connect('/data/meta.sqlite'); d.executescript('ALTER TABLE comments ADD COLUMN read_at REAL; ALTER TABLE comments ADD COLUMN for_agent INTEGER NOT NULL DEFAULT 0; PRAGMA user_version = 1;')"
+```
+
+Restoring the backup is the fallback; it loses what was written after it.
