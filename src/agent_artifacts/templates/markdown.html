@@ -12,11 +12,13 @@ th,td{border:1px solid #d2d2d7;padding:4px 8px}img{max-width:100%}
 blockquote{margin:0;padding-left:12px;border-left:3px solid #d2d2d7;color:#6e6e73}
 </style></head><body>
 <script>{{ marked }}</script>
+<script>{{ links }}</script>
 <script>
 const SOURCE = {{ source }};
 document.body.innerHTML = marked.parse(SOURCE);
 // Heading ids for #anchor links, and links to other sites in a new tab (the
-// only way out of the sandbox).
+// only way out of the sandbox). Links to other files of the service stay in
+// this tab: the pin script asks the viewer to open them in its own.
 const seen = {};
 for (const h of document.querySelectorAll("h1,h2,h3,h4,h5,h6")) {
   const slug = h.textContent.toLowerCase().trim()
@@ -25,7 +27,12 @@ for (const h of document.querySelectorAll("h1,h2,h3,h4,h5,h6")) {
   h.id = n > 1 ? `${slug}-${n - 1}` : slug;
 }
 for (const a of document.querySelectorAll("a[href]")) {
-  if (!a.getAttribute("href").startsWith("#")) { a.target = "_blank"; a.rel = "noopener"; }
+  const href = a.getAttribute("href");
+  if (!href.startsWith("#") && !pageLinks.target(href, location.href)) { a.target = "_blank"; a.rel = "noopener"; }
 }
+// Opened at a #fragment (a link from another file, which can only pass
+// one of plain ASCII): the headings have their ids only now.
+const at = location.hash && document.getElementById(location.hash.slice(1));
+if (at) at.scrollIntoView();
 </script>
 {{ pins }}</body></html>

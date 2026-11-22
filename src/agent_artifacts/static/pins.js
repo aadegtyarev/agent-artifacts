@@ -320,6 +320,26 @@
     tell({ type: "pin", key: best.dataset.key });
   });
 
+  // A link to another file or project of the service: a plain left click
+  // asks the viewer to open it in its own tab (the frame cannot show the
+  // viewer page, and has no way to move the tab itself). Pin mode takes the
+  // click before this. A link with a modifier key, a target other than the
+  // frame itself, `download`, or one the page's own script already handled
+  // behaves as before. pages.py puts links.js before this script.
+  window.addEventListener("click", (e) => {
+    if (picking || e.defaultPrevented || e.button !== 0
+      || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    const link = e.target instanceof Element ? e.target.closest("a[href],area[href]") : null;
+    if (!(link instanceof HTMLAnchorElement || link instanceof HTMLAreaElement)) return;
+    const base = document.querySelector("base[target]");
+    const where = (link.getAttribute("target") ?? (base ? base.getAttribute("target") : "")).toLowerCase();
+    if ((where && where !== "_self") || link.hasAttribute("download")) return;
+    const to = pageLinks.target(link.getAttribute("href"), location.href);
+    if (!to) return;
+    e.preventDefault();
+    tell({ type: "open", path: to.path, fragment: to.fragment });
+  });
+
   // Escape in pin mode reaches the viewer too while the focus is in the page.
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && picking) tell({ type: "escape" });

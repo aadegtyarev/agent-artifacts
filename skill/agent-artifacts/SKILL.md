@@ -155,6 +155,9 @@ still counts toward your space. `set --project <pid>` moves a live file into
 a project (an expired one is gone). Each section is one line of up to 64
 characters; "Mockups" and "mockups" are two sections.
 
+A file in a project shows the whole project to whoever has its link: its
+header lists the titles of the project's other files, and each opens.
+
 Delete a project only when the person asks: it deletes every file in it.
 
 ## Comments
@@ -281,6 +284,11 @@ inside the file does not exist.
   JS variables: `localStorage`, `sessionStorage`, cookies and
   IndexedDB are unavailable and throw.
 - **Links to other sites** open only in a new tab: use `target="_blank"`.
+- **Links to other files of the service:** write them as `/a/{id}` or
+  `/p/{id}` (a project), with `#element-id` for a spot, and no
+  `target`. A click opens that file in the person's tab, at that spot. Only
+  the path and a fragment of up to 64 ASCII letters, digits and `_.:-`:
+  no query string, and not `/raw` or `/download`.
 - **PDF:** there is none on the server. If the person may want one, add a
   Print button (`onclick="window.print()"`): the browser's print dialog
   saves to PDF. Add `@media print` rules that hide the button and avoid
@@ -288,7 +296,9 @@ inside the file does not exist.
 
 Markdown (GitHub style, tables included) is rendered in the browser; headings
 get ids, so `[see](#heading-text)`
-links work, and links to other sites open in a new tab. For anything richer,
+links work, links to other sites open in a new tab, and links to other files
+(`[contract](/a/{id}#scope)`) open in the same tab; a heading with letters
+outside ASCII gets an id no link from another file can reach. For anything richer,
 write HTML.
 
 ## Updating this skill
