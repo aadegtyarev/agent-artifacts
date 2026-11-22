@@ -20,7 +20,7 @@ const pinMarks = (() => {
     svg.setAttribute("aria-hidden", "true");
     const path = document.createElementNS(ns, "path");
     path.setAttribute("d", MARK[name]);
-    // Inline styles: the viewer's icon rules (fill, stroke) must not reach it.
+    // White on the badge's colour: the star filled, the other marks stroked.
     if (name === "star") path.style.cssText = "fill:#fff;stroke:none";
     else path.style.cssText = "fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round";
     svg.append(path);
