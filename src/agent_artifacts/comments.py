@@ -25,6 +25,7 @@ from . import kinds
 from .api import ApiError, error, iso, json_body, on_api_error, require_agent
 from .store import (
     ANSWERED,
+    DECISIONS,
     DRAFT_KINDS,
     Comment,
     Draft,
@@ -39,6 +40,7 @@ from .store import (
 )
 
 MAX_AUTHOR, MAX_TEXT = 64, 2000
+MAX_BATCH = 200  # decisions or draft ids in one call
 MAX_SELECTOR, MAX_ANCHOR_TEXT = 512, 200
 # An element anchor may also say which screen of the page it is on: its
 # name, and the page's #hash when the pin was placed.
@@ -103,30 +105,59 @@ def comment_routes(store: Store) -> list[Route]:
         text = _text(data["text"]) if "text" in data else ""
         anchor = _anchor(data.get("anchor"), artifact_kind(artifact_id).pin)
         of_n = _of(data["of"]) if "of" in data else None
-        try:
-            draft = await run_in_threadpool(
-                functools.partial(
-                    store.add_draft,
-                    artifact_id,
-                    key,
-                    author=author,
-                    text=text,
-                    anchor=anchor,
-                    kind=kind,
-                    of_n=of_n,
-                )
+        draft = await _adding(
+            functools.partial(
+                store.add_draft,
+                artifact_id,
+                key,
+                author=author,
+                text=text,
+                anchor=anchor,
+                kind=kind,
+                of_n=of_n,
             )
-        except TooManyDrafts:
-            raise ApiError(
-                409, "too_many_drafts", "there are too many drafts on this file"
-            ) from None
-        except NoSuchComment:
-            raise _no_comment() from None
-        except DraftRefused as e:
-            raise ApiError(400, "bad_request", str(e)) from None
+        )
         if draft is None:
             raise _no_artifact()
         return _answer(_draft_json(draft), 201)
+
+    async def drafts_batch(request: Request) -> Response:
+        # Accept all: many decisions in one write, so one rate-limited call
+        # does it, and either all are made or none.
+        artifact_id, key = request.path_params["id"], _author_key(request)
+        data = await json_body(request, {"author", "decisions"}, {"decisions"})
+        author = _author(data)
+        decisions = _list(data["decisions"], "decisions")
+        made = []
+        for d in decisions:
+            if not isinstance(d, dict) or set(d) != {"kind", "of"} or d["kind"] not in DECISIONS:
+                raise ApiError(
+                    400,
+                    "bad_request",
+                    f"each decision is {{kind, of}}, kind one of {', '.join(DECISIONS)}",
+                )
+            made.append((d["kind"], _of(d["of"])))
+        # Two decisions on one comment would answer with a draft the second deleted.
+        if len({of for _, of in made}) < len(made):
+            raise ApiError(400, "bad_request", "one decision per comment")
+        found = await _adding(
+            functools.partial(store.add_decisions, artifact_id, key, author=author, decisions=made)
+        )
+        if found is None:
+            raise _no_artifact()
+        return _answer([_draft_json(d) for d in found], 201)
+
+    async def drafts_delete(request: Request) -> Response:
+        # Undo of Accept all: one write; ids that are not the key's are ignored.
+        artifact_id, key = request.path_params["id"], _author_key(request)
+        data = await json_body(request, {"ids"}, {"ids"})
+        ids = _list(data["ids"], "ids")
+        if not all(isinstance(i, str) for i in ids):
+            raise ApiError(400, "bad_request", "ids must be draft ids")
+        ids = [i for i in ids if _DRAFT_ID_RE.fullmatch(i)]
+        if not await run_in_threadpool(store.delete_drafts, artifact_id, key, ids):
+            raise _no_artifact()
+        return Response(status_code=204)
 
     async def draft_item(request: Request) -> Response:
         artifact_id, key = request.path_params["id"], _author_key(request)
@@ -234,6 +265,9 @@ def comment_routes(store: Store) -> list[Route]:
         _route("/a/{id:artifact_id}/comments", public_list, "GET"),
         Route("/a/{id:artifact_id}/comments/{n}", published_item, methods=_ALL_METHODS),
         _route("/a/{id:artifact_id}/drafts", drafts, "GET", "POST"),
+        # Before drafts/{d}: the first route with a matching path answers.
+        _route("/a/{id:artifact_id}/drafts/batch", drafts_batch, "POST"),
+        _route("/a/{id:artifact_id}/drafts/delete", drafts_delete, "POST"),
         _route("/a/{id:artifact_id}/drafts/{d}", draft_item, "PATCH", "DELETE"),
         _route("/a/{id:artifact_id}/review", review, "POST"),
         _route("/api/v1/artifacts/{id:artifact_id}/comments", owner_list, "GET"),
@@ -242,6 +276,18 @@ def comment_routes(store: Store) -> list[Route]:
         _route("/api/v1/artifacts/{id:artifact_id}/take", owner_take, "POST"),
         _route("/api/v1/artifacts/{id:artifact_id}/drafts", owner_drafts, "DELETE"),
     ]
+
+
+async def _adding(add: Callable[[], object]) -> object:
+    """Run a store call that adds drafts, its refusals as API errors."""
+    try:
+        return await run_in_threadpool(add)
+    except TooManyDrafts:
+        raise ApiError(409, "too_many_drafts", "there are too many drafts on this file") from None
+    except NoSuchComment:
+        raise _no_comment() from None
+    except DraftRefused as e:
+        raise ApiError(400, "bad_request", str(e)) from None
 
 
 def _route(path: str, handler: Callable[[Request], Awaitable[Response]], *methods: str) -> Route:
@@ -341,6 +387,13 @@ def _no_draft() -> ApiError:
 
 def _too_many_replies() -> ApiError:
     return ApiError(409, "too_many_replies", "this comment has the most replies it can hold")
+
+
+def _list(v: object, field: str) -> list:
+    """A non-empty list of at most MAX_BATCH items."""
+    if not isinstance(v, list) or not 0 < len(v) <= MAX_BATCH:
+        raise ApiError(400, "bad_request", f"{field} must be a list of 1 to {MAX_BATCH} items")
+    return v
 
 
 def _of(v: object) -> int:

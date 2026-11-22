@@ -169,7 +169,7 @@
   const model = commentsModel(S, { pending, seen });
   const {
     liveDrafts, draftById, isComment, actsOn, decisionOn, repliesOn,
-    reviewCount, items, itemOf, agentCounts, lastSent, when,
+    reviewCount, items, itemOf, agentCounts, lastSent, when, acceptable, acceptAllShown,
   } = model;
   function markSeen(c) {
     if (!model.markSeen(c)) return;
@@ -534,8 +534,10 @@
       // One row per comment: a new one, or one decided or replied to.
       const touched = items().filter((i) => i.c && actsOn(i.c.n).length);
       const count = drafts.length + touched.length;
-      // The agent's answers not decided yet come first, so none is left
-      // behind; then what this review changes, what is accepted last.
+      // What waits for the person's yes and is not decided yet comes first,
+      // so none is left behind: the agent's answers, and colleagues'
+      // comments awaiting approval. Then what this review changes, what is
+      // accepted last.
       const undecided = items().filter((i) => i.c && (["done", "wrote", "asked"].includes(i.c.agent) || i.pend)
         && !actsOn(i.c.n).length);
       const accepting = (i) => (decisionOn(i.c.n) || {}).kind === "accept";
@@ -1040,61 +1042,67 @@
     }
   }
 
-  // What waits for the person's yes, with neither a decision nor a reply of
-  // theirs yet: the agent's finished work (done, or done and wrote) to
-  // accept, and colleagues' comments awaiting approval to approve. The
-  // agent's questions are left to be answered one by one.
-  function acceptable() {
-    const out = [];
-    for (const it of items()) {
-      if (!it.c || actsOn(it.c.n).length) continue;
-      if (it.c.agent === "done" || it.c.agent === "wrote") out.push([it.c, "accept"]);
-      else if (it.pend) out.push([it.c, "approve"]);
-    }
-    return out;
-  }
   // Small enough to share a title line: a pill there, a link by a section.
   function acceptAllButton(look = "pill") {
+    if (!acceptAllShown()) return null;
     const n = acceptable().length;
-    if (n < 2) return null;
     const b = button(look === "pill" ? `✓ All · ${n}` : `Accept all · ${n}`, () => acceptAll(),
       look === "pill" ? "all-pill" : "all-link");
     b.setAttribute("aria-label", `Accept all ${n} waiting`);
     return b;
   }
-  // Each becomes an acceptance draft, as if accepted one by one; one Undo
-  // takes them all back.
+  // Each becomes an acceptance draft, as if accepted one by one, in one call:
+  // the server makes all of them or none. One Undo takes them all back.
   async function acceptAll() {
-    if (deciding) return;
+    if (deciding || sending) return;
     if (name === null) {
       askName(() => acceptAll());
       return;
     }
+    const decisions = acceptable().map(([c, kind]) => ({ kind, of: c.n }));
+    if (!decisions.length) return;
     deciding = true;
-    const made = [];
+    // A load already on its way would bring the drafts from before.
+    changed();
+    let made;
     try {
-      for (const [c, kind] of acceptable()) {
-        const draft = await call("POST", "/drafts", { author: name || "", kind, of: c.n });
-        S.drafts.push(draft);
-        made.push(draft);
-      }
+      made = await call("POST", "/drafts/batch", { author: name || "", decisions });
     } catch (e) {
-      if (!nameRefused(e)) toast(e.message, { error: true, ms: 8000 });
+      if (!nameRefused(e)) toast(`Nothing accepted. ${e.message}`, { error: true, ms: 8000 });
+      return;
     } finally {
       deciding = false;
-      changed();
-      render();
     }
-    if (made.length) {
-      const approved = made.filter((d) => d.kind === "approve").length;
-      const accepted = made.length - approved;
-      toast([accepted && `Accepted ${accepted}`, approved && `approved ${approved}`].filter(Boolean).join(", ")
-        .replace(/^a/, "A"), {
-        undo: async () => {
-          for (const d of made) await undoDecision(d);
-        },
-      });
+    changed();
+    S.drafts.push(...made);
+    render();
+    const approved = made.filter((d) => d.kind === "approve").length;
+    const accepted = made.length - approved;
+    toast([accepted && `Accepted ${accepted}`, approved && `approved ${approved}`].filter(Boolean).join(", ")
+      .replace(/^a/, "A"), { undo: () => undoAll(made) });
+  }
+
+  // Deletes the drafts Accept all made, in one call; one already gone (a
+  // review sent meanwhile, say) is skipped by the server.
+  async function undoAll(made) {
+    if (deciding || sending) {
+      toast("Still saving. Try again.", { undo: () => undoAll(made) });
+      return;
     }
+    const ids = new Set(made.map((d) => d.id));
+    deciding = true;
+    changed();
+    try {
+      await call("POST", "/drafts/delete", { ids: [...ids] });
+    } catch (e) {
+      toast(`Not undone. ${e.message}`, { error: true, ms: 8000 });
+      return;
+    } finally {
+      deciding = false;
+    }
+    changed();
+    S.drafts = S.drafts.filter((x) => !ids.has(x.id));
+    render();
   }
 
   async function undoDecision(d) {
@@ -1247,6 +1255,11 @@
 
   async function finish(done) {
     if (sending) return;
+    // Not while a decision is on its way: the review would go without it.
+    if (deciding) {
+      toast("Still saving your decisions. Try again.");
+      return;
+    }
     sending = true;
     done.disabled = true;
     try {

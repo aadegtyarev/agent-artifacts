@@ -1333,9 +1333,13 @@ def test_every_write_holds_the_write_lock_from_its_first_statement(tmp_path, mon
         "publish": lambda: store.publish(art(), "k", author="q", text="t", for_agent=True),
         "take": lambda: store.take(art(), owner="a"),
         "agent_reply": lambda: store.agent_reply(art(), 1, "ok", "done", owner="a"),
+        "add_decisions": lambda: [
+            d.id for d in store.add_decisions(art(), "k", author="q", decisions=[("accept", 1)])
+        ],
         "resolve_comment": lambda: store.resolve_comment(art(), 1, True, owner="a"),
         "delete_comment": lambda: store.delete_comment(art(), 2, owner="a"),
         "delete_draft": lambda: store.delete_draft(art(), "k", "none"),
+        "delete_drafts": lambda: store.delete_drafts(art(), "k", calls_out["add_decisions"]),
         "drop_drafts": lambda: store.drop_drafts(art(), owner="a"),
         "delete": lambda: store.delete(art(), owner="a"),
         "purge_expired": store.purge_expired,
@@ -1356,3 +1360,164 @@ def test_every_write_holds_the_write_lock_from_its_first_statement(tmp_path, mon
         for t in writes:
             assert [s for s in t if not s.startswith("PRAGMA")][0] == "BEGIN IMMEDIATE", (name, t)
     assert calls_out["publish"] and calls_out["agent_reply"] and calls_out["delete"]
+
+
+def batch(client, art_id, decisions, key=OTHER, author="Olga"):
+    body = {"author": author, "decisions": decisions}
+    return client.post(f"/a/{art_id}/drafts/batch", json=body, headers=as_author(key))
+
+
+def delete_drafts(client, art_id, ids, key=OTHER):
+    return client.post(f"/a/{art_id}/drafts/delete", json={"ids": ids}, headers=as_author(key))
+
+
+def agent_answers(client, keys, art_id, states):
+    """Comments by KEY sent to the agent, which answers comment i with states[i]."""
+    for _ in states:
+        add_draft(client, art_id, {"text": "for the agent"})
+    review(client, art_id, {"author": "Ivan", "agent": True})
+    client.post(f"/api/v1/artifacts/{art_id}/take", headers=auth(keys["alice"]))
+    for n, state in enumerate(states, 1):
+        if state:
+            agent_reply(client, keys["alice"], art_id, n, {"text": "ok", "state": state})
+
+
+def test_a_batch_of_decisions(env):
+    client, _, keys = env
+    art = upload(client, keys["alice"], "a.txt", b"x")
+    agent_answers(client, keys, art["id"], ["done", "wrote", None])  # 1..3 by KEY
+    comment(client, art["id"], key=OTHER)  # 4, OTHER's own
+    decide(client, art["id"], "approve", 1, key=KEY)  # replaced by the batch's accept
+    r = batch(
+        client,
+        art["id"],
+        [{"kind": "accept", "of": 1}, {"kind": "accept", "of": 2}],
+        key=KEY,
+        author="Ivan",
+    )
+    assert r.status_code == 201 and r.headers["cache-control"] == "no-store"
+    made = r.json()
+    assert [(d["kind"], d["of"], d["author"], d["text"]) for d in made] == [
+        ("accept", 1, "Ivan", None),
+        ("accept", 2, "Ivan", None),
+    ]
+    assert [(d["kind"], d["of"]) for d in drafts(client, art["id"]).json()] == [
+        ("accept", 1),
+        ("accept", 2),
+    ]
+    # A colleague's pending comment is approved; the author defaults like a draft's.
+    r = batch(client, art["id"], [{"kind": "approve", "of": 3}, {"kind": "reject", "of": 1}])
+    assert r.status_code == 201
+    r = client.post(
+        f"/a/{art['id']}/drafts/batch",
+        json={"decisions": [{"kind": "approve", "of": 2}]},
+        headers=as_author("r" * 22),
+    )
+    assert r.json()[0]["author"] == "anonymous"
+
+
+def test_a_batch_is_all_or_nothing(env):
+    client, _, keys = env
+    art = upload(client, keys["alice"], "a.txt", b"x")
+    agent_answers(client, keys, art["id"], ["done", None, "asked"])  # 1..3 by KEY
+    comment(client, art["id"], key=OTHER)  # 4, OTHER's own
+    ok = {"kind": "accept", "of": 1}
+    refused = {
+        400: [
+            {"kind": "accept", "of": 2},  # the agent has not answered
+            {"kind": "approve", "of": 1},  # one's own
+            {"kind": "reject", "of": 3},  # one's own
+        ],
+        404: [{"kind": "accept", "of": 9}, {"kind": "accept", "of": 0}],  # not on this file
+    }
+    for status, bad in refused.items():
+        for d in bad:
+            r = batch(client, art["id"], [ok, d], key=KEY)
+            assert r.status_code == status, d
+            assert drafts(client, art["id"]).json() == [], d
+    # A resolved comment is not open any more.
+    client.patch(
+        f"/api/v1/artifacts/{art['id']}/comments/3",
+        json={"resolved": True},
+        headers=auth(keys["alice"]),
+    )
+    assert batch(client, art["id"], [ok, {"kind": "accept", "of": 3}], key=KEY).status_code == 404
+    assert drafts(client, art["id"]).json() == []
+    # Approving a colleague's comment needs no answer from the agent.
+    assert batch(client, art["id"], [{"kind": "approve", "of": 2}]).status_code == 201
+
+
+def test_a_batch_body_is_checked(env, monkeypatch):
+    client, _, keys = env
+    art = upload(client, keys["alice"], "a.txt", b"x")
+    agent_answers(client, keys, art["id"], ["done"])
+    url = f"/a/{art['id']}/drafts/batch"
+    one = {"kind": "accept", "of": 1}
+    bad = [
+        {},
+        {"author": "Olga"},
+        {"decisions": []},
+        {"decisions": one},
+        {"decisions": [one] * 2},  # one decision per comment
+        {"decisions": [one] * 201},
+        {"decisions": [{"kind": "reply", "of": 1}]},
+        {"decisions": [{"kind": "comment", "of": 1}]},
+        {"decisions": [{"kind": "accept"}]},
+        {"decisions": [{"kind": "accept", "of": 1, "text": "x"}]},
+        {"decisions": [{"kind": "accept", "of": "1"}]},
+        {"decisions": [{"kind": "accept", "of": True}]},
+        {"decisions": ["accept"]},
+        {"decisions": [one], "extra": 1},
+        {"decisions": [one], "author": "a\nb"},
+    ]
+    for body in bad:
+        r = client.post(url, json=body, headers=as_author())
+        assert (r.status_code, r.json()["error"]) == (400, "bad_request"), body
+    # The public calls' rules: an author key, a JSON body.
+    assert client.post(url, json={"decisions": [one]}).status_code == 400
+    r = client.post(url, content=b'{"decisions": []}', headers=as_author())
+    assert r.json()["error"] == "bad_request"
+    assert client.get(url, headers=as_author()).status_code == 405
+    assert batch(client, "a" * 22, [one]).status_code == 404
+    assert drafts(client, art["id"]).json() == []
+    # The draft limits count the whole batch.
+    monkeypatch.setattr("agent_artifacts.store.MAX_DRAFTS_PER_KEY", 1)
+    add_draft(client, art["id"], {"text": "x"})
+    r = batch(client, art["id"], [one], key=KEY)
+    assert (r.status_code, r.json()["error"]) == (409, "too_many_drafts")
+    assert len(drafts(client, art["id"]).json()) == 1
+
+
+def test_a_batch_delete_deletes_only_the_keys_drafts(env):
+    client, _, keys = env
+    art = upload(client, keys["alice"], "a.txt", b"x")
+    comment(client, art["id"])  # 1
+    comment(client, art["id"])  # 2
+    mine = [
+        d["id"]
+        for d in batch(
+            client, art["id"], [{"kind": "approve", "of": 1}, {"kind": "reject", "of": 2}]
+        ).json()
+    ]
+    kept = add_draft(client, art["id"], {"text": "kept"}, OTHER).json()["id"]
+    theirs = add_draft(client, art["id"], {"text": "theirs"}).json()["id"]
+    r = delete_drafts(client, art["id"], [*mine, theirs, "b" * 11, "short"])
+    assert r.status_code == 204 and r.headers["cache-control"] == "no-store"
+    assert [d["id"] for d in drafts(client, art["id"], OTHER).json()] == [kept]
+    assert [d["id"] for d in drafts(client, art["id"]).json()] == [theirs]
+    # Again: nothing left of those, still 204.
+    assert delete_drafts(client, art["id"], mine).status_code == 204
+    url = f"/a/{art['id']}/drafts/delete"
+    for body in (
+        {},
+        {"ids": []},
+        {"ids": "x"},
+        {"ids": [1]},
+        {"ids": ["b" * 11] * 201},
+        {"ids": [kept], "x": 1},
+    ):
+        r = client.post(url, json=body, headers=as_author(OTHER))
+        assert (r.status_code, r.json()["error"]) == (400, "bad_request"), body
+    assert client.post(url, json={"ids": [kept]}).status_code == 400  # no author key
+    assert delete_drafts(client, "a" * 22, [kept]).status_code == 404
+    assert [d["id"] for d in drafts(client, art["id"], OTHER).json()] == [kept]
