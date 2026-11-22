@@ -187,10 +187,6 @@ no-referrer`.
 
 ### The viewer page
 
-Until comment mode is built (see [Comments](#comments)), the speech bubble
-opens and closes the comments panel, and a click on an image still places a
-comment.
-
 The header is one bar: the file name with its size and expiry on a second line
 under it, and two square buttons. The speech bubble switches comment mode (see
 [Comments](#comments)); while it is on, the bubble is blue and pressed. The
@@ -382,11 +378,6 @@ links work only with `target="_blank"`.
 
 ## Comments
 
-The server side is built: the public and owner calls, their rules and
-limits. The viewer is not built yet: it still has the earlier panel, which
-sends a comment as one draft and publishes it at once, and has no sheet
-heights, drafts, Finish review or draft pins.
-
 Anyone with the link can read the published comments and write their own,
 the same people who can see the file. A person writes comments as drafts,
 which only they see, and publishes them together by finishing the review;
@@ -416,8 +407,8 @@ the whole file" at the end of the list adds a draft without a pin. The
 person's drafts and their pins show only in comment mode. Published comments
 show their pins always.
 
-**The sheet.** On a phone (up to 640 px wide) comments live in a bottom sheet
-with four heights:
+**The sheet.** On a phone or a window under 900 px wide, comments live in a
+bottom sheet with four heights:
 
 | Height | Holds |
 | --- | --- |
