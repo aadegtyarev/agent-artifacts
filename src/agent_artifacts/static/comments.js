@@ -709,11 +709,59 @@
   }
 
   // --- Pins ----------------------------------------------------------------------
+  // What is drawn: the listed items with a pin here, and the new draft's spot.
+  function pinList() {
+    const shown = items().filter((it) => pinnable(it.anchor)).map((it) => ({
+      key: it.key, label: it.label, anchor: it.anchor, own: it.own, fill: it.fill, badge: it.badge,
+      lit: S.sel === it.key && (S.view === "item"
+        || (S.view === "list" && (desk.matches || S.pos !== "strip"))),
+    }));
+    if (S.compose && pinnable(S.compose.anchor)) {
+      shown.push({ key: "new", label: "", anchor: S.compose.anchor, own: true, fill: "draft", badge: "", lit: true });
+    }
+    return shown;
+  }
+
+  // A tap on a pin: with the list open, its row lights up and comes into
+  // view, the sheet stays; otherwise it opens its item. On the new draft's
+  // pin, its field.
+  function tapPin(key) {
+    if (key === "new") {
+      if (S.compose) {
+        if (S.view !== "compose" || S.pos === "strip") go("compose", "q");
+        fields.compose.focus({ preventScroll: true });
+      }
+      return;
+    }
+    if (!itemOf(key)) return;
+    if (S.view === "list" && (desk.matches || S.pos !== "strip")) {
+      if (S.compose) dropCompose(false);
+      S.sel = key;
+      render();
+      showRow(key);
+    } else openItem(key);
+  }
+
+  function showRow(key) {
+    const r = body.querySelector(`.it[data-key="${CSS.escape(key)}"]`);
+    if (r) r.scrollIntoView({ block: "nearest" });
+  }
+
   // Drawn over the image or in the page's frame by comments-pins.js.
-  const { page, drawPins, fitPins, reveal, revealSoon, showRow, syncPicking } = commentsPins({
-    pinType, image, imageBox, imageLink: $("image-link"), pinLayer, frame, body, dialog,
-    S, desk, fields, items, itemOf, pinnable, el,
-    go, openItem, dropCompose, render, place, escape,
+  // render(), canPin() and lost() read `page`, which exists only from this
+  // line on: nothing above it may call render() while the script first runs.
+  const { page, drawPins, fitPins, reveal, revealSoon, syncPicking } = commentsPins({
+    pinType, image, imageBox, imageLink: $("image-link"), pinLayer, frame,
+    pins: pinList,
+    picking: () => S.mode && dialog.hidden,
+    onPin: tapPin,
+    onSpot: place,
+    onEscape: escape,
+    // The list and the item say which spots were not found; a field being
+    // typed in is not redrawn for that.
+    onChange: (spotsOnly) => {
+      if (!spotsOnly || !Object.values(fields).includes(document.activeElement)) render();
+    },
   });
 
   // --- Navigation ------------------------------------------------------------------
