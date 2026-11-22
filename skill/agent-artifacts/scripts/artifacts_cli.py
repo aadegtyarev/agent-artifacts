@@ -49,7 +49,8 @@ USAGE = """usage: artifacts_cli.py <command> [args]
   reply ID N TEXT [--wrote|--asked]
                             answer in comment N's chat: done (default), done
                             with a remark or question (--wrote), or not done
-                            until the person answers (--asked)
+                            until the person answers (--asked); the option
+                            goes after TEXT or before ID
   resolve ID N              mark comment N done
   reopen ID N               mark comment N open again
   delete-comment ID N       delete comment N; the other numbers stay
@@ -276,12 +277,15 @@ def run(argv: list[str]) -> str | None:
             need(1, "ID")
             return c.call("POST", f"{api}/{args[0]}/take")
         case "reply":
-            flags = [a for a in args if a in ("--wrote", "--asked")]
-            args = [a for a in args if a not in flags]
-            if len(flags) > 1:
-                raise Usage("reply: --wrote or --asked, not both")
-            need(3, "ID N TEXT [--wrote|--asked]")
-            state = flags[0].removeprefix("--") if flags else "done"
+            # The option only before ID or after TEXT, so any TEXT can be sent.
+            flags = ("--wrote", "--asked")
+            state = "done"
+            if args and args[0] in flags:
+                state, args = args[0], args[1:]
+            elif len(args) == 4 and args[3] in flags:
+                state, args = args[3], args[:3]
+            need(3, "[--wrote|--asked] ID N TEXT  or  ID N TEXT [--wrote|--asked]")
+            state = state.removeprefix("--")
             return c.json(
                 "POST",
                 f"{api}/{args[0]}/comments/{_number(args[1])}/reply",
