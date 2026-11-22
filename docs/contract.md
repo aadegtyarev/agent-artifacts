@@ -444,11 +444,11 @@ pending deletes first.
 
 **Pins.** A published comment's pin is solid with its number; a draft's is
 filled too, with a white dashed ring and a letter. In the list drafts come
-first, on a light blue ground. Blue marks what was written from this browser (drafts
-and published comments of its author key), orange everything else. A comment
-the agent resolved leaves the content and the list. A tap on a pin opens its
-item; selecting an item lights its pin and scrolls it into view. Pins and
-cards show texts and names as text nodes, never as HTML.
+first, on a light blue ground. Blue marks what was written from this browser
+(drafts and published comments of its author key), orange everything else. A
+comment the agent resolved leaves the content and the list. A tap on a pin
+opens its item; selecting an item lights its pin and scrolls it into view.
+Pins and cards show texts and names as text nodes, never as HTML.
 
 | Type | Pin |
 | --- | --- |
