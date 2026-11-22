@@ -170,3 +170,29 @@ def test_comments_resolve_delete_and_drop_drafts(server):
     store.add_draft(art_id, "h", author="p", text="unsent", anchor=None)
     assert cli(home, "drop-drafts", art_id, env=env)[1].strip() == "drafts deleted"
     assert store.drafts(art_id, "h") == []
+
+
+def test_take_and_reply(server):
+    url, store, home = server
+    env = {"AGENT_ARTIFACTS_URL": url, "AGENT_ARTIFACTS_KEY": store.add_agent("alice")}
+    page = home / "a.html"
+    page.write_text("<p>hi</p>")
+    art_id = json.loads(cli(home, "upload", str(page), env=env)[1])["id"]
+    store.add_draft(art_id, "h", author="p", text="make it green", anchor=None)
+    store.publish(art_id, "h", author="p", text=None, for_agent=True)
+    code, out, _ = cli(home, "take", art_id, env=env)
+    assert code == 0 and [(c["n"], c["agent"]) for c in json.loads(out)] == [(1, "working")]
+    code, out, _ = cli(home, "reply", art_id, "1", "Green now", env=env)
+    c = json.loads(out)
+    assert code == 0 and c["agent"] == "done" and c["replies"][0]["text"] == "Green now"
+    for args, state, text in (
+        (("--asked", art_id, "1", "Which?"), "asked", "Which?"),
+        ((art_id, "1", "Hm", "--wrote"), "wrote", "Hm"),
+        # A text that looks like the option is still the text.
+        ((art_id, "1", "--wrote"), "done", "--wrote"),
+    ):
+        c = json.loads(cli(home, "reply", *args, env=env)[1])
+        assert (c["agent"], c["replies"][-1]["text"]) == (state, text)
+    assert cli(home, "reply", art_id, "1", "x", "--wrote", "--asked", env=env)[0] == 2
+    assert cli(home, "reply", art_id, "1", "--asked", "x", env=env)[0] == 2
+    assert cli(home, "reply", art_id, "1", env=env)[0] == 2

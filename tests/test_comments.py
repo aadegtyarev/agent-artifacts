@@ -1,5 +1,6 @@
 """Comments: drafts by author key, finishing a review, the owner's calls."""
 
+import io
 import sqlite3
 import time
 
@@ -271,6 +272,10 @@ def test_review_publishes_drafts_in_order_and_the_general_comment_last(env):
         "before_replace",
         "mine",
         "for_agent",
+        "agent",
+        "approved_by",
+        "rejected_by",
+        "replies",
     }
     assert not any(c["for_agent"] for c in made)
     # Only the general comment, no drafts: fine too.
@@ -707,7 +712,56 @@ def test_earlier_databases_open_and_work(tmp_path, schema):
             (3 if with_comments else 1, True, False)
         ]
     assert store.get(ART).comments == (2 if with_comments else 1)
+    # Replies and decisions work on what was there before.
+    n = made[0]["n"]
+    store.add_draft(ART, "h", author="x", text="", anchor=None, kind="approve", of_n=n)
+    [c] = store.publish(ART, "h", author="x", text=None, for_agent=True)
+    assert (c.approved_by, c.agent) == ("x", "waiting")
+    assert store.agent_reply(ART, n, "done", "done", owner="old").replies[0].by_agent
     assert store.drop_drafts(ART, owner="old")
+
+
+def test_a_database_from_before_chats_keeps_its_drafts(tmp_path):
+    # Made by the current code, then the chat columns and table taken away:
+    # the schema of f21924c, with a draft and a comment in it.
+    store = Store(tmp_path, max_total_bytes=10**6)
+    store.add_agent("old")
+    art = store.put(io.BytesIO(b"x"), owner="old", name="a.txt", kind="txt", size=1)
+    store.add_draft(art.id, "h", author="p", text="published", anchor=None)
+    store.publish(art.id, "h", author="p", text=None)
+    for text in ("sent", "sent, resolved"):  # 2 and 3, sent to the agent
+        store.add_draft(art.id, "h", author="p", text=text, anchor=None)
+    store.publish(art.id, "h", author="p", text=None, for_agent=True)
+    store.resolve_comment(art.id, 3, True, owner="old")
+    store.add_draft(art.id, "h", author="p", text="pending", anchor=None)
+    with store._conn() as db:
+        db.execute("DROP TABLE replies")
+        for table, column in (
+            ("drafts", "kind"),
+            ("drafts", "of_n"),
+            ("comments", "approved_by"),
+            ("comments", "rejected_by"),
+            ("comments", "agent"),
+        ):
+            db.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
+    store = Store(tmp_path, max_total_bytes=10**6)
+    # What was sent to the agent and is still open waits for it.
+    assert [(c.n, c.agent) for c in store.comments(art.id, owner="old")] == [
+        (1, None),
+        (2, "waiting"),
+        (3, None),
+    ]
+    Store(tmp_path, max_total_bytes=10**6)  # only when the column is added
+    store.take(art.id, owner="old")
+    assert store.comments(art.id, owner="old")[1].agent == "working"
+    Store(tmp_path, max_total_bytes=10**6)
+    assert store.comments(art.id, owner="old")[1].agent == "working"
+    [d] = store.drafts(art.id, "h")
+    assert (d.kind, d.of_n, d.text) == ("comment", None, "pending")
+    store.add_draft(art.id, "k", author="q", text="", anchor=None, kind="approve", of_n=1)
+    [c] = store.publish(art.id, "k", author="q", text=None)
+    assert (c.n, c.approved_by) == (1, "q")
+    assert [c.n for c in store.publish(art.id, "h", author="p", text=None)] == [4]
 
 
 def test_a_counter_added_behind_existing_comments_starts_after_them(tmp_path):
@@ -748,3 +802,289 @@ def test_an_element_anchor_keeps_its_screen_and_hash(env):
     # Empty ones are dropped, not stored.
     r = add_draft(client, art["id"], {"text": "y", "anchor": ELEMENT | {"screen": "", "hash": ""}})
     assert r.json()["anchor"] == ELEMENT
+
+
+# Chats, approvals and the agent's work
+
+
+def decide(client, art_id, kind, n, key=OTHER, author="Olga"):
+    return add_draft(client, art_id, {"author": author, "kind": kind, "of": n}, key)
+
+
+def reply_draft(client, art_id, n, text, key=OTHER):
+    body = {"author": "Olga", "kind": "reply", "of": n, "text": text}
+    return add_draft(client, art_id, body, key)
+
+
+def agent_reply(client, key, art_id, n, body):
+    url = f"/api/v1/artifacts/{art_id}/comments/{n}/reply"
+    return client.post(url, json=body, headers=auth(key))
+
+
+def public(client, art_id, key=KEY):
+    return {c["n"]: c for c in client.get(f"/a/{art_id}/comments", headers=as_author(key)).json()}
+
+
+def test_draft_kinds_are_checked(env):
+    client, _, keys = env
+    art = upload(client, keys["alice"], "a.html", b"<p>")
+    comment(client, art["id"])  # 1, by KEY
+    url = f"/a/{art['id']}/drafts"
+    r = reply_draft(client, art["id"], 1, " thanks ")
+    assert r.status_code == 201
+    assert {k: r.json()[k] for k in ("kind", "of", "text", "anchor")} == {
+        "kind": "reply",
+        "of": 1,
+        "text": "thanks",
+        "anchor": None,
+    }
+    d = decide(client, art["id"], "approve", 1).json()
+    assert (d["kind"], d["of"], d["text"]) == ("approve", 1, None)
+    assert add_draft(client, art["id"], {"text": "x"}).json()["kind"] == "comment"
+    assert add_draft(client, art["id"], {"text": "x"}).json()["of"] is None
+    bad = [
+        {"kind": "nope", "of": 1},
+        {"kind": "reply", "of": 1},  # no text
+        {"kind": "reply", "of": 1, "text": " "},
+        {"kind": "reply", "of": 1, "text": "x", "anchor": ELEMENT},
+        {"kind": "reply", "text": "x"},  # no comment
+        {"kind": "approve", "of": 1, "text": "x"},
+        {"kind": "approve", "of": "1"},
+        {"kind": "approve", "of": True},
+        {"kind": "comment", "of": 1, "text": "x"},
+    ]
+    for body in bad:
+        r = client.post(url, json=body, headers=as_author(OTHER))
+        assert (r.status_code, r.json()["error"]) == (400, "bad_request"), body
+    # Not an open comment of this file.
+    for n in (0, 2, 10**12):
+        r = decide(client, art["id"], "reject", n)
+        assert (r.status_code, r.json()["error"]) == (404, "not_found"), n
+    # Not one's own comment; not accepted before the agent answers.
+    r = decide(client, art["id"], "approve", 1, key=KEY)
+    assert (r.status_code, r.json()["error"]) == (400, "bad_request")
+    r = decide(client, art["id"], "accept", 1, key=KEY)
+    assert (r.status_code, r.json()["error"]) == (400, "bad_request")
+    # A decision has no text to edit; a reply has.
+    r = client.patch(f"{url}/{d['id']}", json={"text": "x"}, headers=as_author(OTHER))
+    assert r.status_code == 404
+    reply = drafts(client, art["id"], OTHER).json()[0]
+    r = client.patch(f"{url}/{reply['id']}", json={"text": "edited"}, headers=as_author(OTHER))
+    assert r.json()["text"] == "edited"
+
+
+def test_a_new_decision_replaces_the_old_one(env):
+    client, _, keys = env
+    art = upload(client, keys["alice"], "a.txt", b"x")
+    comment(client, art["id"])
+    comment(client, art["id"])
+    decide(client, art["id"], "approve", 1)
+    decide(client, art["id"], "approve", 2)
+    reply_draft(client, art["id"], 1, "a")
+    reply_draft(client, art["id"], 1, "b")
+    decide(client, art["id"], "reject", 1)
+    left = [(d["kind"], d["of"]) for d in drafts(client, art["id"], OTHER).json()]
+    assert left == [("approve", 2), ("reply", 1), ("reply", 1), ("reject", 1)]
+    # Undo is deleting the draft.
+    [rejection] = [d for d in drafts(client, art["id"], OTHER).json() if d["kind"] == "reject"]
+    url = f"/a/{art['id']}/drafts/{rejection['id']}"
+    assert client.delete(url, headers=as_author(OTHER)).status_code == 204
+
+
+def test_a_review_sent_to_the_agent_makes_new_replied_and_approved_comments_wait(env):
+    client, _, keys = env
+    art = upload(client, keys["alice"], "a.txt", b"x")
+    for _ in range(4):
+        comment(client, art["id"])  # 1..4 by KEY, only published
+    reply_draft(client, art["id"], 1, "me too")
+    decide(client, art["id"], "approve", 2)
+    decide(client, art["id"], "reject", 3)
+    add_draft(client, art["id"], {"text": "new"}, OTHER)
+    made = review(client, art["id"], {"author": "Olga", "agent": True}, key=OTHER).json()
+    state = {c["n"]: (c["for_agent"], c["agent"], c["approved_by"], c["rejected_by"]) for c in made}
+    assert state == {
+        1: (True, "waiting", None, None),
+        2: (True, "waiting", "Olga", None),
+        3: (False, None, None, "Olga"),
+        5: (True, "waiting", None, None),
+    }
+    [r] = public(client, art["id"])[1]["replies"]
+    assert (r["author"], r["text"], r["mine"], r["agent"]) == ("Olga", "me too", False, False)
+    assert public(client, art["id"], OTHER)[1]["replies"][0]["mine"] is True
+    # A rejected comment stays listed; comment 4 was not touched.
+    assert sorted(public(client, art["id"])) == [1, 2, 3, 4, 5]
+    assert public(client, art["id"])[4]["agent"] is None
+
+
+def test_a_review_only_published_changes_no_agent_state(env):
+    client, _, keys = env
+    art = upload(client, keys["alice"], "a.txt", b"x")
+    comment(client, art["id"])
+    comment(client, art["id"])
+    reply_draft(client, art["id"], 1, "note")
+    decide(client, art["id"], "approve", 2)
+    made = review(client, art["id"], {"author": "Olga"}, key=OTHER).json()
+    assert [(c["n"], c["for_agent"], c["agent"], c["approved_by"]) for c in made] == [
+        (1, False, None, None),
+        (2, False, None, "Olga"),
+    ]
+    assert len(made[0]["replies"]) == 1
+    # A later rejection replaces the approval.
+    decide(client, art["id"], "reject", 2, key="r" * 22, author="Ivan")
+    [c] = review(client, art["id"], {"author": "Ivan"}, key="r" * 22).json()
+    assert (c["approved_by"], c["rejected_by"]) == (None, "Ivan")
+
+
+def test_take_and_the_agent_reply_and_accept(env):
+    client, _, keys = env
+    art = upload(client, keys["alice"], "a.txt", b"x")
+    add_draft(client, art["id"], {"text": "for the agent"})
+    review(client, art["id"], {"author": "Ivan", "agent": True})  # 1, waiting
+    comment(client, art["id"])  # 2, only published
+    base = f"/api/v1/artifacts/{art['id']}"
+    r = client.post(f"{base}/take", headers=auth(keys["alice"]))
+    assert r.status_code == 200 and r.headers["cache-control"] == "no-store"
+    assert [(c["n"], c["agent"]) for c in r.json()] == [(1, "working")]
+    assert client.post(f"{base}/take", headers=auth(keys["alice"])).json() == []
+    assert public(client, art["id"])[2]["agent"] is None
+    assert client.post(f"{base}/take", headers=auth(keys["bob"])).status_code == 404
+    assert client.post(f"{base}/take").status_code == 401
+
+    r = agent_reply(client, keys["alice"], art["id"], 1, {"text": "Made it green"})
+    assert r.status_code == 201
+    c = r.json()
+    assert c["agent"] == "done"
+    assert [(x["author"], x["text"], x["agent"], x["mine"]) for x in c["replies"]] == [
+        ("agent", "Made it green", True, False)
+    ]
+    r = agent_reply(client, keys["alice"], art["id"], 1, {"text": "Which green?", "state": "asked"})
+    assert r.json()["agent"] == "asked"
+    for body in ({"text": "x", "state": "working"}, {"text": ""}, {"state": "done"}):
+        assert agent_reply(client, keys["alice"], art["id"], 1, body).status_code == 400, body
+    assert agent_reply(client, keys["alice"], art["id"], 9, {"text": "x"}).status_code == 404
+    assert agent_reply(client, keys["bob"], art["id"], 1, {"text": "x"}).status_code == 404
+
+    # Accepting closes the comment: it leaves the viewer, the owner keeps it.
+    assert decide(client, art["id"], "accept", 1, key=KEY).status_code == 201
+    assert review(client, art["id"], {"author": "Ivan"}).json() == []
+    assert sorted(public(client, art["id"])) == [2]
+    owner = owner_comments(client, keys["alice"], art["id"]).json()
+    assert [(c["n"], c["resolved"]) for c in owner] == [(1, True), (2, False)]
+    assert len(owner[0]["replies"]) == 2
+
+
+def test_replies_and_decisions_on_a_closed_comment_are_dropped(env):
+    client, _, keys = env
+    art = upload(client, keys["alice"], "a.txt", b"x")
+    comment(client, art["id"])
+    comment(client, art["id"])
+    reply_draft(client, art["id"], 1, "late")
+    decide(client, art["id"], "approve", 2)
+    base = f"/api/v1/artifacts/{art['id']}/comments"
+    client.patch(f"{base}/1", json={"resolved": True}, headers=auth(keys["alice"]))
+    client.delete(f"{base}/2", headers=auth(keys["alice"]))
+    r = review(client, art["id"], {"author": "Olga", "agent": True}, key=OTHER)
+    assert (r.status_code, r.json()) == (201, [])
+    assert drafts(client, art["id"], OTHER).json() == []
+    [c] = owner_comments(client, keys["alice"], art["id"]).json()
+    assert (c["replies"], c["agent"]) == ([], None)
+
+
+def test_too_many_replies_refuses_the_whole_review(env, monkeypatch):
+    client, _, keys = env
+    monkeypatch.setattr("agent_artifacts.store.MAX_REPLIES", 2)
+    art = upload(client, keys["alice"], "a.txt", b"x")
+    comment(client, art["id"])
+    assert agent_reply(client, keys["alice"], art["id"], 1, {"text": "one"}).status_code == 201
+    reply_draft(client, art["id"], 1, "two")
+    reply_draft(client, art["id"], 1, "three")
+    add_draft(client, art["id"], {"text": "new"}, OTHER)
+    r = review(client, art["id"], {"author": "Olga"}, key=OTHER)
+    assert (r.status_code, r.json()["error"]) == (409, "too_many_replies")
+    assert len(public(client, art["id"])) == 1 and len(drafts(client, art["id"], OTHER).json()) == 3
+    assert agent_reply(client, keys["alice"], art["id"], 1, {"text": "two"}).status_code == 201
+    r = agent_reply(client, keys["alice"], art["id"], 1, {"text": "three"})
+    assert (r.status_code, r.json()["error"]) == (409, "too_many_replies")
+
+
+def test_a_file_holds_a_bounded_number_of_replies(env, monkeypatch):
+    client, _, keys = env
+    monkeypatch.setattr("agent_artifacts.store.MAX_FILE_REPLIES", 3)
+    art = upload(client, keys["alice"], "a.txt", b"x")
+    for _ in range(3):
+        comment(client, art["id"])
+    for n in (1, 2):
+        assert agent_reply(client, keys["alice"], art["id"], n, {"text": "ok"}).status_code == 201
+    reply_draft(client, art["id"], 3, "a")
+    reply_draft(client, art["id"], 3, "b")
+    r = review(client, art["id"], {"author": "Olga"}, key=OTHER)
+    assert (r.status_code, r.json()["error"]) == (409, "too_many_replies")
+    assert agent_reply(client, keys["alice"], art["id"], 3, {"text": "ok"}).status_code == 201
+    r = agent_reply(client, keys["alice"], art["id"], 3, {"text": "more"})
+    assert (r.status_code, r.json()["error"]) == (409, "too_many_replies")
+
+
+def answered(client, keys, text="x"):
+    """A file with comment 1 sent to the agent and answered: done."""
+    art = upload(client, keys["alice"], "a.txt", b"x")
+    add_draft(client, art["id"], {"text": text})
+    review(client, art["id"], {"author": "Ivan", "agent": True})
+    agent_reply(client, keys["alice"], art["id"], 1, {"text": "done"})
+    return art
+
+
+def test_an_accept_after_someone_sent_the_comment_back_is_dropped(env):
+    client, _, keys = env
+    art = answered(client, keys)
+    assert decide(client, art["id"], "accept", 1, key=KEY).status_code == 201
+    # Someone else asks for more and sends it to the agent first.
+    reply_draft(client, art["id"], 1, "not yet")
+    review(client, art["id"], {"author": "Olga", "agent": True}, key=OTHER)
+    assert review(client, art["id"], {"author": "Ivan"}).json() == []
+    c = public(client, art["id"])[1]
+    assert (c["resolved"], c["agent"]) == (False, "waiting")
+    assert drafts(client, art["id"]).json() == []
+
+
+def test_a_reply_in_the_same_review_cancels_the_accept(env):
+    client, _, keys = env
+    art = answered(client, keys)
+    decide(client, art["id"], "accept", 1, key=KEY)
+    reply_draft(client, art["id"], 1, "one more thing", key=KEY)
+    [c] = review(client, art["id"], {"author": "Ivan", "agent": True}).json()
+    assert (c["n"], c["resolved"], c["agent"]) == (1, False, "waiting")
+    assert [r["text"] for r in c["replies"]] == ["done", "one more thing"]
+
+
+def test_a_rejected_comment_is_no_work_for_the_agent(env):
+    client, _, keys = env
+    art = answered(client, keys)
+    add_draft(client, art["id"], {"text": "second"})
+    review(client, art["id"], {"author": "Ivan", "agent": True})  # 2, waiting
+    decide(client, art["id"], "reject", 2)
+    [c] = review(client, art["id"], {"author": "Olga", "agent": True}, key=OTHER).json()
+    assert (c["n"], c["rejected_by"], c["agent"]) == (2, "Olga", None)
+    taken = client.post(f"/api/v1/artifacts/{art['id']}/take", headers=auth(keys["alice"]))
+    assert taken.json() == []
+
+
+def test_comment_lists_say_when_the_file_was_last_uploaded(env):
+    client, _, keys = env
+    art = upload(client, keys["alice"], "a.txt", b"x")
+    first = client.get(f"/a/{art['id']}/comments").headers["x-artifact-updated"]
+    assert first == art["created_at"]
+    client.clock.now += 60
+    upload(client, keys["alice"], "a.txt", b"y", artifact_id=art["id"])
+    later = client.get(f"/a/{art['id']}/comments").headers["x-artifact-updated"]
+    assert later > first
+    assert owner_comments(client, keys["alice"], art["id"]).headers["x-artifact-updated"] == later
+
+
+def test_replies_go_with_their_comment(env):
+    client, store, keys = env
+    art = upload(client, keys["alice"], "a.txt", b"x")
+    comment(client, art["id"])
+    agent_reply(client, keys["alice"], art["id"], 1, {"text": "ok"})
+    client.delete(f"/api/v1/artifacts/{art['id']}/comments/1", headers=auth(keys["alice"]))
+    with store._conn() as db:
+        assert db.execute("SELECT COUNT(*) FROM replies").fetchone() == (0,)

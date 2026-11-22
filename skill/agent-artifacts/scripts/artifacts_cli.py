@@ -44,6 +44,13 @@ USAGE = """usage: artifacts_cli.py <command> [args]
   list                      your live files, with comments and open_comments counts
   delete ID                 delete one now
   comments ID               the comments on a file, oldest first; marks them read
+  take ID                   take the comments waiting for you ("agent": "waiting"):
+                            they become "working"; prints them
+  reply ID N TEXT [--wrote|--asked]
+                            answer in comment N's chat: done (default), done
+                            with a remark or question (--wrote), or not done
+                            until the person answers (--asked); the option
+                            goes after TEXT or before ID
   resolve ID N              mark comment N done
   reopen ID N               mark comment N open again
   delete-comment ID N       delete comment N; the other numbers stay
@@ -266,6 +273,24 @@ def run(argv: list[str]) -> str | None:
         case "comments":
             need(1, "ID")
             return c.call("GET", f"{api}/{args[0]}/comments")
+        case "take":
+            need(1, "ID")
+            return c.call("POST", f"{api}/{args[0]}/take")
+        case "reply":
+            # The option only before ID or after TEXT, so any TEXT can be sent.
+            flags = ("--wrote", "--asked")
+            state = "done"
+            if args and args[0] in flags:
+                state, args = args[0], args[1:]
+            elif len(args) == 4 and args[3] in flags:
+                state, args = args[3], args[:3]
+            need(3, "[--wrote|--asked] ID N TEXT  or  ID N TEXT [--wrote|--asked]")
+            state = state.removeprefix("--")
+            return c.json(
+                "POST",
+                f"{api}/{args[0]}/comments/{_number(args[1])}/reply",
+                {"text": args[2], "state": state},
+            )
         case "resolve" | "reopen":
             need(2, "ID N")
             return c.json(
