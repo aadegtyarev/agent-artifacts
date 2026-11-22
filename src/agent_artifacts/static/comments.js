@@ -1032,6 +1032,9 @@
       // Replying means "not yet": an acceptance of the same comment goes.
       const dec = decisionOn(n);
       if (dec && dec.kind === "accept") await undoDecision(dec);
+      // Sent: the keyboard goes and Finish review comes back, the usual next
+      // step; a tap on the field writes another reply.
+      fields.reply.blur();
       render();
       toChatEnd();
     } catch (e) {
