@@ -428,9 +428,9 @@ bottom sheet with four heights:
 
 | Height | Holds |
 | --- | --- |
-| strip | one line: "Review · N" (the person's drafts) and **Finish review**; with no drafts, "Comments · N ›", and in comment mode the hint "tap a spot to add" beside it (alone when there are no comments) |
+| strip | one line: "Review · N" (the comments the person's drafts add, decide or reply to) and **Finish review**; with none, the agent's progress with its badge ("With the agent · N", "Agent is working · N", "Agent answered N · take a look", or "N with the agent · N to check"), else "Comments · N ›", and in comment mode the hint "tap a spot to add" beside it (alone when there are no comments) |
 | ¼ | one item, the sheet as tall as its content and at most half: the field of a new draft, or the selected comment or draft, with ‹ › to its neighbours |
-| ½ | the list (drafts and comments, text and state only) or **Finish review**; an item dragged up stays first, whole, with the other comments listed under it (a tap on one brings it to the top at the same height); a new draft dragged up stays itself |
+| ½ | the list (drafts and comments, text and state only; while the agent has comments and there are no drafts, only those, the rest behind "Others · N ›") or **Finish review**; an item dragged up stays first, whole, with the other comments listed under it (a tap on one brings it to the top at the same height); a new draft dragged up stays itself |
 | full | the same as ½, taller |
 
 A drag changes the height only; what the sheet shows stays. A tap changes
@@ -443,11 +443,16 @@ sheet's title line (its buttons too) snaps to the nearest height; a tap on
 the grip steps ½ and full, a tap on one item's title goes back to the list.
 **Finish review** opens at ½. Folding a new draft to the strip drops it, with Undo if text was typed. The keyboard pushes the sheet up and
 the pin stays in sight above it. Buttons show only on the selected item:
-**Edit** and **Delete** on the person's own draft, none on a published
-comment. On a computer the same
+**Edit** and **Delete** on the person's own draft or reply; on a published
+comment, as a small chat with its replies (the agent's marked as the agent),
+**✓ Approve** and **✕ Reject** while it is someone else's awaiting approval,
+**✓ Accept** when the agent is done (`done` or `wrote`), and a reply field.
+A decision shows as one line under the comment with a small **Undo**. With
+drafts, **Finish review · N** sits at the bottom of an item too. On a computer the same
 views sit in a panel at the right, and the strip's line heads it.
 
-**Finish review** shows the person's drafts, a field for a general comment
+**Finish review** shows the person's new drafts and one row for each comment
+decided or replied to, a field for a general comment
 (optional, about the whole file), a choice **Send to agent** (the default) or
 **Only publish** with a line saying what follows, and **Back** / **Finish
 review**. Sent to the agent,
@@ -459,17 +464,29 @@ drafts were made, the general comment last. If they do not all fit under the
 limit, none is published. A draft whose anchor no longer fits the file's
 type after a replace is published as a comment about the whole file.
 
+**Live.** While the page is in sight the viewer fetches the comments again
+every few seconds, so the badges follow the agent without a reload. When
+`X-Artifact-Updated` changes, the file was replaced: a banner "The file was
+updated" offers **Show**, which reloads the page; the file is not swapped
+under the person's finger.
+
 **Failures.** When a call answers `429`, `409` or `404`, a toast says why and
 the text stays in the field or the draft. **Delete** hides a draft at once
 with Undo in a toast and sends the `DELETE` when the Undo time ends, so Undo
 keeps the draft's id and order. **Finish review** and leaving the page send
 pending deletes first.
 
-**Pins.** A published comment's pin is solid with its number; a draft's is
-filled too, with a white dashed ring and a letter. In the list drafts come
-first, on a light blue ground. Blue marks what was written from this browser
-(drafts and published comments of its author key), orange everything else. A
-comment the agent resolved leaves the content and the list. The selected
+**Pins.** One shape for every participant. Colour says whose: blue what was
+written from this browser, orange everything else. Fill says the stage: a
+draft is hollow with a dashed edge and a letter; someone else's comment
+awaiting approval is hollow with a solid edge; a comment in force is solid
+with its number; a rejected one is grey and stays. One badge at the corner
+says what is next: the agent's state (grey ✦ waiting, purple ✦ working,
+green ✦ done, green "?" done and wrote, orange "?" asked), or the person's
+decision not yet sent (blue ✓ approve or accept, blue ↩ reply, grey ✕
+reject), or a red dot for a colleague's reply not yet seen in this browser.
+In the list drafts come first, on a light blue ground. A comment that is
+accepted or that the agent resolved leaves the content and the list. The selected
 item's pin is drawn bigger and is scrolled into view (see the sheet for what a
 tap on a pin does).
 Pins and cards show texts and names as text nodes, never as HTML.
@@ -645,8 +662,9 @@ talk only through `postMessage`:
   with an anchor shows its anchor's text;
 - the viewer turns pin placement on in comment mode and off outside it, and
   sends the pins to draw: a key, a short label (a number or a letter), the
-  anchor and a style (own or other's, draft or published, lit), never texts
-  or names;
+  anchor, whose (own or other's), the fill (draft, awaiting approval, in
+  force, rejected), the badge (the agent's state, the person's unsent
+  decision or an unseen reply) and whether it is lit, never texts or names;
 - the script answers with the anchor of the tapped spot, or with the key of
   a tapped pin. While placing, it takes each click in the capture phase and
   cancels it, so a link or a button under it does not fire.
@@ -669,7 +687,10 @@ checks the shape and limits of what it gets and treats it as untrusted; the
 script runs selectors inside `try`, so a bad one only leaves its pin out. The
 page's own scripts can forge the anchor of the next draft, but not its
 text, which the person types into the viewer outside the sandbox. They can
-see where the person's drafts point, though not their texts.
+see where the person's drafts point and each comment's state and the
+person's unsent decisions, though not texts or names. The viewer keeps, per
+browser, how many replies of others it has shown for each comment
+(`localStorage` key `aa-seen:{id}`), for the red dot.
 
 ## Security
 
