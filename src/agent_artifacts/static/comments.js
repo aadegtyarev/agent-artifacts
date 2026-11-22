@@ -299,6 +299,7 @@
   function icon(name) {
     const ns = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("class", "icon");
     svg.setAttribute("viewBox", "0 0 24 24");
     svg.setAttribute("aria-hidden", "true");
     const path = document.createElementNS(ns, "path");
