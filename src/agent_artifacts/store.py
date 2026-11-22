@@ -205,6 +205,42 @@ def _migrate_to_v3(db: sqlite3.Connection) -> None:
     db.execute("UPDATE artifacts SET title = name")
 
 
+def _migrate_to_v4(db: sqlite3.Connection) -> None:
+    """Projects. A file in one never expires, so expires_at becomes nullable;
+    SQLite cannot alter a column's NOT NULL, so the artifacts table is built
+    anew and the rows copied. Foreign keys are off while migrating (see
+    Store.__init__): dropping the old table must not take its comments along."""
+    db.execute(
+        "CREATE TABLE projects (id TEXT PRIMARY KEY, "
+        "owner TEXT NOT NULL REFERENCES agents(name) ON DELETE CASCADE, "
+        "title TEXT NOT NULL, created_at REAL NOT NULL)"
+    )
+    db.execute("CREATE INDEX projects_owner ON projects(owner)")
+    db.execute("""
+        CREATE TABLE artifacts_new (
+            id TEXT PRIMARY KEY,
+            owner TEXT NOT NULL REFERENCES agents(name) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            size INTEGER NOT NULL,
+            created_at REAL NOT NULL,
+            expires_at REAL,  -- NULL: in a project, kept until deleted
+            comment_seq INTEGER NOT NULL DEFAULT 0,  -- the last comment number handed out
+            replaced_at REAL,
+            title TEXT,
+            project TEXT REFERENCES projects(id) ON DELETE CASCADE,
+            section TEXT,
+            added_at REAL  -- when it joined its project, for the project's order
+        )""")
+    columns = "id, owner, name, kind, size, created_at, expires_at, comment_seq, replaced_at, title"
+    db.execute(f"INSERT INTO artifacts_new ({columns}) SELECT {columns} FROM artifacts")  # noqa: S608
+    db.execute("DROP TABLE artifacts")
+    db.execute("ALTER TABLE artifacts_new RENAME TO artifacts")
+    db.execute("CREATE INDEX artifacts_owner ON artifacts(owner)")
+    db.execute("CREATE INDEX artifacts_expires ON artifacts(expires_at)")
+    db.execute("CREATE INDEX artifacts_project ON artifacts(project)")
+
+
 def _repair_comment_seq(db: sqlite3.Connection) -> None:
     """A counter behind its comments (added to a database that had comments,
     or comments written by an older version after a rollback) would hand out
@@ -223,6 +259,7 @@ _MIGRATIONS: tuple[Callable[[sqlite3.Connection], None], ...] = (
     _migrate_to_v1,
     _migrate_to_v2,
     _migrate_to_v3,
+    _migrate_to_v4,
 )
 
 
@@ -268,11 +305,13 @@ class Artifact:
     kind: str
     size: int
     created_at: float
-    expires_at: float
+    expires_at: float | None  # None: in a project, kept until deleted
     comments: int = 0
     open_comments: int = 0
     updated_at: float = 0.0  # the last upload: replaced, else created
     title: str = ""
+    project: str | None = None
+    section: str | None = None
 
 
 # An artifact row with its comment counts, for Artifact(*row).
@@ -282,7 +321,7 @@ _ARTIFACT_SQL = (
     "(SELECT COUNT(*) FROM comments c WHERE c.artifact_id = a.id AND c.resolved_at IS NULL), "
     "COALESCE(a.replaced_at, a.created_at), "
     # Rows written by older code after a rollback have no title.
-    "COALESCE(a.title, a.name) "
+    "COALESCE(a.title, a.name), a.project, a.section "
     "FROM artifacts a"
 )
 
@@ -335,7 +374,7 @@ _COMMENT_SQL = (
     "COALESCE(c.author_key_hash = :key, 0), "
     "c.approved_by, c.rejected_by, c.agent "
     "FROM comments c JOIN artifacts a ON a.id = c.artifact_id "
-    "WHERE c.artifact_id = :id AND a.expires_at > :now"
+    "WHERE c.artifact_id = :id AND (a.expires_at IS NULL OR a.expires_at > :now)"
 )
 
 # The replies on the artifact :id, oldest first, each marked as :key's or not.
@@ -364,14 +403,15 @@ _DRAFT_SQL = (
     "SELECT d.id, d.author, d.text, d.anchor, d.created_at, d.updated_at, d.kind, d.of_n "
     "FROM drafts d JOIN artifacts a ON a.id = d.artifact_id "
     "WHERE d.artifact_id = :id AND d.author_key_hash = :key "
-    "AND a.expires_at > :now AND d.updated_at > :stale"
+    "AND (a.expires_at IS NULL OR a.expires_at > :now) AND d.updated_at > :stale"
 )
 
 
 # The draft :draft of the author key :key, live on a live artifact.
 _OWN_DRAFT = (
     "artifact_id = :id AND id = :draft AND author_key_hash = :key AND updated_at > :stale "
-    "AND EXISTS (SELECT 1 FROM artifacts WHERE id = :id AND expires_at > :now)"
+    "AND EXISTS (SELECT 1 FROM artifacts WHERE id = :id "
+    "AND (expires_at IS NULL OR expires_at > :now))"
 )
 
 
@@ -401,6 +441,39 @@ class DraftRefused(Exception):
 
 class StorageFull(Exception):
     pass
+
+
+class NoSuchProject(Exception):
+    """A project field naming no project of the owner's."""
+
+
+class SectionWithoutProject(Exception):
+    pass
+
+
+class TooMany(Exception):
+    """Over one of the fixed limits on projects, their files or sections."""
+
+
+MAX_PROJECTS = 100  # per agent
+MAX_PROJECT_FILES = 500
+MAX_SECTIONS = 50  # per project
+
+
+@dataclass(frozen=True)
+class Project:
+    id: str
+    owner: str
+    title: str
+    created_at: float
+    files: int
+    used_bytes: int
+
+
+_PROJECT_SQL = (
+    "SELECT p.id, p.owner, p.title, p.created_at, COUNT(a.id), COALESCE(SUM(a.size), 0) "
+    "FROM projects p LEFT JOIN artifacts a ON a.project = p.id"
+)
 
 
 class NameTaken(Exception):
@@ -465,7 +538,10 @@ class Store:
         db = sqlite3.connect(self._db, timeout=10, isolation_level=None)
         try:
             db.execute("PRAGMA journal_mode = WAL")
-            db.execute("PRAGMA foreign_keys = ON")
+            # Off while migrating, as SQLite says for rebuilding a table: a
+            # table dropped and made anew (version 4) must not cascade to the
+            # rows that point at it. Every other connection turns them on.
+            db.execute("PRAGMA foreign_keys = OFF")
             _migrate(db)
         finally:
             db.close()
@@ -541,7 +617,8 @@ class Store:
             rows = db.execute(
                 "SELECT a.name, a.admin, a.quota_bytes, a.last_upload_at, "
                 "COALESCE(SUM(f.size), 0), COUNT(f.id) FROM agents a "
-                "LEFT JOIN artifacts f ON f.owner = a.name AND f.expires_at > :now "
+                "LEFT JOIN artifacts f ON f.owner = a.name "
+                "AND (f.expires_at IS NULL OR f.expires_at > :now) "
                 "WHERE :name IS NULL OR a.name = :name GROUP BY a.name ORDER BY a.name",
                 {"now": self.clock(), "name": name},
             ).fetchall()
@@ -646,7 +723,7 @@ class Store:
         self, db: sqlite3.Connection, artifact_id: str, owner: str | None = None
     ) -> Artifact | None:
         row = db.execute(
-            f"{_ARTIFACT_SQL} WHERE a.id = :id AND a.expires_at > :now "
+            f"{_ARTIFACT_SQL} WHERE a.id = :id AND (a.expires_at IS NULL OR a.expires_at > :now) "
             "AND (:owner IS NULL OR a.owner = :owner)",
             {"id": artifact_id, "now": self.clock(), "owner": owner},
         ).fetchone()
@@ -655,7 +732,8 @@ class Store:
     def list(self, owner: str) -> list[Artifact]:
         with self._conn() as db:
             rows = db.execute(
-                f"{_ARTIFACT_SQL} WHERE a.owner = ? AND a.expires_at > ? ORDER BY a.created_at",
+                f"{_ARTIFACT_SQL} WHERE a.owner = ? AND (a.expires_at IS NULL OR a.expires_at > ?) "
+                "ORDER BY a.created_at",
                 (owner, self.clock()),
             ).fetchall()
         return [Artifact(*r) for r in rows]
@@ -670,16 +748,20 @@ class Store:
         size: int,
         artifact_id: str | None = None,
         title: str | None = None,
+        project: str | None = None,
+        section: str | None = None,
     ) -> Artifact | None:
         """Store a new artifact, or replace ``artifact_id`` if ``owner`` owns
         it. Returns None when there is no such artifact of ``owner``'s.
         Without a ``title`` a new artifact takes its name, a replaced one keeps
-        its title."""
+        its title; the same for ``project`` and ``section``, which cannot be
+        cleared here. Raises what _placed raises, storing nothing."""
         new_id = artifact_id or secrets.token_urlsafe(16)
         tmp = self.files / f".{new_id}.{secrets.token_hex(4)}.tmp"
         with open(tmp, "wb") as out:
             shutil.copyfileobj(src, out)
         now = self.clock()
+        live = "(expires_at IS NULL OR expires_at > ?)"
         try:
             with self._conn(write=True) as db:
                 # Hold the write lock from the size checks to the insert, so two
@@ -689,35 +771,48 @@ class Store:
                 quota = self._quota_for(owner, db)
                 if quota is not None:
                     own = db.execute(
-                        "SELECT COALESCE(SUM(size), 0) FROM artifacts "
-                        "WHERE owner = ? AND id != ? AND expires_at > ?",
+                        f"SELECT COALESCE(SUM(size), 0) FROM artifacts "  # noqa: S608
+                        f"WHERE owner = ? AND id != ? AND {live}",
                         (owner, new_id, now),
                     ).fetchone()[0]
                     if own + size > quota:
                         raise QuotaExceeded(own, quota)
                 used = db.execute(
-                    "SELECT COALESCE(SUM(size), 0) FROM artifacts WHERE id != ? AND expires_at > ?",
+                    f"SELECT COALESCE(SUM(size), 0) FROM artifacts WHERE id != ? AND {live}",  # noqa: S608
                     (new_id, now),
                 ).fetchone()[0]
                 if used + size > settings["max_total_bytes"]:
                     raise StorageFull
+                old = (None, None, None)
+                if artifact_id is not None:
+                    old = db.execute(
+                        f"SELECT project, section, added_at FROM artifacts "  # noqa: S608
+                        f"WHERE id = ? AND owner = ? AND {live}",
+                        (new_id, owner, now),
+                    ).fetchone()
+                    if old is None:
+                        return None
+                given = {"project": project} if project is not None else {}
+                if section is not None:
+                    given["section"] = section
+                placed = self._placed(db, owner, new_id, old, given, now)
+                expires = None if placed[0] is not None else now + ttl
                 if artifact_id is None:
                     db.execute(
-                        "INSERT INTO artifacts (id, owner, name, title, kind, size, "
-                        "created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                        (new_id, owner, name, title or name, kind, size, now, now + ttl),
+                        "INSERT INTO artifacts (id, owner, name, title, kind, size, created_at, "
+                        "expires_at, project, section, added_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (new_id, owner, name, title or name, kind, size, now, expires, *placed),
                     )
                 else:
                     # Read under the lock, so a comment posted before this
                     # replace always has an earlier created_at.
-                    row = db.execute(
+                    db.execute(
                         "UPDATE artifacts SET name = ?, title = COALESCE(?, title), kind = ?, "
-                        "size = ?, expires_at = ?, replaced_at = ? "
-                        "WHERE id = ? AND owner = ? AND expires_at > ? RETURNING id",
-                        (name, title, kind, size, now + ttl, self.clock(), new_id, owner, now),
-                    ).fetchone()
-                    if row is None:
-                        return None
+                        "size = ?, expires_at = ?, replaced_at = ?, project = ?, section = ?, "
+                        "added_at = ? WHERE id = ?",
+                        (name, title, kind, size, expires, self.clock(), *placed, new_id),
+                    )
                 db.execute("UPDATE agents SET last_upload_at = ? WHERE name = ?", (now, owner))
                 artifact = self._artifact(db, new_id)
                 os.replace(tmp, self.files / new_id)
@@ -725,16 +820,137 @@ class Store:
             tmp.unlink(missing_ok=True)
         return artifact
 
-    def edit(self, artifact_id: str, *, owner: str, title: str) -> Artifact | None:
-        """Change a live artifact's details without uploading it again; None
-        when ``owner`` has no such artifact."""
+    def edit(self, artifact_id: str, *, owner: str, changes: dict) -> Artifact | None:
+        """Change a live artifact's ``title``, ``project`` or ``section``
+        (the keys of ``changes``; None clears the last two) without uploading
+        it again; None when ``owner`` has no such artifact. Raises what
+        _placed raises."""
+        now = self.clock()
         with self._conn(write=True) as db:
             row = db.execute(
-                "UPDATE artifacts SET title = ? WHERE id = ? AND owner = ? AND expires_at > ? "
-                "RETURNING id",
-                (title, artifact_id, owner, self.clock()),
+                "SELECT project, section, added_at, expires_at FROM artifacts "
+                "WHERE id = ? AND owner = ? AND (expires_at IS NULL OR expires_at > ?)",
+                (artifact_id, owner, now),
             ).fetchone()
-            return self._artifact(db, artifact_id) if row else None
+            if row is None:
+                return None
+            placed = self._placed(db, owner, artifact_id, row[:3], changes, now)
+            expires = row[3]
+            if placed[0] is not None:
+                expires = None
+            elif row[0] is not None:  # taken out: a new lifetime from now
+                expires = now + self.settings(db)["ttl_seconds"]
+            db.execute(
+                "UPDATE artifacts SET title = COALESCE(?, title), expires_at = ?, project = ?, "
+                "section = ?, added_at = ? WHERE id = ?",
+                (changes.get("title"), expires, *placed, artifact_id),
+            )
+            return self._artifact(db, artifact_id)
+
+    def _placed(
+        self,
+        db: sqlite3.Connection,
+        owner: str,
+        artifact_id: str,
+        old: tuple,
+        given: dict,
+        now: float,
+    ) -> tuple[str | None, str | None, float | None]:
+        """The (project, section, added_at) a file has after ``given``
+        changes to its ``old`` ones. Moving keeps the section unless one is
+        given; out of a project there is none. Raises SectionWithoutProject,
+        NoSuchProject (not ``owner``'s), TooMany."""
+        project, section, added_at = old
+        if "project" in given and given["project"] != project:
+            project = given["project"]
+            added_at = None if project is None else now
+            section = section if project is not None else None
+        if "section" in given:
+            section = given["section"]
+        if project is None:
+            if section is not None:
+                raise SectionWithoutProject
+            return None, None, None
+        sql = "SELECT 1 FROM projects WHERE id = ? AND owner = ?"
+        if db.execute(sql, (project, owner)).fetchone() is None:
+            raise NoSuchProject
+        files, same, sections = db.execute(
+            "SELECT COUNT(*), COALESCE(SUM(section = :section), 0), COUNT(DISTINCT section) "
+            "FROM artifacts WHERE project = :project AND id != :id",
+            {"project": project, "section": section, "id": artifact_id},
+        ).fetchone()
+        if files >= MAX_PROJECT_FILES:
+            raise TooMany(f"a project holds at most {MAX_PROJECT_FILES} files")
+        if section is not None and not same and sections >= MAX_SECTIONS:
+            raise TooMany(f"a project holds at most {MAX_SECTIONS} sections")
+        return project, section, added_at
+
+    # Projects; their files go with them (ON DELETE CASCADE).
+
+    def add_project(self, owner: str, title: str) -> Project:
+        """Raises TooMany past MAX_PROJECTS."""
+        project = Project(secrets.token_urlsafe(16), owner, title, self.clock(), 0, 0)
+        with self._conn(write=True) as db:
+            sql = "SELECT COUNT(*) FROM projects WHERE owner = ?"
+            if db.execute(sql, (owner,)).fetchone()[0] >= MAX_PROJECTS:
+                raise TooMany(f"an agent has at most {MAX_PROJECTS} projects")
+            db.execute(
+                "INSERT INTO projects (id, owner, title, created_at) VALUES (?, ?, ?, ?)",
+                (project.id, owner, title, project.created_at),
+            )
+        return project
+
+    def projects(self, owner: str) -> list[Project]:
+        with self._conn() as db:
+            rows = db.execute(
+                f"{_PROJECT_SQL} WHERE p.owner = ? GROUP BY p.id ORDER BY p.created_at, p.id",
+                (owner,),
+            ).fetchall()
+        return [Project(*r) for r in rows]
+
+    def _project(self, db: sqlite3.Connection, project_id: str, owner: str) -> Project | None:
+        row = db.execute(
+            f"{_PROJECT_SQL} WHERE p.id = ? AND p.owner = ? GROUP BY p.id", (project_id, owner)
+        ).fetchone()
+        return Project(*row) if row else None
+
+    def project(self, project_id: str, *, owner: str) -> tuple[Project, list[Artifact]] | None:
+        """``owner``'s project and its files in the project page's order:
+        those without a section first, then each section by when its
+        earliest file was added; inside, by when added; ties by id."""
+        with self._conn() as db:
+            project = self._project(db, project_id, owner)
+            if project is None:
+                return None
+            rows = db.execute(
+                f"{_ARTIFACT_SQL} WHERE a.project = ? ORDER BY a.section IS NOT NULL, "  # noqa: S608
+                "(SELECT MIN(b.added_at) FROM artifacts b "
+                "WHERE b.project = a.project AND b.section = a.section), "
+                "a.section, a.added_at, a.id",
+                (project_id,),
+            ).fetchall()
+        return project, [Artifact(*r) for r in rows]
+
+    def rename_project(self, project_id: str, *, owner: str, title: str) -> Project | None:
+        with self._conn(write=True) as db:
+            db.execute(
+                "UPDATE projects SET title = ? WHERE id = ? AND owner = ?",
+                (title, project_id, owner),
+            )
+            return self._project(db, project_id, owner)
+
+    def delete_project(self, project_id: str, *, owner: str) -> bool:
+        """The project, its files and their comments: the rows in one
+        transaction, then the files."""
+        with self._conn(write=True) as db:
+            sql = "SELECT id FROM artifacts WHERE project = ?"
+            ids = [r[0] for r in db.execute(sql, (project_id,))]
+            sql = "DELETE FROM projects WHERE id = ? AND owner = ?"
+            gone = db.execute(sql, (project_id, owner)).rowcount > 0
+        if gone:
+            for artifact_id in ids:
+                self._unlink(artifact_id)
+        return gone
 
     # Comments and drafts; they go with their artifact (ON DELETE CASCADE).
 
@@ -1123,6 +1339,7 @@ class Store:
 
     def purge_expired(self) -> int:
         with self._conn(write=True) as db:
+            # A file in a project (expires_at NULL) never matches.
             expired = db.execute("SELECT id FROM artifacts WHERE expires_at <= ?", (self.clock(),))
             ids = [r[0] for r in expired]
             db.executemany("DELETE FROM artifacts WHERE id = ?", [(i,) for i in ids])

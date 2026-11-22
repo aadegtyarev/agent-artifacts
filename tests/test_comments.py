@@ -723,12 +723,13 @@ def dump(path):
 
 def v1_store(tmp_path, monkeypatch):
     """A store whose database stops at version 1; undo the patch to go on.
-    It has the later title column too, so today's code can fill it; drop
-    that before going on."""
+    It has the later artifact columns too, so today's code can fill them;
+    drop the title before going on (version 4 drops the rest)."""
     monkeypatch.setattr(store_module, "_MIGRATIONS", store_module._MIGRATIONS[:1])
     store = Store(tmp_path, max_total_bytes=10**6)
     with store._conn() as db:
-        db.execute("ALTER TABLE artifacts ADD COLUMN title TEXT")
+        for column in ("title TEXT", "project TEXT", "section TEXT", "added_at REAL"):
+            db.execute(f"ALTER TABLE artifacts ADD COLUMN {column}")
     return store
 
 

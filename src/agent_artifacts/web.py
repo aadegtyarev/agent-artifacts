@@ -34,7 +34,19 @@ from .admin import admin_routes
 from .api import ApiError, error, iso, json_body, on_api_error, require_agent, user_json
 from .comments import comment_routes, one_line
 from .config import Config, normal_host
-from .store import ID_RE, TOKEN_RE, Artifact, NameTaken, QuotaExceeded, StorageFull, Store
+from .store import (
+    ID_RE,
+    TOKEN_RE,
+    Artifact,
+    NameTaken,
+    NoSuchProject,
+    Project,
+    QuotaExceeded,
+    SectionWithoutProject,
+    StorageFull,
+    Store,
+    TooMany,
+)
 
 PURGE_INTERVAL_SECONDS = 600
 
@@ -55,7 +67,8 @@ register_url_convertor("invite_token", _InviteToken())
 FORM_OVERHEAD_BYTES = 64 * 1024
 # Upload fields besides the file: name and title, then project and section.
 MAX_FORM_FIELDS = 4
-MAX_TITLE = 200
+MAX_TITLE = 200  # a file's or a project's
+MAX_SECTION = 64
 
 
 def create_app(config: Config, store: Store | None = None) -> Starlette:
@@ -72,6 +85,8 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             "url": f"{config.public_url}/a/{a.id}",
             "name": a.name,
             "title": a.title,
+            "project": a.project,
+            "section": a.section,
             "type": a.kind,
             "size": a.size,
             "created_at": iso(a.created_at),
@@ -79,6 +94,16 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             "expires_at": iso(a.expires_at),
             "comments": a.comments,
             "open_comments": a.open_comments,
+        }
+
+    def project_json(p: Project) -> dict:
+        return {
+            "id": p.id,
+            "url": f"{config.public_url}/p/{p.id}",
+            "title": p.title,
+            "created_at": iso(p.created_at),
+            "files": p.files,
+            "used_bytes": p.used_bytes,
         }
 
     async def save(request: Request, agent: str, artifact_id: str | None) -> Response:
@@ -100,6 +125,9 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
                 return error(413, "too_large", f"limit is {config.max_file_bytes} bytes")
             title_field = form.get("title")
             title = None if title_field is None else _title(title_field)
+            project_field, section_field = form.get("project"), form.get("section")
+            project = None if project_field is None else _project_id(project_field)
+            section = None if section_field is None else _title(section_field, "section")
             name_field = form.get("name")
             raw_name = name_field if isinstance(name_field, str) and name_field else upload.filename
             try:
@@ -111,7 +139,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
                 return error(413, "too_large", "Markdown and text are limited to 2 MB; use .zip")
             await upload.seek(0)
             try:
-                artifact = await run_in_threadpool(
+                artifact = await _stored(
                     store.put,
                     upload.file,
                     owner=agent,
@@ -120,6 +148,8 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
                     size=size,
                     artifact_id=artifact_id,
                     title=title,
+                    project=project,
+                    section=section,
                 )
             except QuotaExceeded as e:
                 return error(
@@ -164,15 +194,52 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             if await run_in_threadpool(store.delete, artifact_id, owner=agent):
                 return Response(status_code=204)
         elif request.method == "PATCH":
-            # Only the title so far; the project and section join it later.
-            data = await json_body(request, {"title"})
-            title = _title(data["title"])
-            edited = await run_in_threadpool(store.edit, artifact_id, owner=agent, title=title)
+            data = await json_body(request, {"title", "project", "section"})
+            changes = {}
+            if "title" in data:
+                changes["title"] = _title(data["title"])
+            if "project" in data:
+                v = data["project"]
+                changes["project"] = None if v is None else _project_id(v)
+            if "section" in data:
+                v = data["section"]
+                changes["section"] = None if v is None else _title(v, "section")
+            edited = await _stored(store.edit, artifact_id, owner=agent, changes=changes)
             if edited is not None:
                 return JSONResponse(as_json(edited))
         elif store.get(artifact_id, owner=agent) is not None:
             return await save(request, agent, artifact_id)
         return error(404, "not_found", "no such artifact")
+
+    async def projects(request: Request) -> Response:
+        agent = require_agent(store, request)
+        if request.method == "POST":
+            data = await json_body(request, {"title"}, {"title"})
+            made = await _stored(store.add_project, agent, _title(data["title"]))
+            return JSONResponse(project_json(made), status_code=201)
+        found = await run_in_threadpool(store.projects, agent)
+        return JSONResponse([project_json(p) for p in found])
+
+    async def project(request: Request) -> Response:
+        agent = require_agent(store, request)
+        project_id = request.path_params["id"]
+        if request.method == "DELETE":
+            if await run_in_threadpool(store.delete_project, project_id, owner=agent):
+                return Response(status_code=204)
+        elif request.method == "PATCH":
+            data = await json_body(request, {"title"}, {"title"})
+            title = _title(data["title"])
+            renamed = await run_in_threadpool(
+                store.rename_project, project_id, owner=agent, title=title
+            )
+            if renamed is not None:
+                return JSONResponse(project_json(renamed))
+        else:
+            found = await run_in_threadpool(store.project, project_id, owner=agent)
+            if found is not None:
+                p, files = found
+                return JSONResponse(project_json(p) | {"artifacts": [as_json(a) for a in files]})
+        return error(404, "not_found", "no such project")
 
     def live(request: Request) -> Artifact | None:
         a = store.get(request.path_params["id"])
@@ -274,6 +341,9 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             Route("/api/v1/me/key", new_key, methods=["POST"]),
             Route("/api/v1/artifacts", collection, methods=["GET", "POST"]),
             Route("/api/v1/artifacts/{id:artifact_id}", item, methods=["PUT", "PATCH", "DELETE"]),
+            Route("/api/v1/projects", projects, methods=["GET", "POST"]),
+            # A project id is made like an artifact id.
+            Route("/api/v1/projects/{id:artifact_id}", project, methods=["GET", "PATCH", "DELETE"]),
             Route("/a/{id:artifact_id}", view),
             Route("/a/{id:artifact_id}/raw", raw),
             Route("/a/{id:artifact_id}/download", download),
@@ -299,17 +369,39 @@ _TITLE_BIDI = re.compile("[\u200e\u200f\u061c]")
 _INVISIBLE = re.compile("[\u200b-\u200d\u2060\ufeff]")
 
 
-def _title(v: object) -> str:
-    """What pages show for a file: one line of 1 to MAX_TITLE characters,
-    composed (NFC) like file names, so one title is stored one way."""
+def _title(v: object, field: str = "title") -> str:
+    """What pages show for a file or a project, or a file's section: one
+    line of 1 to MAX_TITLE (a section MAX_SECTION) characters, composed (NFC)
+    like file names, so one title is stored one way."""
     if isinstance(v, str):
         v = unicodedata.normalize("NFC", v)
         if _TITLE_BIDI.search(v):
-            raise ApiError(400, "bad_request", "title must be text without control characters")
-    title = one_line(v, "title", MAX_TITLE)
+            raise ApiError(400, "bad_request", f"{field} must be text without control characters")
+    title = one_line(v, field, MAX_SECTION if field == "section" else MAX_TITLE)
     if not _INVISIBLE.sub("", title).strip():
-        raise ApiError(400, "bad_request", "title is empty")
+        raise ApiError(400, "bad_request", f"{field} is empty")
     return title
+
+
+def _project_id(v: object) -> str:
+    """A project field: an id, or 404 like a project of another agent's."""
+    if not isinstance(v, str):
+        raise ApiError(400, "bad_request", "project must be a project id")
+    if not re.fullmatch(ID_RE, v):
+        raise ApiError(404, "not_found", "no such project")
+    return v
+
+
+async def _stored(func, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003, ANN201
+    """``func`` in the thread pool, its refusals about projects as API errors."""
+    try:
+        return await run_in_threadpool(func, *args, **kwargs)
+    except NoSuchProject:
+        raise ApiError(404, "not_found", "no such project") from None
+    except SectionWithoutProject:
+        raise ApiError(400, "bad_request", "a section needs a project") from None
+    except TooMany as e:
+        raise ApiError(409, "too_many", str(e)) from None
 
 
 _RAW_PATH = re.compile(rf"/a/({ID_RE})/raw")

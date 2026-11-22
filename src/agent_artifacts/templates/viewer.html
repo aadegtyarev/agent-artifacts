@@ -4,7 +4,7 @@
 <header>
   <div class="name">
     <h1 title="{{ a.title }}">{{ a.title }}</h1>
-    <div class="meta">{{ size }} · expires {{ expires }}</div>
+    <div class="meta">{{ size }} · {% if expires %}expires {{ expires }}{% else %}kept until deleted{% endif %}</div>
   </div>
   <div class="actions">
     {#- Comment mode: on, a tap on the content places a draft pin. #}
