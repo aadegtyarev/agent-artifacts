@@ -256,3 +256,120 @@ def test_version_4_keeps_files_and_comments(tmp_path, monkeypatch):
         db.execute("DELETE FROM artifacts WHERE id = ?", ("a" * 22,))
         assert db.execute("SELECT count(*) FROM comments").fetchone() == (0,)
         assert db.execute("SELECT count(*) FROM drafts").fetchone() == (0,)
+
+
+def test_the_project_page_lists_files_by_section(env):
+    client, store, keys = env
+    p = new_project(client, keys["alice"], "Landing <b>").json()["id"]
+    ids = {}
+    for title, section in (
+        ("Brief", None),
+        ("Contract", "Contracts"),
+        ("Estimate", "Contracts"),
+        ("Main", "App <mockups>"),
+        ("Notes", None),
+    ):
+        later(store, 1)
+        fields = {"title": title, "project": p} | ({"section": section} if section else {})
+        ids[title] = upload(client, keys["alice"], "a.md", b"# x", **fields).json()["id"]
+    upload(client, keys["alice"], "other.txt", b"x", title="Elsewhere")
+    # Public by its link, like a file: no agent key asked.
+    r = client.get(f"/p/{p}")
+    assert r.status_code == 200
+    csp = r.headers["content-security-policy"]
+    assert "frame-ancestors 'none'" in csp and "script-src 'self'" in csp
+    assert "connect-src 'self'" in csp and "unsafe-inline" not in csp
+    assert (r.headers["x-robots-tag"], r.headers["referrer-policy"]) == ("noindex", "no-referrer")
+    assert r.headers["cache-control"] == "no-store"
+    page = r.text
+    assert "Landing &lt;b&gt;" in page and "<b>" not in page
+    assert "5 files · kept until deleted" in page and "Elsewhere" not in page
+    order = [
+        page.index(x)
+        for x in (
+            ids["Brief"],
+            ids["Notes"],
+            "Contracts</h2>",
+            ids["Contract"],
+            ids["Estimate"],
+            "App &lt;mockups&gt;</h2>",
+            ids["Main"],
+        )
+    ]
+    assert order == sorted(order)
+    assert page.count('class="sec"') == 2 and page.count('class="pf"') == 5
+    assert f'href="/a/{ids["Main"]}"' in page and ">MD<" in page and "3 B · " in page
+
+
+def test_the_project_page_of_a_missing_or_deleted_project_is_404(env):
+    client, _, keys = env
+    p = new_project(client, keys["alice"]).json()["id"]
+    empty = client.get(f"/p/{p}")
+    assert empty.status_code == 200 and "No files yet" in empty.text and "0 files" in empty.text
+    client.delete(f"/api/v1/projects/{p}", headers=auth(keys["alice"]))
+    for path in (f"/p/{p}", f"/p/{'x' * 22}"):
+        r = client.get(path)
+        assert r.status_code == 404 and "expired or never existed" in r.text, path
+        r = client.get(f"{path}/summary")
+        assert (r.status_code, r.json()["error"]) == (404, "not_found")
+
+
+ME, MARIA = "k" * 22, "m" * 22
+
+
+def test_the_summary_counts_what_waits_for_this_person(env):
+    client, store, keys = env
+    p = new_project(client, keys["alice"]).json()["id"]
+    other = new_project(client, keys["alice"], "Other").json()["id"]
+    a = upload(client, keys["alice"], "a.md", b"# a", project=p).json()["id"]
+    b = upload(client, keys["alice"], "b.md", b"# b", project=p).json()["id"]
+    quiet = upload(client, keys["alice"], "c.md", b"# c", project=p).json()["id"]
+    elsewhere = upload(client, keys["alice"], "d.md", b"# d", project=other).json()["id"]
+
+    def publish(art, key, n, agent):
+        for i in range(n):
+            client.post(f"/a/{art}/drafts", headers={"X-Author-Key": key}, json={"text": f"c{i}"})
+        client.post(
+            f"/a/{art}/review", headers={"X-Author-Key": key}, json={"author": "x", "agent": agent}
+        )
+
+    publish(a, ME, 3, True)  # with the agent: 1-3
+    client.post(f"/api/v1/artifacts/{a}/take", headers=auth(keys["alice"]))
+    client.post(
+        f"/api/v1/artifacts/{a}/comments/1/reply",
+        headers=auth(keys["alice"]),
+        json={"text": "done", "state": "done"},
+    )
+    client.patch(
+        f"/api/v1/artifacts/{a}/comments/3", headers=auth(keys["alice"]), json={"resolved": True}
+    )
+    publish(b, MARIA, 2, False)  # Maria's, awaiting approval
+    publish(b, ME, 1, False)  # mine, nothing to approve
+    publish(elsewhere, MARIA, 1, False)
+
+    def summary(key=None):
+        r = client.get(f"/p/{p}/summary", headers={"X-Author-Key": key} if key else {})
+        assert r.status_code == 200 and r.headers["cache-control"] == "no-store"
+        return r.json()
+
+    zero = {"waiting_you": 0, "with_agent": 0}
+    # 1 done, 2 working, 3 resolved; on b, Maria's two wait for me.
+    assert summary(ME) == {
+        a: {"waiting_you": 1, "with_agent": 1},
+        b: {"waiting_you": 2, "with_agent": 0},
+        quiet: zero,
+    }
+    # A stranger: my comment on b awaits approval too.
+    assert summary()[b] == {"waiting_you": 3, "with_agent": 0}
+    assert summary("bad")[b] == summary()[b]
+    # Decided or replied to in my drafts: no longer waiting for me.
+    client.post(f"/a/{a}/drafts", headers={"X-Author-Key": ME}, json={"kind": "accept", "of": 1})
+    client.post(
+        f"/a/{b}/drafts",
+        headers={"X-Author-Key": ME},
+        json={"kind": "reply", "of": 1, "text": "ok"},
+    )
+    got = summary(ME)
+    assert (got[a]["waiting_you"], got[b]["waiting_you"]) == (0, 1)
+    assert summary(MARIA)[a]["waiting_you"] == 1
+    assert elsewhere not in got

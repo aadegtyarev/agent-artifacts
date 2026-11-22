@@ -1,6 +1,6 @@
-"""HTTP routes: the agent API under /api/v1, the viewer under /a, invites
-under /join. The HTML itself is in pages.py, the admin API in admin.py, comments in
-comments.py."""
+"""HTTP routes: the agent API under /api/v1, the viewer under /a, project
+pages under /p, invites under /join. The HTML itself is in pages.py, the
+admin API in admin.py, comments in comments.py."""
 
 from __future__ import annotations
 
@@ -255,6 +255,14 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         separate = f"{config.raw_url}/a/{a.id}/raw" if config.raw_url and kind.viewable else None
         return pages.viewer_page(a, f"{config.public_url}/a/{a.id}", separate)
 
+    async def project_view(request: Request) -> Response:
+        # Public by its link, like a file: no owner asked.
+        found = await run_in_threadpool(store.project, request.path_params["id"])
+        if found is None:
+            return pages.not_found()
+        p, files = found
+        return pages.project_page(p, files, f"{config.public_url}/p/{p.id}", store.clock())
+
     async def raw(request: Request) -> Response:
         a = live(request)
         if a is None:
@@ -347,6 +355,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             Route("/a/{id:artifact_id}", view),
             Route("/a/{id:artifact_id}/raw", raw),
             Route("/a/{id:artifact_id}/download", download),
+            Route("/p/{id:artifact_id}", project_view),
             Route("/join/{token:invite_token}", join, methods=["GET", "POST"]),
             Mount("/static", StaticFiles(directory=pages.STATIC_DIR), name="static"),
             *admin_routes(store, config.public_url),

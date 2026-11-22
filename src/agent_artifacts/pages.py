@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -14,7 +15,7 @@ from starlette.responses import HTMLResponse
 
 from . import kinds
 from .api import iso
-from .store import Artifact, Invite
+from .store import Artifact, Invite, Project
 
 HERE = Path(__file__).parent
 STATIC_DIR = HERE / "static"
@@ -40,7 +41,7 @@ _env.globals["static"] = {
     for n in (
         "pin.css", "site.css", "theme.js", "copy.js",
         "pin-marks.js", "comments-model.js", "sheet-drag.js", "comments-pins.js",
-        "comments.js", "viewer.js",
+        "comments.js", "viewer.js", "project.js",
     )
 }
 
@@ -69,6 +70,8 @@ VIEWER_CSP = (
     f"{_OWN}; img-src 'self'; frame-src 'self'; connect-src 'self'; "
     "frame-ancestors 'none'; form-action 'none'"
 )
+# The project page lists links and asks for its counters from its script.
+PROJECT_CSP = f"{_OWN}; connect-src 'self'; frame-ancestors 'none'; form-action 'none'"
 # The invite page posts its form back to itself.
 JOIN_CSP = f"{_OWN}; frame-ancestors 'none'; form-action 'self'"
 
@@ -124,6 +127,29 @@ def viewer_page(a: Artifact, url: str, separate: str | None = None) -> HTMLRespo
     )
     # Cuts window.opener for pages a sandboxed artifact opens, so they cannot
     # navigate this tab away.
+    page.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    return page
+
+
+def project_page(p: Project, files: list[Artifact], url: str, now: float) -> HTMLResponse:
+    """The page at /p/{id}: the project's files in its order, a heading
+    before each section; the counters come from its script."""
+    rows, section = [], None
+    for a in files:
+        rows.append(
+            {
+                "a": a,
+                "type": a.kind.upper(),
+                "detail": f"{size(a.size)} · {ago(a.updated_at, now)}",
+                # A heading before the first file of each section.
+                "heading": a.section if a.section != section else None,
+            }
+        )
+        section = a.section
+    count = f"{len(files)} file" + ("" if len(files) == 1 else "s")
+    page = _page(
+        "project.html", PROJECT_CSP, title=p.title, project=p, rows=rows, count=count, url=url
+    )
     page.headers["Cross-Origin-Opener-Policy"] = "same-origin"
     return page
 
@@ -204,3 +230,18 @@ def size(n: int) -> str:
     if n < 1024 * 1024:
         return f"{n / 1024:.1f} KB"
     return f"{n / 1024 / 1024:.1f} MB"
+
+
+def ago(ts: float, now: float) -> str:
+    """How long ago, as the viewer says it (see when() in comments-model.js):
+    minutes and hours, then the date (UTC)."""
+    seconds = now - ts
+    if seconds < 60:
+        return "just now"
+    if seconds < 3600:
+        return f"{int(seconds // 60)} min ago"
+    if seconds < 86400:
+        return f"{int(seconds // 3600)} h ago"
+    t, today = datetime.fromtimestamp(ts, UTC), datetime.fromtimestamp(now, UTC)
+    day = f"{t:%b} {t.day}"
+    return day if t.year == today.year else f"{day}, {t.year}"

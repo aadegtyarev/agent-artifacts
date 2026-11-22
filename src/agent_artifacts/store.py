@@ -908,16 +908,23 @@ class Store:
             ).fetchall()
         return [Project(*r) for r in rows]
 
-    def _project(self, db: sqlite3.Connection, project_id: str, owner: str) -> Project | None:
+    def _project(
+        self, db: sqlite3.Connection, project_id: str, owner: str | None
+    ) -> Project | None:
         row = db.execute(
-            f"{_PROJECT_SQL} WHERE p.id = ? AND p.owner = ? GROUP BY p.id", (project_id, owner)
+            f"{_PROJECT_SQL} WHERE p.id = :id AND (:owner IS NULL OR p.owner = :owner) "
+            "GROUP BY p.id",
+            {"id": project_id, "owner": owner},
         ).fetchone()
         return Project(*row) if row else None
 
-    def project(self, project_id: str, *, owner: str) -> tuple[Project, list[Artifact]] | None:
-        """``owner``'s project and its files in the project page's order:
-        those without a section first, then each section by when its
-        earliest file was added; inside, by when added; ties by id."""
+    def project(
+        self, project_id: str, *, owner: str | None = None
+    ) -> tuple[Project, list[Artifact]] | None:
+        """A project, optionally only if ``owner`` owns it, and its files in
+        the project page's order: those without a section first, then each
+        section by when its earliest file was added; inside, by when added;
+        ties by id."""
         with self._conn() as db:
             project = self._project(db, project_id, owner)
             if project is None:
@@ -930,6 +937,37 @@ class Store:
                 (project_id,),
             ).fetchall()
         return project, [Artifact(*r) for r in rows]
+
+    def project_summary(self, project_id: str, key_hash: str | None) -> dict | None:
+        """For the project page: per file of the project, the open comments
+        waiting for the person with ``key_hash`` (None: a stranger) and
+        those with the agent; None if there is no such project. Waiting: the
+        agent answered (done, wrote, asked), or a colleague's comment awaits
+        approval; less those this key already decided or replied to in a
+        live draft."""
+        now = self.clock()
+        args = {"p": project_id, "key": key_hash, "now": now, "stale": now - DRAFT_TTL_SECONDS}
+        with self._conn() as db:
+            if db.execute("SELECT 1 FROM projects WHERE id = :p", args).fetchone() is None:
+                return None
+            rows = db.execute(
+                "SELECT a.id, "
+                # A file without open comments joins one row of NULLs: c.n tells.
+                "COALESCE(SUM(c.n IS NOT NULL AND (c.agent IN ('done', 'wrote', 'asked') "
+                "OR (c.agent IS NULL "
+                "AND NOT COALESCE(c.author_key_hash = :key, 0) AND c.approved_by IS NULL "
+                "AND c.rejected_by IS NULL)) AND NOT EXISTS (SELECT 1 FROM drafts d "
+                "WHERE d.artifact_id = c.artifact_id AND d.of_n = c.n "
+                "AND d.author_key_hash = :key AND d.kind != 'comment' "
+                "AND d.updated_at > :stale)), 0), "
+                "COALESCE(SUM(c.agent IN ('waiting', 'working')), 0) "
+                "FROM artifacts a LEFT JOIN comments c "
+                "ON c.artifact_id = a.id AND c.resolved_at IS NULL "
+                "WHERE a.project = :p AND (a.expires_at IS NULL OR a.expires_at > :now) "
+                "GROUP BY a.id",
+                args,
+            ).fetchall()
+        return {r[0]: {"waiting_you": r[1], "with_agent": r[2]} for r in rows}
 
     def rename_project(self, project_id: str, *, owner: str, title: str) -> Project | None:
         with self._conn(write=True) as db:

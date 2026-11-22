@@ -1,6 +1,6 @@
 """Comments on artifacts: the public calls under /a/{id} (the published
-comments, a person's drafts and finishing their review) and the owner's under
-/api/v1/artifacts/{id}.
+comments, a person's drafts and finishing their review), the counts on a
+project's page under /p/{id}, and the owner's under /api/v1/artifacts/{id}.
 
 Writing needs no agent key, so every body is checked here: JSON only, small,
 with known fields and bounded strings. Texts and names are stored as they come
@@ -80,6 +80,15 @@ def comment_routes(store: Store) -> list[Route]:
             raise _no_artifact()
         updated_at, comments = found
         return _updated(_answer([_json(c) for c in comments]), updated_at)
+
+    async def project_summary(request: Request) -> Response:
+        # For the project page's counters; under /p, so the proxy does not
+        # count it as a write. Without a key: as for a stranger.
+        key = _author_key(request, required=False)
+        found = await run_in_threadpool(store.project_summary, request.path_params["id"], key)
+        if found is None:
+            raise ApiError(404, "not_found", "no such project")
+        return _answer(found)
 
     async def drafts(request: Request) -> Response:
         artifact_id, key = request.path_params["id"], _author_key(request)
@@ -270,6 +279,7 @@ def comment_routes(store: Store) -> list[Route]:
         _route("/a/{id:artifact_id}/drafts/delete", drafts_delete, "POST"),
         _route("/a/{id:artifact_id}/drafts/{d}", draft_item, "PATCH", "DELETE"),
         _route("/a/{id:artifact_id}/review", review, "POST"),
+        _route("/p/{id:artifact_id}/summary", project_summary, "GET"),
         _route("/api/v1/artifacts/{id:artifact_id}/comments", owner_list, "GET"),
         _route("/api/v1/artifacts/{id:artifact_id}/comments/{n}", owner_item, "PATCH", "DELETE"),
         _route("/api/v1/artifacts/{id:artifact_id}/comments/{n}/reply", owner_reply, "POST"),

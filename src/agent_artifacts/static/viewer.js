@@ -2,7 +2,8 @@
 // buttons fanned out over the dimmed page) and full screen, where a floating
 // ≡ takes the header's place. The floating button can be dragged anywhere;
 // it snaps to the nearer side edge and this browser keeps its place. The
-// browser's history is never touched: Back belongs to the content.
+// browser's history is never touched: Back belongs to the content. The
+// project page uses it too, without comment mode.
 (() => {
   const $ = (id) => document.getElementById(id);
   const fan = $("fan");
@@ -254,6 +255,7 @@
     // A mouse over the content's frame would move inside the frame instead.
     document.body.classList.add("float-pressed");
     // Held still: comment mode on or off, the button's second action.
+    if (!commentsToggle) return;
     const held = drag;
     held.timer = setTimeout(() => {
       if (drag !== held || held.moved) return;
