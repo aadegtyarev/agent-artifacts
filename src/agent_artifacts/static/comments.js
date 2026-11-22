@@ -370,7 +370,7 @@
       if (drafts) title = `Review · ${drafts} ${drafts === 1 ? "draft" : "drafts"}`
         + (S.comments.length ? ` · ${S.comments.length} published` : "");
       else if (S.comments.length) title = `Comments · ${S.comments.length}`;
-      out.push(el("h2", "ttl", title));
+      out.push(el("h2", "ttl handle", title));
       if (!all.length) {
         out.push(el("p", "empty", S.mode && canPin()
           ? `Tap a spot on the ${pinType === "point" ? "image" : "page"} to leave a comment.`
@@ -392,7 +392,7 @@
       if (!it) return views.list();
       const all = items();
       const at = all.findIndex((i) => i.key === it.key);
-      const nav = el("div", "nav");
+      const nav = el("div", "nav handle");
       nav.append(
         button("‹ All", () => go("list"), "btn all"),
         button(`${at + 1} of ${all.length} · ${where(it)}`, () => go("list", "h"), "lbl"),
@@ -744,7 +744,8 @@
     if (S.compose) dropCompose(false);
     if (S.sel !== key) S.edit = null;
     S.sel = key;
-    go("item", "q");
+    // A sheet opened to half or the whole height stays there.
+    go("item", S.pos === "h" || S.pos === "f" ? S.pos : "q");
     revealSoon(key);
   }
 
@@ -1070,9 +1071,10 @@
   });
 
   // --- The sheet: tap and drag -------------------------------------------------------
-  // A tap on the strip opens the list; one on the grip steps ¼ or full to
-  // ½ and ½ to full. Dragging the grip or the strip moves the sheet with the
-  // finger; let go, it snaps to the height nearest to where it is.
+  // A tap on the strip opens the list; one on the grip or the sheet's title
+  // line steps ¼ or full to ½ and ½ to full. Dragging the grip, the title
+  // line (its buttons too) or the strip moves the sheet with the finger;
+  // let go, it snaps to the height nearest to where it is.
   const POS = ["strip", "q", "h", "f"];
   let drag = null;
 
@@ -1089,13 +1091,15 @@
     else openList();
   });
 
+  const onHandle = (t) => t === grip || !!t.closest(".sbody > .handle");
+
   function startDrag(e) {
     if (desk.matches || e.button > 0 || drag) return;
-    if (e.target.closest("button")) return;
+    if (e.target.closest("button") && !onHandle(e.target)) return;
     drag = { id: e.pointerId, y: e.clientY, from: sheet.getBoundingClientRect().height, moved: false };
   }
   sheet.addEventListener("pointerdown", (e) => {
-    if (e.target === grip || strip.contains(e.target)) startDrag(e);
+    if (onHandle(e.target) || strip.contains(e.target)) startDrag(e);
   });
   sheet.addEventListener("pointermove", (e) => {
     if (!drag || e.pointerId !== drag.id) return;
@@ -1128,7 +1132,7 @@
     sheet.classList.remove("dragging");
     sheet.style.height = "";
     if (!d.moved) {
-      if (e.target === grip) {
+      if (onHandle(e.target) && !e.target.closest("button")) {
         if (S.compose) dropCompose(false);
         if (S.pos === "q" || S.pos === "f") go("list", "h");
         else if (S.pos === "h") go("list", "f");
@@ -1155,13 +1159,17 @@
       else go("list", "h");
     } else if (best === "h") {
       if (S.compose) dropCompose(false);
-      go("list", "h");
+      go(S.view === "item" ? "item" : "list", "h");
     } else {
       if (S.compose) dropCompose(false);
-      go(S.view === "finish" ? "finish" : "list", "f");
+      go(S.view === "finish" || S.view === "item" ? S.view : "list", "f");
     }
   }
   sheet.addEventListener("pointerup", endDrag);
+  // A drag that began on a button of the title line is not a tap on it.
+  sheet.addEventListener("click", (e) => {
+    if (dragged()) { e.stopPropagation(); e.preventDefault(); }
+  }, true);
   sheet.addEventListener("pointercancel", endDrag);
 
   // --- Keys, resizes, coming back ---------------------------------------------------
