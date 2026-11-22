@@ -74,12 +74,11 @@ def comment_routes(store: Store) -> list[Route]:
         # A missing or malformed key here only means no comment is "mine".
         key = _author_key(request, required=False)
         artifact_id = request.path_params["id"]
-        # Read before the comments, so a replace in between shows next time.
-        artifact = store.get(artifact_id)
         found = await run_in_threadpool(store.comments, artifact_id, key_hash=key)
-        if artifact is None or found is None:
+        if found is None:
             raise _no_artifact()
-        return _updated(_answer([_json(c) for c in found]), artifact.updated_at)
+        updated_at, comments = found
+        return _updated(_answer([_json(c) for c in comments]), updated_at)
 
     async def drafts(request: Request) -> Response:
         artifact_id, key = request.path_params["id"], _author_key(request)
@@ -172,11 +171,11 @@ def comment_routes(store: Store) -> list[Route]:
     async def owner_list(request: Request) -> Response:
         agent = require_agent(store, request)
         artifact_id = request.path_params["id"]
-        artifact = store.get(artifact_id, owner=agent)
         found = await run_in_threadpool(store.comments, artifact_id, owner=agent)
-        if artifact is None or found is None:
+        if found is None:
             raise _no_artifact()
-        return _updated(_answer([_json(c) for c in found]), artifact.updated_at)
+        updated_at, comments = found
+        return _updated(_answer([_json(c) for c in comments]), updated_at)
 
     async def owner_take(request: Request) -> Response:
         agent = require_agent(store, request)
