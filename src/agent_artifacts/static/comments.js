@@ -225,14 +225,16 @@
     b.title = "Fold";
     return b;
   }
-  function titled(text) {
+  function titled(text, extra = null) {
     const ttl = el("h2", "ttl", text);
-    if (desk.matches) {
+    if (desk.matches && !extra) {
       ttl.classList.add("handle");
       return ttl;
     }
     const head = el("div", "head handle");
-    head.append(ttl, foldButton());
+    head.append(ttl);
+    if (extra) head.append(extra);
+    if (!desk.matches) head.append(foldButton());
     return head;
   }
 
@@ -435,12 +437,10 @@
       let title = "No comments yet";
       if (review) title = `Review · ${review}` + (S.comments.length ? ` · ${S.comments.length} published` : "");
       else if (S.comments.length) title = `Comments · ${S.comments.length}`;
-      out.push(titled(title));
+      out.push(titled(title, acceptAllButton()));
       if (all.some((i) => i.pend && !actsOn(i.c.n).length)) {
         out.push(el("p", "cap", "Colleagues’ comments wait for your approval."));
       }
-      const acceptRow = acceptAllButton();
-      if (acceptRow) out.push(acceptRow);
       if (!all.length) {
         out.push(el("p", "empty", S.mode && canPin()
           ? `Tap a spot on the ${pinType === "point" ? "image" : "page"} to leave a comment.`
@@ -465,11 +465,9 @@
       const answered = a.done + a.wrote + a.asked;
       const title = answered ? `Agent answered · ${answered}`
         : a.working ? `Agent is working · ${sent.length}` : `Sent to the agent · ${sent.length}`;
-      const out = [titled(title)];
+      const out = [titled(title, acceptAllButton())];
       const last = lastSent();
       if (last) out.push(el("p", "cap", `Sent ${last.at}`));
-      const all = acceptAllButton();
-      if (all) out.push(all);
       for (const it of sent) out.push(row(it, status(it)));
       if (S.mode) {
         const add = el("div", "addwhole");
@@ -543,9 +541,11 @@
       const accepting = (i) => (decisionOn(i.c.n) || {}).kind === "accept";
       const out = [titled(`Finish review · ${count}`)];
       if (undecided.length) {
-        out.push(el("p", "sec", `Not decided yet · ${undecided.length}`));
-        const all = acceptAllButton();
-        if (all) out.push(all);
+        const sec = el("div", "sec-row");
+        sec.append(el("p", "sec", `Not decided yet · ${undecided.length}`));
+        const all = acceptAllButton("link");
+        if (all) sec.append(all);
+        out.push(sec);
         for (const it of undecided) out.push(row(it, status(it)));
         out.push(el("p", "sec", "In this review"));
       }
@@ -1053,12 +1053,14 @@
     }
     return out;
   }
-  function acceptAllButton() {
+  // Small enough to share a title line: a pill there, a link by a section.
+  function acceptAllButton(look = "pill") {
     const n = acceptable().length;
     if (n < 2) return null;
-    const row = el("div", "accept-all");
-    row.append(button(`✓ Accept all · ${n}`, () => acceptAll(), "btn pri"));
-    return row;
+    const b = button(look === "pill" ? `✓ All · ${n}` : `Accept all · ${n}`, () => acceptAll(),
+      look === "pill" ? "all-pill" : "all-link");
+    b.setAttribute("aria-label", `Accept all ${n} waiting`);
+    return b;
   }
   // Each becomes an acceptance draft, as if accepted one by one; one Undo
   // takes them all back.
