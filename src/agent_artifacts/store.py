@@ -947,13 +947,26 @@ class Store:
             if project is None:
                 return None
             rows = db.execute(
-                f"{_ARTIFACT_SQL} WHERE a.project = ? ORDER BY a.section IS NOT NULL, "  # noqa: S608
-                "(SELECT MIN(b.added_at) FROM artifacts b "
-                "WHERE b.project = a.project AND b.section = a.section), "
-                "a.section, a.added_at, a.id",
+                f"{_ARTIFACT_SQL} WHERE a.project = ? ORDER BY a.added_at, a.id",  # noqa: S608
                 (project_id,),
             ).fetchall()
-        return project, [Artifact(*r) for r in rows]
+            # When each section's earliest file was added: one grouped
+            # query, not a subquery per row.
+            first = dict(
+                db.execute(
+                    "SELECT section, MIN(added_at) FROM artifacts "
+                    "WHERE project = ? AND section IS NOT NULL GROUP BY section",
+                    (project_id,),
+                ).fetchall()
+            )
+        files = [Artifact(*r) for r in rows]
+        loose = [a for a in files if a.section is None]
+        sections: dict[str, list[Artifact]] = {}
+        for a in files:
+            if a.section is not None:
+                sections.setdefault(a.section, []).append(a)
+        order = sorted(sections, key=lambda s: (first[s], s))
+        return project, loose + [a for s in order for a in sections[s]]
 
     def project_summary(self, project_id: str, key_hash: str | None) -> dict | None:
         """For the project page: per file of the project, the open comments

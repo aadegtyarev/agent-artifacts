@@ -57,7 +57,13 @@
     return box;
   }
 
-  fetch(`/p/${list.dataset.project}/summary`, { headers, cache: "no-store" })
+  // On the project page at once; under a file's header when first opened,
+  // so a file's page does not ask for them on every load.
+  let counted = false;
+  function loadCounters() {
+    if (counted) return;
+    counted = true;
+    fetch(`/p/${list.dataset.project}/summary`, { headers, cache: "no-store" })
     .then((r) => (r.ok ? r.json() : null))
     .then((summary) => {
       if (!summary || typeof summary !== "object") return;
@@ -70,13 +76,17 @@
       }
     })
     .catch(() => { /* no counters */ });
+  }
 
   // --- The list under a file's header -----------------------------------------
   // Opened by the project's title in the header, or in full screen by the
   // floating menu's Project files (viewer.js sends aa:files). A tap on the
   // scrim, Escape or the title again closes it; focus goes back to what
   // opened it. Its rows are plain links: the next file opens in this tab.
-  if (!drop) return;
+  if (!drop) {
+    loadCounters();
+    return;
+  }
   const button = document.getElementById("files-button");
   const header = document.querySelector("body > header");
   let opener = null;
@@ -89,6 +99,7 @@
 
   function open(from) {
     opener = from;
+    loadCounters();
     place();
     drop.hidden = false;
     button.setAttribute("aria-expanded", "true");
@@ -99,7 +110,8 @@
 
   function close(restore = true) {
     if (drop.hidden) return;
-    const inside = drop.contains(document.activeElement);
+    // A tap on the scrim takes the focus off the list: it goes back too.
+    const inside = drop.contains(document.activeElement) || document.activeElement === document.body;
     drop.hidden = true;
     button.setAttribute("aria-expanded", "false");
     if (restore && inside && opener && opener.getClientRects().length) {
