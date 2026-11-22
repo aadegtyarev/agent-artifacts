@@ -36,7 +36,7 @@ def _static_url(name: str) -> str:
 
 
 _env.globals["static"] = {
-    n: _static_url(n) for n in ("site.css", "copy.js", "comments.js", "viewer.js")
+    n: _static_url(n) for n in ("site.css", "theme.js", "copy.js", "comments.js", "viewer.js")
 }
 
 SANDBOX = (

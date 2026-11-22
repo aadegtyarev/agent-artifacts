@@ -473,6 +473,10 @@ def test_viewer_page_has_every_element_its_scripts_use(env):
             "toast-undo",
         } <= ids, filename
         assert f'data-artifact="{art["id"]}"' in page
+        # The theme is applied in <head>, before the body is drawn.
+        head = page.split("</head>", 1)[0]
+        assert re.search(r'<script src="/static/theme\.js\?v=\w+"></script>', head)
+        assert 'data-act="theme"' in page
         assert f'data-url="https://art.example.org/a/{art["id"]}"' in page
 
 
