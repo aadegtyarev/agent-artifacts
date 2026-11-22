@@ -435,8 +435,8 @@ the file was replaced while it was open.
   until the person answers).
 - `approved_by` and `rejected_by` are the name of the person who last
   approved or rejected the comment, else `null`; a later decision clears the
-  other one. A comment sent to the agent by its own author counts as
-  approved by them without a name: `approved_by` `null`, `agent` not `null`.
+  other one. A comment sent to the agent by its own author needs no
+  approval: it has an `agent` state and `approved_by` `null`.
 - `replies` is the comment's chat, oldest first: `author`, `text`,
   `created_at`, `mine` as for comments, and `agent`, true for the owner
   agent's replies, whose `author` is `agent`.
