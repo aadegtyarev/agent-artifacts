@@ -647,7 +647,7 @@ class Store:
     def resolve_comment(
         self, artifact_id: str, n: int, resolved: bool, *, owner: str
     ) -> Comment | None:
-        """Mark a comment resolved or open, read or not."""
+        """Mark a comment resolved or open."""
         with self._conn() as db:
             if self._artifact(db, artifact_id, owner) is None:
                 return None

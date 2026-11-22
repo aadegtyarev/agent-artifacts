@@ -346,11 +346,11 @@ async def _purge_forever(store: Store) -> None:
         await asyncio.sleep(PURGE_INTERVAL_SECONDS)
 
 
-def _download(path: Path, name: str, media_type: str = "application/octet-stream") -> Response:
+def _download(path: Path, name: str) -> Response:
     ascii_name = name.encode("ascii", "replace").decode().replace("?", "_")
     disposition = f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name)}"
     return FileResponse(
         path,
-        media_type=media_type,
+        media_type="application/octet-stream",
         headers={"Content-Disposition": disposition, "Cache-Control": "no-store"},
     )
