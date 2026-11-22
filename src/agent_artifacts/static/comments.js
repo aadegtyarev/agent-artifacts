@@ -476,7 +476,7 @@
   }
 
   function row(it, line) {
-    const r = el("button", `it${it.draft && S.view !== "finish" ? " dr" : ""}${S.sel === it.key && (S.view === "list" || desk.matches) ? " cur" : ""}`);
+    const r = el("button", `it${it.draft && S.view !== "finish" ? " dr" : ""}${S.sel === it.key && S.view === "list" ? " cur" : ""}`);
     r.type = "button";
     r.dataset.key = it.key;
     const tx = el("span", "tx");
@@ -498,7 +498,8 @@
   function pinList() {
     const shown = items().filter((it) => pinnable(it.anchor)).map((it) => ({
       key: it.key, label: it.label, anchor: it.anchor, own: it.own, draft: it.draft,
-      lit: (S.view === "item" || S.view === "list") && S.sel === it.key,
+      lit: S.sel === it.key && (S.view === "item"
+        || (S.view === "list" && (desk.matches || S.pos !== "strip"))),
     }));
     if (S.compose && pinnable(S.compose.anchor)) {
       shown.push({ key: "new", label: "", anchor: S.compose.anchor, own: true, draft: true, lit: true });
@@ -560,10 +561,13 @@
     for (const pin of pinLayer.children) {
       const x = parseFloat(pin.style.left) / 100;
       const y = parseFloat(pin.style.top) / 100;
-      pin.classList.toggle("left", x * width + pin.offsetWidth > width && x * width >= pin.offsetWidth);
-      pin.classList.toggle("down", y * height < pin.offsetHeight);
+      // By the selected pin's size, so a pin keeps its side when selected.
+      pin.classList.toggle("left", x * width + LIT > width && x * width >= LIT);
+      pin.classList.toggle("down", y * height < LIT);
     }
   }
+
+  const LIT = 32;
 
   // Brings a pin into the middle of what is visible of the content.
   function reveal(key) {
@@ -600,6 +604,7 @@
     }
     if (!itemOf(key)) return;
     if (S.view === "list" && (desk.matches || S.pos !== "strip")) {
+      if (S.compose) dropCompose(false);
       S.sel = key;
       render();
       showRow(key);
@@ -746,6 +751,8 @@
     if (!desk.matches) S.pos = pos || DEFAULT_POS[view];
     if (view !== "item") S.edit = null;
     render();
+    // Back on the list, the lit row is brought into view.
+    if (view === "list" && S.sel) requestAnimationFrame(() => showRow(S.sel));
   }
 
   function unselect() {
@@ -1085,10 +1092,9 @@
   });
 
   // --- The sheet: tap and drag -------------------------------------------------------
-  // A tap on the strip opens the list; one on the grip or the sheet's title
-  // line steps ¼ or full to ½ and ½ to full. Dragging the grip, the title
-  // line (its buttons too) or the strip moves the sheet with the finger;
-  // let go, it snaps to the height nearest to where it is.
+  // A tap on the strip opens the list. Dragging the grip, the title line (its
+  // buttons too) or the strip moves the sheet with the finger; let go, it
+  // snaps to the height nearest to where it is and keeps what it shows.
   const POS = ["strip", "q", "h", "f"];
   let drag = null;
 
@@ -1204,6 +1210,9 @@
       else fold();
     } else if (S.edit) {
       S.edit = null;
+      render();
+    } else if (desk.matches && S.view === "list" && S.sel) {
+      S.sel = null;
       render();
     } else if (desk.matches ? S.view !== "list" : S.pos !== "strip") {
       if (desk.matches) go("list");

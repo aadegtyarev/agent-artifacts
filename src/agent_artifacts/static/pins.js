@@ -173,8 +173,9 @@
       layer.append(b);
       drawn.set(key, b);
     }
-    if (x + 26 > window.innerWidth) classes.push("left");
-    if (y < 26) classes.push("down");
+    // By the selected pin's size (32px), so a pin keeps its side when selected.
+    if (x + 32 > window.innerWidth) classes.push("left");
+    if (y < 32) classes.push("down");
     const className = ["pin", ...classes].filter(Boolean).join(" ");
     if (b.className !== className) b.className = className;
     if (b.textContent !== label) b.textContent = label;

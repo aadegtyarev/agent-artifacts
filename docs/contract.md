@@ -414,7 +414,7 @@ bottom sheet with four heights:
 | --- | --- |
 | strip | one line: "Review · N" (the person's drafts) and **Finish review**; with no drafts, the count of comments |
 | ¼ | one item, the sheet as tall as its content and at most half: the field of a new draft, or the selected comment or draft, with ‹ › to its neighbours |
-| ½ | the list (drafts and comments, text and state only), or **Finish review** |
+| ½ | the list (drafts and comments, text and state only) or **Finish review**; an item or a new draft dragged up stays itself |
 | full | the same as ½, taller |
 
 A drag changes the height only; what the sheet shows stays. A tap changes
@@ -424,8 +424,7 @@ lights its row and brings it into view, the sheet stays; otherwise it opens
 the item at ¼. The selected pin is drawn bigger. Dragging the grip or the
 sheet's title line (its buttons too) snaps to the nearest height; a tap on
 the grip steps ½ and full, a tap on one item's title goes back to the list.
-**Finish review** opens at ½. Moving down from a new draft's ¼ to the strip
-drops it, with Undo if text was typed. The keyboard pushes the sheet up and
+**Finish review** opens at ½. Folding a new draft to the strip drops it, with Undo if text was typed. The keyboard pushes the sheet up and
 the pin stays in sight above it. Buttons show only on the selected item:
 **Edit** and **Delete** on the person's own draft, none on a published
 comment. On a computer the same
@@ -450,8 +449,9 @@ pending deletes first.
 filled too, with a white dashed ring and a letter. In the list drafts come
 first, on a light blue ground. Blue marks what was written from this browser
 (drafts and published comments of its author key), orange everything else. A
-comment the agent resolved leaves the content and the list. A tap on a pin
-opens its item; selecting an item lights its pin and scrolls it into view.
+comment the agent resolved leaves the content and the list. The selected
+item's pin is drawn bigger and is scrolled into view (see the sheet for what a
+tap on a pin does).
 Pins and cards show texts and names as text nodes, never as HTML.
 
 | Type | Pin |

@@ -253,6 +253,8 @@ body.commenting #image-box img { cursor: crosshair; }
   /* The sheet's rounded top lies over the content's last pixels. */
   .sheet[data-pos="q"], .sheet[data-pos="h"] { margin-top: -16px; }
   .sheet[data-pos="q"] { max-height: 52%; }
+  /* A row scrolled into view clears the sticky title line. */
+  .sbody { scroll-padding-top: 40px; }
   .sheet[data-pos="h"] { height: 52%; }
   .sheet[data-pos="f"] { height: 100%; border-radius: 0; box-shadow: none; }
   .sheet.dragging { max-height: none; }
