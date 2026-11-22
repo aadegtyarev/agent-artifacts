@@ -60,8 +60,14 @@
     if (storage.get(AUTHOR_KEY) !== authorKey) stored = false;
   }
   const asAuthor = { "X-Author-Key": authorKey };
+  // A name as the server takes it: one line without control or bidi
+  // characters (they could disguise it), at most 64 code points.
+  const cleanName = (raw) => [...String(raw)
+    .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069\ud800-\udfff]+/gu, " ")
+    .replace(/\s+/g, " ").trim()].slice(0, 64).join("").trim();
   // null until asked; "" for No name (the server makes it "anonymous").
   let name = storage.get(NAME_KEY);
+  if (name !== null) name = cleanName(name);
 
   // --- State -----------------------------------------------------------------
   const S = {
@@ -131,7 +137,8 @@
     if (mine !== generation) return; // something newer has landed meanwhile
     const [comments, drafts] = found;
     S.comments = comments;
-    S.drafts = drafts.map((d) => ({ ...d, gone: pending.has(d.id) }));
+    // Pending deletes and edits go by id, so they hold across this.
+    S.drafts = drafts;
     // An item that is no longer there leaves the view.
     if (S.sel && !items().some((i) => i.key === S.sel)) unselect();
     render();
@@ -142,7 +149,8 @@
   // --- Items -----------------------------------------------------------------
   const LETTERS = "abcdefghijklmnopqrstuvwxyz";
   const letter = (i) => LETTERS[i % 26] + (i >= 26 ? String(Math.floor(i / 26) + 1) : "");
-  const liveDrafts = () => S.drafts.filter((d) => !d.gone);
+  const liveDrafts = () => S.drafts.filter((d) => !pending.has(d.id));
+  const draftById = (id) => S.drafts.find((d) => d.id === id) || null;
 
   // The person's drafts (only in comment mode), then the published comments.
   function items() {
@@ -290,7 +298,12 @@
     if (desk.matches) return;
     if (!sheet.hidden && S.pos === "f") {
       const header = document.querySelector("body > header");
-      const top = header && header.getClientRects().length ? header.getBoundingClientRect().bottom : 0;
+      let top = header && header.getClientRects().length ? header.getBoundingClientRect().bottom : 0;
+      // In full screen, under the floating menu button when it is up there.
+      const float = $("float-button");
+      if (float && !float.hidden && float.getBoundingClientRect().top < 100) {
+        top = Math.max(top, float.getBoundingClientRect().bottom);
+      }
       toastBox.style.top = `${top + 10}px`;
       toastBox.style.bottom = "auto";
       return;
@@ -330,6 +343,8 @@
     drawPins();
     syncPicking();
     dockToast();
+    // The floating menu button of full screen (viewer.js) keeps off the sheet.
+    document.dispatchEvent(new CustomEvent("aa:sheet"));
   }
 
   function renderStrip() {
@@ -490,9 +505,28 @@
     return shown;
   }
 
+  // The frame gets a draft's place in the list ("d0", "d1"…) as its key,
+  // never its id: the page's own scripts can read what the frame gets.
+  let frameKeys = new Map();
+  const toFrame = (key) => {
+    const found = [...frameKeys].find(([, k]) => k === key);
+    if (found) return found[0];
+    return key.startsWith("c") || key === "new" ? key : null;
+  };
+  const fromFrame = (key) => frameKeys.get(key) || key;
+
   function drawPins() {
     if (pinType === "element") {
-      if (page.ready) tell({ type: "pins", pins: pinList() });
+      if (!page.ready) return;
+      frameKeys = new Map();
+      let n = 0;
+      const pins = pinList().map((pin) => {
+        if (!pin.draft || pin.key === "new") return pin;
+        const key = `d${n++}`;
+        frameKeys.set(key, pin.key);
+        return { ...pin, key };
+      });
+      tell({ type: "pins", pins });
       return;
     }
     if (pinType !== "point") return;
@@ -533,7 +567,8 @@
   // Brings a pin into the middle of what is visible of the content.
   function reveal(key) {
     if (pinType === "element") {
-      if (page.ready) tell({ type: "show", key });
+      const shown = toFrame(key);
+      if (page.ready && shown) tell({ type: "show", key: shown });
       return;
     }
     if (pinType !== "point") return;
@@ -647,14 +682,14 @@
       place({ type: "element", selector, text, x, y, width });
     } else if (m.type === "placed" && Array.isArray(m.missing) && m.missing.length <= 500
       && m.missing.every(isKey)) {
-      const missing = new Set(m.missing);
+      const missing = new Set(m.missing.map(fromFrame));
       const same = missing.size === page.missing.size && [...missing].every((k) => page.missing.has(k));
       page.missing = missing;
       // The list and the item say which spots were not found; a field being
       // typed in is not redrawn for that.
       if (!same && !Object.values(fields).includes(document.activeElement)) render();
     } else if (m.type === "pin" && isKey(m.key)) {
-      tapPin(m.key);
+      tapPin(fromFrame(m.key));
     } else if (m.type === "escape" && page.picking) {
       escape();
     }
@@ -749,8 +784,7 @@
       syncPicking();
       return;
     }
-    // A name is one line.
-    name = value.replace(/[\r\n\t]+/g, " ").trim();
+    name = cleanName(value);
     storage.set(NAME_KEY, name);
     if (then) then();
   }
@@ -831,15 +865,26 @@
     });
   }
 
+  // The server refused the name (one kept from an older version, say): it
+  // is forgotten and asked again; the text stays where it is.
+  function nameRefused(e) {
+    if (e.status !== 400 || !/^author\b/i.test(e.message)) return false;
+    name = null;
+    try { localStorage.removeItem(NAME_KEY); } catch { /* not kept anyway */ }
+    toast("That name cannot be used. Give another one.", { error: true, ms: 6000 });
+    askName(null);
+    return true;
+  }
+
   async function addDraft() {
     const c = S.compose;
     const text = fields.compose.value;
-    if (!c || !text.trim() || sendButton.disabled) return;
+    if (!c || !text.trim() || sendButton.disabled) return false;
     sendButton.disabled = true;
     try {
       const draft = await call("POST", "/drafts", { author: name || "", text, anchor: c.anchor });
       changed();
-      S.drafts.push({ ...draft, gone: false });
+      S.drafts.push(draft);
       if (S.compose === c) {
         S.compose = null;
         fields.compose.value = "";
@@ -851,8 +896,10 @@
       void strip.offsetWidth;
       strip.classList.add("pulse");
       if (!c.anchor) toast("Added about the whole file");
+      return true;
     } catch (e) {
-      toast(e.message, { error: true, ms: 8000 });
+      if (!nameRefused(e)) toast(e.message, { error: true, ms: 8000 });
+      return false;
     } finally {
       sendButton.disabled = !fields.compose.value.trim();
     }
@@ -869,6 +916,7 @@
   }
 
   async function saveEdit(d) {
+    const id = d.id;
     const text = fields.edit.value;
     if (!text.trim()) {
       toast("Write something, or delete the draft.", { error: true });
@@ -880,10 +928,11 @@
       return;
     }
     try {
-      const saved = await call("PATCH", `/drafts/${d.id}`, { text });
+      const saved = await call("PATCH", `/drafts/${id}`, { text });
       changed();
-      Object.assign(d, saved);
-      if (S.edit === d.id) S.edit = null;
+      const now = draftById(id);
+      if (now) Object.assign(now, saved);
+      if (S.edit === id) S.edit = null;
       render();
       toast("Saved");
     } catch (e) {
@@ -892,61 +941,69 @@
   }
 
   // Hidden at once; the DELETE goes when the Undo time ends, so Undo keeps
-  // the draft's id and its place.
+  // the draft's id and its place. All by id: a reload replaces the objects.
   let deleteUndo = null;
   function deleteDraft(d) {
+    const id = d.id;
     flushDeletes();
     changed();
-    d.gone = true;
-    pending.set(d.id, setTimeout(() => sendDelete(d), UNDO_MS));
-    if (S.sel === `d${d.id}`) {
+    pending.set(id, setTimeout(() => sendDelete(id), UNDO_MS));
+    if (S.sel === `d${id}`) {
       if (desk.matches) { unselect(); render(); } else fold();
     } else {
       render();
     }
     deleteUndo = () => {
-      if (!pending.has(d.id)) return;
-      clearTimeout(pending.get(d.id));
-      pending.delete(d.id);
+      if (!pending.has(id)) return;
+      clearTimeout(pending.get(id));
+      pending.delete(id);
       changed();
-      d.gone = false;
       render();
     };
     toast("Draft deleted", { undo: deleteUndo });
   }
 
-  async function sendDelete(d, keepalive = false) {
-    if (!pending.has(d.id)) return;
-    clearTimeout(pending.get(d.id));
-    pending.delete(d.id);
+  // True once the draft is gone from the server (or was already).
+  async function sendDelete(id, keepalive = false) {
+    if (!pending.has(id)) return true;
+    clearTimeout(pending.get(id));
     try {
-      await call("DELETE", `/drafts/${d.id}`, undefined, keepalive);
+      await call("DELETE", `/drafts/${id}`, undefined, keepalive);
     } catch (e) {
       if (e.status !== 404) {
         // Not deleted: it comes back.
+        pending.delete(id);
         changed();
-        d.gone = false;
         render();
         toast(`Could not delete the draft. ${e.message}`, { error: true, ms: 8000 });
-        return;
+        return false;
       }
     }
+    pending.delete(id);
     changed();
-    S.drafts = S.drafts.filter((x) => x !== d);
+    S.drafts = S.drafts.filter((x) => x.id !== id);
     render();
+    return true;
   }
 
-  function flushDeletes(keepalive = false) {
-    const waiting = S.drafts.filter((d) => pending.has(d.id));
+  // Sends the deletes still waiting for their Undo; true if all went.
+  async function flushDeletes(keepalive = false) {
+    const waiting = [...pending.keys()];
     if (waiting.length && undoAction && undoAction === deleteUndo) hideToast();
-    return Promise.all(waiting.map((d) => sendDelete(d, keepalive)));
+    const sent = await Promise.all(waiting.map((id) => sendDelete(id, keepalive)));
+    return sent.every(Boolean);
   }
   window.addEventListener("pagehide", () => { flushDeletes(true); });
 
   // --- Finish review -------------------------------------------------------------
   function openFinish() {
-    const show = () => {
-      if (S.compose) dropCompose(false);
+    const show = async () => {
+      // What is typed for a new draft is added first, not lost.
+      if (S.compose && fields.compose.value.trim()) {
+        if (!(await addDraft())) return;
+      } else if (S.compose) {
+        dropCompose(true);
+      }
       go("finish", "f");
     };
     if (S.mode) show();
@@ -956,7 +1013,11 @@
   async function finish(done) {
     done.disabled = true;
     try {
-      await flushDeletes();
+      if (!(await flushDeletes())) {
+        // A draft meant to go would be published: nothing goes, the text stays.
+        toast("Could not delete a draft. Try again.", { error: true, ms: 8000 });
+        return;
+      }
       const general = fields.general.value;
       const payload = { author: name || "" };
       // Omitted when empty: the review is then the drafts alone.
@@ -964,7 +1025,7 @@
       const made = await call("POST", "/review", payload);
       changed();
       S.comments = [...S.comments, ...made];
-      S.drafts = S.drafts.filter((d) => pending.has(d.id));
+      S.drafts = [];
       fields.general.value = "";
       S.mode = false;
       S.compose = null;
@@ -974,7 +1035,7 @@
       render();
       toast(`Published ${made.length} ${made.length === 1 ? "comment" : "comments"}`);
     } catch (e) {
-      toast(e.message, { error: true, ms: 8000 });
+      if (!nameRefused(e)) toast(e.message, { error: true, ms: 8000 });
       // The drafts on the server may differ now (one gone, say).
       load();
     } finally {
@@ -1011,7 +1072,7 @@
   // --- The sheet: tap and drag -------------------------------------------------------
   // A tap on the strip opens the list; one on the grip steps ¼ or full to
   // ½ and ½ to full. Dragging the grip or the strip moves the sheet with the
-  // finger; let go, it snaps to the nearest height, one step at least.
+  // finger; let go, it snaps to the height nearest to where it is.
   const POS = ["strip", "q", "h", "f"];
   let drag = null;
 
@@ -1086,8 +1147,6 @@
     }
     // Let go well below a quarter: folded.
     if (!up && now < heights.q * 0.75) best = "strip";
-    const from = S.pos;
-    if (best === from) best = POS[Math.max(0, Math.min(3, POS.indexOf(from) + (up ? 1 : -1)))];
     if (best === "strip") {
       if (S.compose) dropCompose(false);
       fold();

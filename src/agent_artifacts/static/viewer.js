@@ -42,7 +42,7 @@
     const box = from.getBoundingClientRect();
     const square = items()[0].querySelector(".fan-sq").getBoundingClientRect().width;
     const inset = (box.width - square) / 2; // squares in line with the button's middle
-    const left = from === floatButton && floatSide === "left";
+    const left = from === floatButton && shownSide === "left";
     list.classList.toggle("left", left);
     list.style.left = left ? `${box.left + inset}px` : "auto";
     list.style.right = left ? "auto" : `${window.innerWidth - box.right + inset}px`;
@@ -174,13 +174,35 @@
     }
   } catch { /* no storage: the default place */ }
 
+  // The comments sheet (comments.js) is never covered: the button keeps
+  // above its top edge, or takes the top right corner when the sheet fills
+  // the height; beside a computer's panel it keeps to the left of it. The
+  // place chosen stays as it was, for when the sheet folds again.
+  let shownSide = "right";
   function applyPlace() {
     const size = floatButton.offsetHeight || 44;
-    const top = floatTop * window.innerHeight - size / 2;
-    floatButton.style.top = `${Math.min(Math.max(GAP, top), window.innerHeight - size - GAP)}px`;
-    floatButton.style.left = floatSide === "left" ? `${GAP}px` : "auto";
-    floatButton.style.right = floatSide === "right" ? `${GAP}px` : "auto";
+    let top = floatTop * window.innerHeight - size / 2;
+    let side = floatSide;
+    let bottom = window.innerHeight - size - GAP;
+    let right = GAP;
+    const sheet = document.getElementById("comments");
+    if (sheet && !sheet.hidden && sheet.getClientRects().length) {
+      const box = sheet.getBoundingClientRect();
+      if (sheet.dataset.pos === "panel") {
+        right = window.innerWidth - box.left + GAP;
+      } else if (box.top - size - GAP >= GAP) {
+        bottom = box.top - size - GAP;
+      } else {
+        top = GAP;
+        side = "right";
+      }
+    }
+    shownSide = side;
+    floatButton.style.top = `${Math.min(Math.max(GAP, top), bottom)}px`;
+    floatButton.style.left = side === "left" ? `${GAP}px` : "auto";
+    floatButton.style.right = side === "right" ? `${right}px` : "auto";
   }
+  document.addEventListener("aa:sheet", () => { if (!floatButton.hidden && !drag) applyPlace(); });
 
   function savePlace() {
     try {
