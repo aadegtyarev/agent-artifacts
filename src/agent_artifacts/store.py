@@ -30,7 +30,9 @@ ID_RE = r"[A-Za-z0-9_-]{22}"
 NAME_RE = r"[A-Za-z0-9_-][A-Za-z0-9_.-]{0,63}"
 TOKEN_RE = r"[A-Za-z0-9_-]{43}"  # noqa: S105 (a pattern, not a secret)
 
-_SCHEMA = """
+# The schema at version 1, the first numbered one. Frozen: databases stamped 1
+# have exactly this, so a later change is a new migration, never an edit here.
+_SCHEMA_V1 = """
 CREATE TABLE IF NOT EXISTS agents (
     name TEXT PRIMARY KEY,
     key_hash TEXT NOT NULL UNIQUE,
@@ -106,33 +108,119 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 """
 
-# Columns added after the first release, for databases made before.
-_ADDED_COLUMNS = {
-    "agents": {
-        "admin": "INTEGER NOT NULL DEFAULT 0",
-        "quota_bytes": "INTEGER",
-        "last_upload_at": "REAL",
-    },
-    "artifacts": {
-        "comment_seq": "INTEGER NOT NULL DEFAULT 0",
-        "replaced_at": "REAL",
-    },
-    "comments": {
-        "written_at": "REAL",
-        "for_agent": "INTEGER NOT NULL DEFAULT 0",
-        "approved_by": "TEXT",
-        "rejected_by": "TEXT",
-        "agent": "TEXT",
-    },
-    "drafts": {
-        "kind": "TEXT NOT NULL DEFAULT 'comment'",
-        "of_n": "INTEGER",
-    },
-}
-# Columns renamed since, old name to new, for databases made before.
-_RENAMED_COLUMNS = {
+# Columns renamed before version 1, old name to new.
+_RENAMED_BEFORE_V1 = {
     "comments": {"edit_token_hash": "author_key_hash"},
 }
+
+
+def _statements(script: str) -> list[str]:
+    """The statements of ``script``, to run one by one inside a transaction
+    (executescript would commit it first)."""
+    statements, part = [], ""
+    for line in script.splitlines(keepends=True):
+        part += line
+        if sqlite3.complete_statement(part):
+            statements.append(part)
+            part = ""
+    return statements
+
+
+def _shape(db: sqlite3.Connection) -> tuple[dict[str, dict[str, tuple]], set[str]]:
+    """Each table's columns, name to (type, not null, default, primary key);
+    and the names of the indexes."""
+    master = db.execute("SELECT type, name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'")
+    tables, indexes = {}, set()
+    for kind, name in master.fetchall():
+        if kind == "table":
+            tables[name] = {r[1]: r[2:] for r in db.execute(f"PRAGMA table_info({name})")}
+        elif kind == "index":
+            indexes.add(name)
+    return tables, indexes
+
+
+def _v1_shape() -> tuple[dict[str, dict[str, tuple]], set[str]]:
+    mem = sqlite3.connect(":memory:")
+    try:
+        mem.executescript(_SCHEMA_V1)
+        return _shape(mem)
+    finally:
+        mem.close()
+
+
+def _is_v1(db: sqlite3.Connection) -> bool:
+    """Whether a database without a version was made by the code before
+    numbered versions, after its last change: it has every table, column and
+    index of version 1, so _migrate_to_v1 would add nothing. Columns no longer
+    used may remain."""
+    want_tables, want_indexes = _v1_shape()
+    have_tables, have_indexes = _shape(db)
+    return want_indexes <= have_indexes and all(
+        set(columns) <= set(have_tables.get(table, ())) for table, columns in want_tables.items()
+    )
+
+
+def _migrate_to_v1(db: sqlite3.Connection) -> None:
+    """Any shape made before numbered versions, empty included, to version 1:
+    what every start did until then."""
+    for table, renamed in _RENAMED_BEFORE_V1.items():
+        have = {r[1] for r in db.execute(f"PRAGMA table_info({table})")}
+        for old, new in renamed.items():
+            if old in have and new not in have:
+                db.execute(f"ALTER TABLE {table} RENAME COLUMN {old} TO {new}")
+    for statement in _statements(_SCHEMA_V1):
+        db.execute(statement)
+    # Tables made before some of their columns get the missing ones.
+    added = set()
+    for table, columns in _v1_shape()[0].items():
+        have = {r[1] for r in db.execute(f"PRAGMA table_info({table})")}
+        for column, (type_, not_null, default, _) in columns.items():
+            if column not in have:
+                decl = type_ + " NOT NULL" * not_null
+                decl += f" DEFAULT {default}" if default is not None else ""
+                db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+                added.add((table, column))
+    if ("comments", "agent") in added:
+        # Sent to the agent before its state was kept: still its work.
+        db.execute(
+            "UPDATE comments SET agent = 'waiting' WHERE for_agent = 1 AND resolved_at IS NULL"
+        )
+    # A counter behind its comments (added to a database that had comments)
+    # would hand out their numbers again.
+    last = "(SELECT MAX(n) FROM comments WHERE artifact_id = artifacts.id)"
+    db.execute(
+        f"UPDATE artifacts SET comment_seq = {last} "  # noqa: S608 (a constant)
+        f"WHERE comment_seq < COALESCE({last}, 0)"
+    )
+
+
+# _MIGRATIONS[i] takes a database from version i (PRAGMA user_version) to
+# i + 1. Append only: each runs once, in one transaction with its version bump,
+# so a start cut short leaves a version the next start goes on from.
+_MIGRATIONS: tuple[Callable[[sqlite3.Connection], None], ...] = (_migrate_to_v1,)
+
+
+def _migrate(db: sqlite3.Connection) -> None:
+    """Run the migrations ``db`` has not had; it is in autocommit mode."""
+    while True:
+        db.execute("BEGIN IMMEDIATE")  # one start at a time decides
+        try:
+            version = db.execute("PRAGMA user_version").fetchone()[0]
+            if version >= len(_MIGRATIONS):
+                # Up to date, or made by a newer version: left as it is.
+                db.execute("COMMIT")
+                return
+            # Already at version 1 without the number: only stamped, so its
+            # fixes do not run on today's data again.
+            if not (version == 0 and _is_v1(db)):
+                _MIGRATIONS[version](db)
+            db.execute(f"PRAGMA user_version = {version + 1}")
+            db.execute("COMMIT")
+        except BaseException:
+            if db.in_transaction:
+                db.execute("ROLLBACK")
+            raise
+
 
 SETTINGS = ("user_quota_bytes", "max_total_bytes", "ttl_seconds")
 
@@ -338,34 +426,13 @@ class Store:
             "ttl_seconds": ttl_seconds,
         }
         self._db = data_dir / "meta.sqlite"
-        with self._conn() as db:
+        db = sqlite3.connect(self._db, timeout=10, isolation_level=None)
+        try:
             db.execute("PRAGMA journal_mode = WAL")
-            for table, renamed in _RENAMED_COLUMNS.items():
-                have = {r[1] for r in db.execute(f"PRAGMA table_info({table})")}
-                for old, new in renamed.items():
-                    if old in have and new not in have:
-                        db.execute(f"ALTER TABLE {table} RENAME COLUMN {old} TO {new}")
-            db.executescript(_SCHEMA)
-            added = set()
-            for table, columns in _ADDED_COLUMNS.items():
-                have = {r[1] for r in db.execute(f"PRAGMA table_info({table})")}
-                for column, decl in columns.items():
-                    if column not in have:
-                        db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
-                        added.add((table, column))
-            if ("comments", "agent") in added:
-                # Sent to the agent before its state was kept: still its work.
-                db.execute(
-                    "UPDATE comments SET agent = 'waiting' "
-                    "WHERE for_agent = 1 AND resolved_at IS NULL"
-                )
-            # A counter behind its comments (added to a database that had
-            # comments) would hand out their numbers again.
-            last = "(SELECT MAX(n) FROM comments WHERE artifact_id = artifacts.id)"
-            db.execute(
-                f"UPDATE artifacts SET comment_seq = {last} "  # noqa: S608 (a constant)
-                f"WHERE comment_seq < COALESCE({last}, 0)"
-            )
+            db.execute("PRAGMA foreign_keys = ON")
+            _migrate(db)
+        finally:
+            db.close()
 
     @contextmanager
     def _conn(self) -> Iterator[sqlite3.Connection]:
