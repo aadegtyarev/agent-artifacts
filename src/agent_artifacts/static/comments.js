@@ -175,7 +175,8 @@
   // Its element is on the page but not shown: another screen of an app, a
   // closed tab. Not an error, just not here now.
   const away = (it) => lost(it) && !page.off && page.hidden.has(it.key);
-  const lostText = (it) => (away(it) ? "on another screen" : "spot not found");
+  const lostText = (it) => (!away(it) ? "spot not found"
+    : it.anchor.screen ? `on “${short(it.anchor.screen, 32)}”` : "on another screen");
   const lostClass = (it) => (away(it) ? " away" : lost(it) && !page.off ? " lost" : "");
 
   // Where an item is, in a few words.
@@ -695,7 +696,10 @@
     && typeof a.selector === "string" && [...a.selector].length <= 512
     && typeof a.text === "string" && [...a.text].length <= 200
     && [a.x, a.y].every((v) => typeof v === "number" && v >= 0 && v <= 1)
-    && Number.isInteger(a.width) && a.width > 0 && a.width <= 100000;
+    && Number.isInteger(a.width) && a.width > 0 && a.width <= 100000
+    && (a.screen === undefined || (typeof a.screen === "string" && [...a.screen].length <= 80))
+    && (a.hash === undefined || (typeof a.hash === "string" && [...a.hash].length <= 200
+      && /^#[\x21-\x7e]*$/.test(a.hash)));
   const isKey = (k) => typeof k === "string" && /^[A-Za-z0-9_-]{1,24}$/.test(k);
 
   function onFrameMessage(e) {
@@ -712,8 +716,13 @@
     } else if (!page.ready) {
       // Nothing else counts before the script has said it is there.
     } else if (m.type === "anchor" && page.picking && isAnchor(m.anchor)) {
-      const { selector, text, x, y, width } = m.anchor;
-      place({ type: "element", selector, text, x, y, width });
+      const { selector, text, x, y, width, screen, hash } = m.anchor;
+      const anchor = { type: "element", selector, text, x, y, width };
+      // Single-line, as the server wants: names come from the page.
+      const one = (s) => s.replace(/[\t\n\r]+/g, " ").trim();
+      if (screen && one(screen)) anchor.screen = one(screen);
+      if (hash && !/[\t\n\r]/.test(hash)) anchor.hash = hash;
+      place(anchor);
     } else if (m.type === "placed" && Array.isArray(m.missing) && m.missing.length <= 500
       && m.missing.every(isKey)) {
       const missing = new Set(m.missing.map(fromFrame));

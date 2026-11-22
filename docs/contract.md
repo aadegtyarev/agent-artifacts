@@ -518,7 +518,19 @@ it tells nothing about other people's drafts.
   "text", "x", "y", "width"}`: a CSS selector of the element tapped (at most
   512 characters), the start of its visible text (at most 200), the point as
   fractions of the element's box, and the window width in pixels at the time,
-  which tells the agent which layout the person saw.
+  which tells the agent which layout the person saw. It may also carry
+  `screen`, the name of the screen the element was on (at most 80: the
+  outermost section, article, dialog or labelled block around it or itself,
+  not main and not a control, by its
+  aria-label, first heading or id, else the page's title; of nested blocks, the
+  outermost one beside another such block, as one of several screens), and
+  `hash`, the page's `#hash` at the time as the browser reports it (`#` and
+  printable ASCII, at most 200; `#` alone for no hash, the start screen; a
+  longer one is not kept). Selecting a
+  comment whose element is not shown and whose `hash` differs from the page's
+  sets the page's hash to it first (replacing the history entry, so Back
+  leaves the viewer), so a page that routes screens by hash opens that screen,
+  and shows the pin once it is drawn. Its item reads "on “screen”" while it is elsewhere.
 - `created_at` of a comment is when it was published. `read` is true once
   the owner agent has fetched it; `resolved` once the agent marked it done.
 - `before_replace` is true when the file was replaced after the comment, or

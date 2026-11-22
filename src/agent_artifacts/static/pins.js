@@ -128,6 +128,40 @@
     return clean(t || el.getAttribute("aria-label") || el.getAttribute("alt") || el.title || "", 200);
   }
 
+  // The screen an element is on, by name. Its blocks (section, article,
+  // dialog, region or labelled block, not main and not a control) from the
+  // element up; the screen is the outermost one that sits beside another
+  // such block (one of several screens), else the outermost one. Named by
+  // its aria-label, else its own first heading, else its id; else the
+  // page's title.
+  const BLOCK = "section,article,dialog,[role=dialog],[role=region],[aria-label]";
+  const CONTROL = "a,button,input,select,textarea,label,summary,[role=button],[role=link],svg,img";
+  const isBlock = (x) => x.matches(BLOCK) && !x.matches(CONTROL) && !x.matches("main,[role=main]");
+  function screenOf(el) {
+    let outer = null;
+    let beside = null;
+    for (let x = el; x && x !== document.body; x = x.parentElement) {
+      if (!isBlock(x)) continue;
+      outer = x;
+      if (x.parentElement && [...x.parentElement.children].some((y) => y !== x && isBlock(y))) beside = x;
+    }
+    const screen = beside || outer;
+    let name = "";
+    if (screen) {
+      // Its own heading: not one inside a nested section, article or dialog.
+      const NEST = "section,article,dialog,[role=dialog],[role=region]";
+      const h = [...screen.querySelectorAll("h1,h2,h3")].find((x) => {
+        const n = x.closest(NEST);
+        return !n || n === screen || !screen.contains(n);
+      });
+      name = screen.getAttribute("aria-label") || (h && h.textContent) || screen.id || "";
+    }
+    return clean(name || document.title || "", 80);
+  }
+  // The page's #hash as kept with an anchor: "#" for none (the start screen).
+  const hashNow = () => location.hash || "#";
+  const isHash = (h) => typeof h === "string" && h.length <= 200 && /^#[\x21-\x7e]*$/.test(h);
+
   // The selector first; if it matches nothing, the first element whose
   // visible text starts with the anchor's text, the innermost such.
   function find(anchor) {
@@ -197,7 +231,9 @@
       if (!at) {
         missing.push(p.key);
         const el = found.get(p.key);
-        if (el && el.isConnected) hidden.push(p.key);
+        // Its element is here but not shown, or it was on another #screen.
+        const elsewhere = isHash(p.anchor.hash) && hashNow() !== p.anchor.hash;
+        if ((el && el.isConnected) || elsewhere) hidden.push(p.key);
         continue;
       }
       pinAt(p.key, p.label, at.x, at.y, p.own && "own", p.draft && "draft", p.lit && "lit");
@@ -254,6 +290,10 @@
       y: fraction(e.clientY - r.top, r.height),
       width: Math.max(1, Math.round(window.innerWidth)),
     };
+    const screen = screenOf(el);
+    if (screen) anchor.screen = screen;
+    // Kept only whole: a cut one would never match the page's again.
+    if (isHash(hashNow())) anchor.hash = hashNow();
     tell({ type: "anchor", anchor });
     schedule();
   }, true);
@@ -333,11 +373,34 @@
       schedule(true);
     } else if (m.type === "show" && isKey(m.key)) {
       const pin = pins.find((p) => p.key === m.key);
-      if (pin) reveal(pin.anchor);
+      if (!pin) return;
+      // On another screen with an address: go there first, then show it once
+      // the page has drawn that screen.
+      if (!visible(find(pin.anchor)) && isHash(pin.anchor.hash) && hashNow() !== pin.anchor.hash) {
+        // Replaced, not pushed: Back leaves the viewer, not the page's screens.
+        // From this page's own address, not a relative one: a <base href>
+        // would take the frame elsewhere.
+        const to = new URL(location.href);
+        to.hash = pin.anchor.hash;
+        location.replace(to.href);
+        // Shown once the page has drawn that screen: tried for up to a second.
+        let tries = 0;
+        const later = () => {
+          found = new Map();
+          layout();
+          if (visible(find(pin.anchor))) reveal(pin.anchor);
+          else if (++tries < 10) setTimeout(later, 100);
+        };
+        setTimeout(later, 60);
+        return;
+      }
+      reveal(pin.anchor);
     }
   });
   window.addEventListener("scroll", () => schedule(), { capture: true, passive: true });
   window.addEventListener("resize", () => schedule(true));
+  // A screen shown by :target changes nothing in the DOM.
+  window.addEventListener("hashchange", () => schedule(true));
   new ResizeObserver(() => schedule(true)).observe(document.documentElement);
   new MutationObserver(() => schedule(true)).observe(document.documentElement, {
     subtree: true, childList: true, attributes: true, characterData: true,
