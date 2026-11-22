@@ -148,8 +148,8 @@ artifacts_cli.py project-rename <pid> "Landing v2"
 artifacts_cli.py project-delete <pid>                # the project and every file in it
 ```
 
-Give the person the project's `url` as the link for the job, beside the
-links of the files they should look at first. A file outside a project
+Give the person the links of the files (the project's own page comes
+later; until then its `url` does not open). A file outside a project
 expires; a file in a project stays until you delete it or the project, and
 still counts toward your space. `set --project <pid>` moves a live file into
 a project (an expired one is gone). Each section is one line of up to 64

@@ -340,6 +340,9 @@ def run(argv: list[str]) -> str | None:
         for field in ("title", "project", "section"):
             value, args = _option(args, f"--{field}")
             if value is not None:
+                # "none" clears a field, which only `set` can do.
+                if value == "none" and (cmd != "set" or field == "title"):
+                    raise Usage(f"{cmd}: --{field} none only clears a project or section, with set")
                 details[field] = value
     opts = "[--title TEXT] [--project ID] [--section TEXT]"
     projects = "/api/v1/projects"
