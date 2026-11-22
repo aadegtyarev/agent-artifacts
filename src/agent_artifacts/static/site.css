@@ -69,8 +69,9 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
   overscroll-behavior: contain; }
 /* The sheet's title line is a grip too: it stays put and drags the sheet. */
 .sbody > .handle { position: sticky; top: 0; z-index: 1; background: var(--sheet-bg);
+  margin-left: -14px; margin-right: -14px; padding-left: 14px; padding-right: 14px;
   touch-action: none; cursor: grab; }
-.sbody > .ttl.handle { padding: 0 0 4px; }
+.sbody > .ttl.handle { padding-bottom: 4px; }
 .sfoot { flex: none; padding: 6px 12px calc(8px + env(safe-area-inset-bottom)); }
 .sfoot:empty, .sbody:empty { display: none; }
 
@@ -244,7 +245,7 @@ body.commenting #image-box img { cursor: crosshair; }
 @media (min-width: 900px) {
   .sheet { width: 360px; box-shadow: -0.5px 0 0 var(--hair); }
   .sheet .grip { display: none; }
-  .sbody > .handle { position: static; cursor: auto; }
+  .sbody > .handle { position: static; cursor: auto; touch-action: auto; }
   .strip { box-shadow: inset 0 -0.5px 0 var(--hair); }
   .sbody { padding-top: 12px; }
   .sfoot { box-shadow: 0 -0.5px 0 var(--hair); }
