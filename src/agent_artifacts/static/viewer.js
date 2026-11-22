@@ -261,17 +261,17 @@
       commentsToggle.click();
       // The press's own click, on letting go, does not land on what this
       // opened (the name dialog's backdrop); see swallowUntil.
-      swallowUntil = performance.now() + 1500;
+      swallowUntil = Infinity; // until released; releaseSoon sets the end
       // Asked for a name first: the dialog is the answer, the mode comes after.
       if ($("name-dialog")?.hidden === false) return;
       if (navigator.vibrate) navigator.vibrate(12);
       toast(document.body.classList.contains("commenting") ? "Commenting on" : "Commenting off");
     }, LONG_MS);
   });
-  // After a long press, the click its release makes is dropped: up to a
-  // moment after the finger is lifted, or the press is cancelled, at most
-  // 1.5 s after it fired. A time, not a one-off listener, so a cancelled
-  // press never leaves a later tap eaten.
+  // After a long press, the click its release makes is dropped: while the
+  // finger is down and a moment after it is lifted or the press cancelled
+  // (release, cancel, lost capture and blur all end it). A time, not a
+  // one-off listener, so a cancelled press never leaves a later tap eaten.
   let swallowUntil = -Infinity;
   window.addEventListener("click", (ev) => {
     if (performance.now() > swallowUntil) return;
@@ -280,7 +280,7 @@
     ev.preventDefault();
   }, true);
   const releaseSoon = () => {
-    if (swallowUntil > performance.now()) swallowUntil = Math.min(swallowUntil, performance.now() + 350);
+    if (swallowUntil > performance.now()) swallowUntil = performance.now() + 350;
   };
   // A long press is not the browser's menu.
   floatButton.addEventListener("contextmenu", (e) => e.preventDefault());
