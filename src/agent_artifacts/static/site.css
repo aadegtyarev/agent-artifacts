@@ -157,7 +157,7 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
 .dec .undo::before { content: ""; position: absolute; inset: -14px -10px; }
 .ref { display: block; margin-top: 3px; color: var(--muted); font-size: 13px; }
 .st b { font-weight: 600; }
-.st b.done { color: #30b350; } .st b.ask { color: #e08600; } .st b.work { color: #7d7aff; }
+.st b.fin { color: #30b350; } .st b.ask { color: #e08600; } .st b.work { color: #7d7aff; }
 .st b.mine { color: var(--accent); }
 .more { display: block; width: 100%; min-height: 44px; margin: 6px 0 0; padding: 0;
   color: var(--accent); background: none; border: 0;
@@ -256,7 +256,7 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
 .bdg.work { background: #5e5ce6; }
 .bdg.work::after { content: ""; position: absolute; inset: -5px; border-radius: 50%;
   border: 2px solid rgb(94 92 230 / 0.4); }
-.bdg.done, .bdg.wrote { background: #34c759; }
+.bdg.fin, .bdg.wrote { background: #34c759; }
 .bdg.ask { background: #ff9f0a; }
 .bdg.ok, .bdg.re { background: #0a84ff; }
 .bdg.no { background: #636366; }

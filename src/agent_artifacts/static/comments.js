@@ -179,7 +179,7 @@
   }
 
   // A comment's pin: the fill says its stage, the badge what is next.
-  const AGENT = { waiting: "wait", working: "work", done: "done", wrote: "wrote", asked: "ask" };
+  const AGENT = { waiting: "wait", working: "work", done: "fin", wrote: "wrote", asked: "ask" };
   function stateOf(c) {
     const pend = c.mine !== true && !c.for_agent && !c.approved_by && !c.rejected_by;
     const fill = c.rejected_by ? "rej" : pend ? "pend" : "solid";
@@ -222,7 +222,7 @@
     if (!times.length) return null;
     const at = new Date(times[times.length - 1]);
     const hm = at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-    return { n: times.length, at: Date.now() - at.getTime() < 86400000 ? hm : `${when(at.toISOString())}, ${hm}` };
+    return { at: Date.now() - at.getTime() < 86400000 ? hm : `${when(at.toISOString())}, ${hm}` };
   }
 
   // An item's pin is drawn when its anchor fits this content.
@@ -294,7 +294,7 @@
     reply: "M4.8 2.8L2 5.6l2.8 2.8M2.3 5.6h5a2.6 2.6 0 0 1 2.6 2.6v1",
     cross: "M3 3l6 6M9 3L3 9",
   };
-  const BADGES = { wait: "star", work: "star", done: "star", wrote: "ask", ask: "ask", ok: "check", re: "reply", no: "cross", new: "" };
+  const BADGES = { wait: "star", work: "star", fin: "star", wrote: "ask", ask: "ask", ok: "check", re: "reply", no: "cross", new: "" };
   function mark(name) {
     const ns = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(ns, "svg");
@@ -302,14 +302,9 @@
     svg.setAttribute("aria-hidden", "true");
     const path = document.createElementNS(ns, "path");
     path.setAttribute("d", MARK[name]);
-    if (name === "star") path.setAttribute("fill", "#fff");
-    else {
-      path.setAttribute("fill", "none");
-      path.setAttribute("stroke", "#fff");
-      path.setAttribute("stroke-width", "2");
-      path.setAttribute("stroke-linecap", "round");
-      path.setAttribute("stroke-linejoin", "round");
-    }
+    // Inline styles: the page's icon rules (fill, stroke) must not reach it.
+    if (name === "star") path.style.cssText = "fill:#fff;stroke:none";
+    else path.style.cssText = "fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round";
     svg.append(path);
     return svg;
   }
@@ -465,10 +460,10 @@
     if (review) line = `Review · ${review}`;
     else if (answered && busy) {
       line = `${busy} with the agent · ${answered} to check${more}`;
-      badge = a.done || a.wrote ? "done" : "ask";
+      badge = a.done || a.wrote ? "fin" : "ask";
     } else if (answered) {
       line = `Agent answered ${answered} · take a look${more}`;
-      badge = a.done || a.wrote ? "done" : "ask";
+      badge = a.done || a.wrote ? "fin" : "ask";
     } else if (a.working) {
       line = `Agent is working · ${many(a.working)}${more}`;
       badge = "work";
@@ -527,7 +522,7 @@
         : a.working ? `Agent is working · ${sent.length}` : `Sent to the agent · ${sent.length}`;
       const out = [el("h2", "ttl handle", title)];
       const last = lastSent();
-      if (last) out.push(el("p", "cap", `Review ${last.n} · sent ${last.at}`));
+      if (last) out.push(el("p", "cap", `Sent ${last.at}`));
       for (const it of sent) out.push(row(it, status(it)));
       if (others.length) {
         const more = button(`Others · ${others.length} ›`, () => { S.allShown = true; render(); }, "more");
@@ -676,7 +671,8 @@
     who.append(el("span", "when", when(c.created_at)));
     bd.append(who, el("div", "text", c.text));
     const notes = [];
-    if (c.before_replace) notes.push("written before the file was replaced");
+    // With the agent, the replaced file is its answer, not news.
+    if (c.before_replace && !c.agent) notes.push("written before the file was replaced");
     if (lost(it)) notes.push(page.off ? `on ${where(it)}` : `${lostText(it)} · ${where(it)}`);
     if (notes.length) bd.append(el("span", `st${lostClass(it)}`, notes.join(" · ")));
     if (c.approved_by) bd.append(el("span", "ref", `✓ Approved by ${c.approved_by}`));
@@ -722,7 +718,7 @@
       out.push(m);
     }
     // Buttons only on the selected comment, and only what fits its state.
-    if (!dec && !c.rejected_by) {
+    if (!dec && !c.rejected_by && !repliesOn(c.n).length) {
       const acts = el("div", "acts thread-acts");
       if (it.pend) {
         acts.append(button("✓ Approve", () => decide(c, "approve"), "btn pri"),
@@ -750,7 +746,7 @@
   // many replies or when.
   const LEADS = {
     waiting: [null, "with the agent"], working: ["work", "Agent is working"],
-    done: ["done", "Done · check it"], wrote: ["done", "Done, wrote"], asked: ["ask", "Asks you"],
+    done: ["fin", "Done · check it"], wrote: ["fin", "Done, wrote"], asked: ["ask", "Asks you"],
   };
   function status(it) {
     if (it.draft) return [null, lost(it) && !page.off ? `your draft · ${lostText(it)}` : "your draft"];

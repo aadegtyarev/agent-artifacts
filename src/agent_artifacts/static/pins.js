@@ -42,7 +42,7 @@
     + ".bdg{position:absolute;right:-10px;top:-10px;width:20px;height:20px;border-radius:50%;"
     + "box-shadow:0 0 0 2px #fff;display:flex;align-items:center;justify-content:center;pointer-events:none}"
     + ".bdg svg{width:12px;height:12px;display:block}"
-    + ".bdg.wait{background:#8e8e93}.bdg.work{background:#5e5ce6}.bdg.done,.bdg.wrote{background:#34c759}"
+    + ".bdg.wait{background:#8e8e93}.bdg.work{background:#5e5ce6}.bdg.fin,.bdg.wrote{background:#34c759}"
     + ".bdg.ask{background:#ff9f0a}.bdg.ok,.bdg.re{background:#0a84ff}.bdg.no{background:#636366}"
     + ".bdg.work::after{content:'';position:absolute;inset:-5px;border-radius:50%;border:2px solid rgb(94 92 230/.4)}"
     + ".bdg.new{right:-4px;top:-4px;width:12px;height:12px;background:#ff3b30}"
@@ -215,7 +215,7 @@
     reply: "M4.8 2.8L2 5.6l2.8 2.8M2.3 5.6h5a2.6 2.6 0 0 1 2.6 2.6v1",
     cross: "M3 3l6 6M9 3L3 9",
   };
-  const BADGES = { wait: "star", work: "star", done: "star", wrote: "ask", ask: "ask", ok: "check", re: "reply", no: "cross", new: "" };
+  const BADGES = { wait: "star", work: "star", fin: "star", wrote: "ask", ask: "ask", ok: "check", re: "reply", no: "cross", new: "" };
   const FILLS = ["draft", "pend", "solid", "rej"];
   function badge(name) {
     const span = document.createElement("span");
