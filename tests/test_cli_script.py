@@ -202,3 +202,97 @@ def test_take_and_reply(server):
     assert cli(home, "reply", art_id, "1", "x", "--wrote", "--asked", env=env)[0] == 2
     assert cli(home, "reply", art_id, "1", "--asked", "x", env=env)[0] == 2
     assert cli(home, "reply", art_id, "1", env=env)[0] == 2
+
+
+def _load_cli(monkeypatch, url, key, sleep):
+    """The script imported, so wait's polls need not sleep for real; its
+    ``time`` is swapped, not the module's own, which the server uses too."""
+    import importlib.util
+    import types
+
+    spec = importlib.util.spec_from_file_location("artifacts_cli", CLI)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    monkeypatch.setattr(mod, "time", types.SimpleNamespace(monotonic=time.monotonic, sleep=sleep))
+    monkeypatch.setenv("AGENT_ARTIFACTS_URL", url)
+    monkeypatch.setenv("AGENT_ARTIFACTS_KEY", key)
+    return mod
+
+
+def test_wait_waiting_gone_and_timeout(server):
+    url, store, home = server
+    env = {"AGENT_ARTIFACTS_URL": url, "AGENT_ARTIFACTS_KEY": store.add_agent("alice")}
+    page = home / "a.html"
+    page.write_text("<p>hi</p>")
+    art_id = json.loads(cli(home, "upload", str(page), env=env)[1])["id"]
+    start = time.monotonic()
+    assert json.loads(cli(home, "wait", art_id, "--timeout", "1", env=env)[1]) == {
+        "event": "timeout"
+    }
+    assert time.monotonic() - start < 5  # the timeout cuts the 30 s sleep short
+    store.add_draft(art_id, "h", author="p", text="plain", anchor=None)
+    store.publish(art_id, "h", author="p", text=None)
+    store.add_draft(art_id, "h", author="p", text="make it green", anchor=None)
+    store.publish(art_id, "h", author="p", text=None, for_agent=True)
+    code, out, _ = cli(home, "wait", art_id, env=env)
+    event = json.loads(out)
+    assert code == 0 and event["event"] == "waiting"
+    assert [c["text"] for c in event["comments"]] == ["make it green"]
+    assert cli(home, "wait", art_id, "--every", "1", env=env)[0] == 2
+    cli(home, "delete", art_id, env=env)
+    assert json.loads(cli(home, "wait", art_id, env=env)[1]) == {"event": "gone"}
+
+
+def test_wait_accepted_counts_only_new(server, monkeypatch):
+    url, store, home = server
+    key = store.add_agent("alice")
+    page = home / "a.html"
+    page.write_text("<p>hi</p>")
+    env = {"AGENT_ARTIFACTS_URL": url, "AGENT_ARTIFACTS_KEY": key}
+    art_id = json.loads(cli(home, "upload", str(page), env=env)[1])["id"]
+    for text in ("old", "new"):
+        store.add_draft(art_id, "h", author="p", text=text, anchor=None)
+    store.publish(art_id, "h", author="p", text=None)
+    store.resolve_comment(art_id, 1, True, owner="alice")
+    polls = []
+
+    def sleep(seconds):  # between polls: the person accepts comment 2
+        polls.append(seconds)
+        if len(polls) == 2:
+            store.resolve_comment(art_id, 2, True, owner="alice")
+
+    mod = _load_cli(monkeypatch, url, key, sleep)
+    event = json.loads(mod.run(["wait", art_id, "--every", "7"]))
+    assert event["event"] == "accepted" and [c["n"] for c in event["comments"]] == [2]
+    assert polls == [7, 7]
+
+
+def test_wait_retries_a_failed_poll_and_stops_on_auth(tmp_path, monkeypatch):
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    waiting = [{"n": 1, "agent": "waiting", "resolved": False}]
+    answers = [(503, "busy"), (502, "<html>proxy</html>"), (200, "not json")]
+    answers += [(200, json.dumps(waiting)), (401, '{"error": "unauthorized"}')]
+
+    class Flaky(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            code, body = answers.pop(0)
+            self.send_response(code)
+            self.end_headers()
+            self.wfile.write(body.encode())
+
+        def log_message(self, *args):
+            pass
+
+    srv = HTTPServer(("127.0.0.1", 0), Flaky)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    mod = _load_cli(monkeypatch, f"http://127.0.0.1:{srv.server_port}", "k", lambda s: None)
+    try:
+        event = json.loads(mod.run(["wait", "x"]))
+        assert event == {"event": "waiting", "comments": waiting}
+        with pytest.raises(SystemExit) as e:
+            mod.run(["wait", "x"])
+        assert e.value.code == 1 and answers == []
+    finally:
+        srv.shutdown()
+        srv.server_close()

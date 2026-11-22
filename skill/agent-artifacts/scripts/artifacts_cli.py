@@ -18,6 +18,7 @@ AGENT_ARTIFACTS_ENV points to another file. The file is written with mode
 
 from __future__ import annotations
 
+import http.client
 import ipaddress
 import json
 import mimetypes
@@ -29,6 +30,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from typing import NoReturn
 
 # The date of the last change to this script or the skill; bump it with
 # every such change. `version` prints it.
@@ -56,6 +58,14 @@ USAGE = """usage: artifacts_cli.py <command> [args]
                             with a remark or question (--wrote), or not done
                             until the person answers (--asked); the option
                             goes after TEXT or before ID
+  wait ID [--every S] [--timeout S]
+                            poll every S seconds (30 by default, 5 at least)
+                            and print, then exit, on the first of: comments
+                            waiting for you {"event": "waiting", "comments"},
+                            comments accepted since the start {"event":
+                            "accepted", "comments"}, the file gone {"event":
+                            "gone"}, or after --timeout (6 hours by default,
+                            0 for none) {"event": "timeout"}
   resolve ID N              mark comment N done
   reopen ID N               mark comment N open again
   delete-comment ID N       delete comment N; the other numbers stay
@@ -164,21 +174,21 @@ class Client:
         self.url = url.rstrip("/")
         self.key = key
 
-    def call(self, method: str, path: str, body: bytes | None = None, ctype: str = "") -> str:
-        """The answer's body; an HTTP error prints it and exits with 1."""
+    def send(self, method: str, path: str, body: bytes | None = None, ctype: str = "") -> str:
+        """The answer's body; raises HTTPError or OSError."""
         req = urllib.request.Request(self.url + path, data=body, method=method)  # noqa: S310 (checked above)
         req.add_header("Authorization", f"Bearer {self.key}")
         if ctype:
             req.add_header("Content-Type", ctype)
+        with _opener.open(req, timeout=120) as r:
+            return r.read().decode()
+
+    def call(self, method: str, path: str, body: bytes | None = None, ctype: str = "") -> str:
+        """The answer's body; an HTTP error prints it and exits with 1."""
         try:
-            with _opener.open(req, timeout=120) as r:
-                return r.read().decode()
+            return self.send(method, path, body, ctype)
         except urllib.error.HTTPError as e:
-            body = e.read().decode(errors="replace") if e.fp else ""
-            # JSON errors name their code; anything else (a proxy's 429 or 502
-            # page) gets the HTTP status instead.
-            print(body if body.startswith("{") else f"HTTP {e.code}: {e.reason}", file=sys.stderr)
-            sys.exit(1)
+            _fail(e)
         except OSError as e:
             sys.exit(f"artifacts_cli: cannot reach {self.url}: {e}")
 
@@ -205,6 +215,49 @@ class Client:
                 )
         parts.append(f"--{boundary}--\r\n".encode())
         return self.call(method, path, b"".join(parts), f"multipart/form-data; boundary={boundary}")
+
+
+def _fail(e: urllib.error.HTTPError) -> NoReturn:
+    body = e.read().decode(errors="replace") if e.fp else ""
+    # JSON errors name their code; anything else (a proxy's 429 or 502
+    # page) gets the HTTP status instead.
+    print(body if body.startswith("{") else f"HTTP {e.code}: {e.reason}", file=sys.stderr)
+    sys.exit(1)
+
+
+def wait(c: Client, path: str, every: float, timeout: float) -> str:
+    """Poll a file's comments until there is something for the agent and
+    say what: comments waiting for it, comments the person accepted since the
+    start, the file gone, or the time up. Silent meanwhile, so it can run in
+    the background."""
+    end = time.monotonic() + timeout if timeout else None
+    before = None  # the comments resolved at the first poll do not count
+    while True:
+        try:
+            comments = json.loads(c.send("GET", path))
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return json.dumps({"event": "gone"})
+            if e.code != 429 and e.code < 500:
+                _fail(e)  # a wrong or revoked key will not get better
+            comments = None
+        except (OSError, ValueError, http.client.HTTPException):
+            comments = None  # the network, a restart, a proxy page: poll again
+        if not isinstance(comments, list) or not all(isinstance(x, dict) for x in comments):
+            comments = None  # not a list of comments: an odd answer, poll again
+        if comments is not None:
+            waiting = [x for x in comments if x.get("agent") == "waiting" and not x.get("resolved")]
+            if waiting:
+                return json.dumps({"event": "waiting", "comments": waiting})
+            if before is None:
+                before = {x.get("n") for x in comments if x.get("resolved")}
+            accepted = [x for x in comments if x.get("resolved") and x.get("n") not in before]
+            if accepted:
+                return json.dumps({"event": "accepted", "comments": accepted})
+        left = end - time.monotonic() if end is not None else every
+        if left <= 0:
+            return json.dumps({"event": "timeout"})
+        time.sleep(min(every, left))
 
 
 def _is_local(host: str | None) -> bool:
@@ -315,6 +368,15 @@ def run(argv: list[str]) -> str | None:
                 f"{api}/{args[0]}/comments/{_number(args[1])}/reply",
                 {"text": args[2], "state": state},
             )
+        case "wait":
+            every, args = _option(args, "--every")
+            limit, args = _option(args, "--timeout")
+            need(1, "ID [--every SECONDS] [--timeout SECONDS]")
+            every = float(every or 30)
+            limit = float(limit if limit is not None else 6 * HOUR)
+            if not (every >= 5 and limit >= 0):  # NaN too
+                raise Usage("wait: --every 5 or more seconds, --timeout 0 (no limit) or more")
+            return wait(c, f"{api}/{args[0]}/comments", every, limit)
         case "resolve" | "reopen":
             need(2, "ID N")
             return c.json(
