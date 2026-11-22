@@ -231,9 +231,16 @@ const commentsPins = ({
   // as long as an activation lasts, makes the page's request wait for a
   // click of its own.
   let ownInput = -Infinity;
-  for (const type of ["pointerdown", "keydown"]) {
-    document.addEventListener(type, () => { ownInput = performance.now(); }, true);
-  }
+  // Closing the project's file list (its button, a row or the scrim,
+  // Escape) does not count: a link tapped right after it opens at once.
+  // The frame can take the focus by itself, so a tap into it cannot be
+  // told from that and does not reset this.
+  const own = (e) => {
+    if (e.type === "keydown" && e.key === "Escape") return;
+    if (e.target instanceof Element && e.target.closest("#files-drop, #files-button")) return;
+    ownInput = performance.now();
+  };
+  for (const type of ["pointerdown", "keydown"]) document.addEventListener(type, own, true);
   function openLink(path, fragment) {
     // Comment mode wins, even while its name dialog is open.
     if (picking() || document.body.classList.contains("commenting")) return;
