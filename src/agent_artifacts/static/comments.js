@@ -476,8 +476,9 @@
   }
 
   function row(it, line) {
-    const r = el("button", `it${it.draft && S.view !== "finish" ? " dr" : ""}${desk.matches && S.view === "item" && S.sel === it.key ? " cur" : ""}`);
+    const r = el("button", `it${it.draft && S.view !== "finish" ? " dr" : ""}${S.sel === it.key && (S.view === "list" || desk.matches) ? " cur" : ""}`);
     r.type = "button";
+    r.dataset.key = it.key;
     const tx = el("span", "tx");
     tx.append(el("span", "main", (it.anchor ? "" : "About the whole file: ") + it.text));
     const st = el("span", `st${lost(it) && !page.off ? " lost" : ""}`, line);
@@ -497,7 +498,7 @@
   function pinList() {
     const shown = items().filter((it) => pinnable(it.anchor)).map((it) => ({
       key: it.key, label: it.label, anchor: it.anchor, own: it.own, draft: it.draft,
-      lit: S.view === "item" && S.sel === it.key,
+      lit: (S.view === "item" || S.view === "list") && S.sel === it.key,
     }));
     if (S.compose && pinnable(S.compose.anchor)) {
       shown.push({ key: "new", label: "", anchor: S.compose.anchor, own: true, draft: true, lit: true });
@@ -586,7 +587,9 @@
   // After the sheet has its new height.
   const revealSoon = (key) => requestAnimationFrame(() => requestAnimationFrame(() => reveal(key)));
 
-  // A tap on a pin opens its item; on the new draft's, its field.
+  // A tap on a pin: with the list open, its row lights up and comes into
+  // view, the sheet stays; otherwise it opens its item. On the new draft's
+  // pin, its field.
   function tapPin(key) {
     if (key === "new") {
       if (S.compose) {
@@ -595,7 +598,17 @@
       }
       return;
     }
-    if (itemOf(key)) openItem(key);
+    if (!itemOf(key)) return;
+    if (S.view === "list" && (desk.matches || S.pos !== "strip")) {
+      S.sel = key;
+      render();
+      showRow(key);
+    } else openItem(key);
+  }
+
+  function showRow(key) {
+    const r = body.querySelector(`.it[data-key="${CSS.escape(key)}"]`);
+    if (r) r.scrollIntoView({ block: "nearest" });
   }
 
   // On a phone a pin's tap area is larger than the pin, so the areas of pins
@@ -725,7 +738,8 @@
   }
 
   // --- Navigation ------------------------------------------------------------------
-  const DEFAULT_POS = { list: "h", item: "q", compose: "q", finish: "f" };
+  // ¼ is "as tall as its content, at most half".
+  const DEFAULT_POS = { list: "h", item: "q", compose: "q", finish: "h" };
 
   function go(view, pos) {
     S.view = view;
@@ -744,9 +758,8 @@
     if (S.compose) dropCompose(false);
     if (S.sel !== key) S.edit = null;
     S.sel = key;
-    // A sheet opened to half stays there; from full it comes down to half,
-    // so the spot is in sight.
-    go("item", S.pos === "h" || S.pos === "f" ? "h" : "q");
+    // One comment: the sheet fits it.
+    go("item", "q");
     revealSoon(key);
   }
 
@@ -1006,7 +1019,7 @@
       } else if (S.compose) {
         dropCompose(true);
       }
-      go("finish", "f");
+      go("finish", "h");
     };
     if (S.mode) show();
     else setMode(true, show);
@@ -1156,33 +1169,29 @@
     }
     // Let go well below a quarter: folded.
     if (!up && now < Math.min(heights.q, stage * 0.3) * 0.75) best = "strip";
+    // A drag changes the height only: what the sheet shows stays.
     if (best === "strip") {
       if (S.compose) dropCompose(false);
       fold();
-    } else if (best === "q") {
-      if (S.view === "item" || S.view === "compose") go(S.view, "q");
-      else go("list", "h");
-    } else if (best === "h") {
-      if (S.compose) dropCompose(false);
-      go(S.view === "item" ? "item" : "list", "h");
-    } else {
-      if (S.compose) dropCompose(false);
-      go(S.view === "finish" || S.view === "item" ? S.view : "list", "f");
-    }
+    } else if (best === "q" && S.view !== "item" && S.view !== "compose") {
+      go(S.view, "h");
+    } else go(S.view, best);
   }
   sheet.addEventListener("pointerup", endDrag);
   // A drag that began on a button of the title line is not a tap on it.
   sheet.addEventListener("click", (e) => {
     if (dragged()) { e.stopPropagation(); e.preventDefault(); }
   }, true);
-  // A tap on the grip or the title line steps the height; one on a new
-  // draft's caption or the Finish title leaves that view alone.
+  // A tap on the grip steps the height and keeps the view. A tap on the
+  // title line does the same on the list; on one comment it goes back to the
+  // list; on a new draft's caption or the Finish title it does nothing.
   sheet.addEventListener("click", (e) => {
     if (desk.matches || !onHandle(e.target) || e.target.closest("button")) return;
-    if (e.target !== grip && (S.view === "compose" || S.view === "finish")) return;
-    if (S.compose) dropCompose(false);
-    if (S.pos === "q" || S.pos === "f") go("list", "h");
-    else if (S.pos === "h") go("list", "f");
+    if (e.target !== grip) {
+      if (S.view === "item") { go("list", "h"); return; }
+      if (S.view !== "list") return;
+    }
+    go(S.view, S.pos === "h" ? "f" : "h");
   });
   sheet.addEventListener("pointercancel", endDrag);
 

@@ -413,18 +413,22 @@ bottom sheet with four heights:
 | Height | Holds |
 | --- | --- |
 | strip | one line: "Review · N" (the person's drafts) and **Finish review**; with no drafts, the count of comments |
-| ¼ | one item: the field of a new draft, or the selected comment or draft, with ‹ › to its neighbours |
-| ½ | the list: drafts and comments, text and state only |
-| full | the list and **Finish review** |
+| ¼ | one item, the sheet as tall as its content and at most half: the field of a new draft, or the selected comment or draft, with ‹ › to its neighbours |
+| ½ | the list (drafts and comments, text and state only), or **Finish review** |
+| full | the same as ½, taller |
 
-A tap on the strip opens ½. A tap on a card or a pin opens that item at ¼,
-or at ½ when the sheet was at ½ or full. Dragging the grip or the sheet's
-title line (its buttons too) snaps it to the nearest height; a tap on the
-grip or the title steps the height. Moving down from a
-new draft's ¼ drops it, with Undo if text was typed. The keyboard pushes the
-sheet up and the pin stays in sight above it. Buttons show only on the
-selected item: **Edit** and **Delete** on the person's own draft, none on a
-published comment. On a computer the same
+A drag changes the height only; what the sheet shows stays. A tap changes
+what it shows and the height follows. A tap on the strip opens the list at
+½. A tap on a row opens that item at ¼. A tap on a pin with the list open
+lights its row and brings it into view, the sheet stays; otherwise it opens
+the item at ¼. The selected pin is drawn bigger. Dragging the grip or the
+sheet's title line (its buttons too) snaps to the nearest height; a tap on
+the grip steps ½ and full, a tap on one item's title goes back to the list.
+**Finish review** opens at ½. Moving down from a new draft's ¼ to the strip
+drops it, with Undo if text was typed. The keyboard pushes the sheet up and
+the pin stays in sight above it. Buttons show only on the selected item:
+**Edit** and **Delete** on the person's own draft, none on a published
+comment. On a computer the same
 views sit in a panel at the right, and the strip's line heads it.
 
 **Finish review** shows the person's drafts, a field for a general comment
