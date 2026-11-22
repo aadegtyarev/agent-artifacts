@@ -127,8 +127,9 @@
     return length(best) <= 512 ? best : "";
   }
 
-  // One line without control or bidi characters, at most `n` code points.
-  const clean = (s, n) => [...(s || "").replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]+/g, " ")
+  // One line without control or bidi characters or lone surrogates (the
+  // server refuses all of these), at most `n` code points.
+  const clean = (s, n) => [...(s || "").replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069\ud800-\udfff]+/gu, " ")
     .replace(/\s+/g, " ").trim()].slice(0, n).join("");
 
   function textOf(el) {
