@@ -41,13 +41,22 @@ USAGE = """usage: artifacts_cli.py <command> [args]
   setup                     read AGENT_ARTIFACTS_URL=... and AGENT_ARTIFACTS_KEY=...
                             lines from stdin and save them for later calls;
                             a different key already there is copied to env.bak-*
-  upload FILE [NAME] [--title TEXT]
+  upload FILE [NAME] [--title TEXT] [--project ID] [--section TEXT]
                             upload a file, print the artifact JSON (url, id,
-                            expires_at); pages show TEXT, else the name
-  replace ID FILE [NAME] [--title TEXT]
-                            replace the file behind an existing link; the
-                            title stays unless --title is given
-  set ID --title TEXT       change a file's title without uploading it again
+                            expires_at); pages show TEXT, else the name; in
+                            project ID (kept until deleted), under a section
+  replace ID FILE [NAME] [--title TEXT] [--project ID] [--section TEXT]
+                            replace the file behind an existing link; title,
+                            project and section stay unless given
+  set ID [--title TEXT] [--project ID|none] [--section TEXT|none]
+                            change a file's details without uploading it
+                            again; none takes it out of its project (a new
+                            lifetime starts) or clears the section
+  project-new TITLE         a new project; prints its JSON (id, url)
+  projects                  your projects, with files and used_bytes
+  project ID                one project with its files in page order
+  project-rename ID TITLE   a project's new title
+  project-delete ID         delete a project with every file in it
   list                      your live files, with comments and open_comments counts
   delete ID                 delete one now
   comments ID               the comments on a file, oldest first
@@ -326,21 +335,51 @@ def run(argv: list[str]) -> str | None:
         if len(args) < n or len(args) > (at_most if at_most is not None else n):
             raise Usage(f"usage: artifacts_cli.py {cmd} {how}")
 
-    title, args = _option(args, "--title") if cmd in ("upload", "replace", "set") else (None, args)
+    details: dict[str, str | None] = {}
+    if cmd in ("upload", "replace", "set"):
+        for field in ("title", "project", "section"):
+            value, args = _option(args, f"--{field}")
+            if value is not None:
+                # "none" clears a field, which only `set` can do.
+                if value == "none" and (cmd != "set" or field == "title"):
+                    raise Usage(f"{cmd}: --{field} none only clears a project or section, with set")
+                details[field] = value
+    opts = "[--title TEXT] [--project ID] [--section TEXT]"
+    projects = "/api/v1/projects"
     match cmd:
         case "upload":
-            need(1, "FILE [NAME] [--title TEXT]", 2)
+            need(1, f"FILE [NAME] {opts}", 2)
             name = args[1] if len(args) > 1 else None
-            return c.upload("POST", api, args[0], {"name": name, "title": title})
+            return c.upload("POST", api, args[0], {"name": name, **details})
         case "replace":
-            need(2, "ID FILE [NAME] [--title TEXT]", 3)
+            need(2, f"ID FILE [NAME] {opts}", 3)
             name = args[2] if len(args) > 2 else None
-            return c.upload("PUT", f"{api}/{args[0]}", args[1], {"name": name, "title": title})
+            return c.upload("PUT", f"{api}/{args[0]}", args[1], {"name": name, **details})
         case "set":
-            need(1, "ID --title TEXT")
-            if title is None:
-                raise Usage("usage: artifacts_cli.py set ID --title TEXT")
-            return c.json("PATCH", f"{api}/{args[0]}", {"title": title})
+            how = "ID [--title TEXT] [--project ID|none] [--section TEXT|none]"
+            need(1, how)
+            if not details:
+                raise Usage(f"usage: artifacts_cli.py set {how}")
+            # Only here can a project or a section be cleared.
+            for field in ("project", "section"):
+                if details.get(field) == "none":
+                    details[field] = None
+            return c.json("PATCH", f"{api}/{args[0]}", details)
+        case "project-new":
+            need(1, "TITLE")
+            return c.json("POST", projects, {"title": args[0]})
+        case "projects":
+            return c.call("GET", projects)
+        case "project":
+            need(1, "ID")
+            return c.call("GET", f"{projects}/{args[0]}")
+        case "project-rename":
+            need(2, "ID TITLE")
+            return c.json("PATCH", f"{projects}/{args[0]}", {"title": args[1]})
+        case "project-delete":
+            need(1, "ID")
+            c.call("DELETE", f"{projects}/{args[0]}")
+            return "deleted"
         case "list":
             return c.call("GET", api)
         case "delete":

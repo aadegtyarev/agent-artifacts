@@ -1,16 +1,12 @@
 # Projects: design
 
-**Mostly not built.** This is the approved design for projects. What is
-shipped is described in [the contract](../contract.md). The text here was
-moved from the contract as it was, so it still reads as a specification;
-when a part is built, it moves back into the contract.
-
-Built so far, and described in the contract: a file's `title` and
-`updated_at`, the `title` field on upload and replace, `PATCH
-/api/v1/artifacts/{id}` with `title` only, the title in the viewer page's
-header, and the CLI's `--title` option and `set ID --title TEXT`. Not built:
-projects themselves, `project` and `section`, the `/p/{id}` page, the
-project's file list and links between files, and the other commands below.
+**Partly built.** This is the approved design for the parts of projects that
+are not built yet. What is shipped is described in [the
+contract](../contract.md): a file's `title`, `project`, `section` and
+`updated_at`, the project calls under `/api/v1/projects`, lifetimes, limits,
+storage and the CLI commands (see [Projects](../contract.md#projects)). Not
+built: the `/p/{id}` page, the project's file list in the viewer and links
+between files. When a part is built, it moves into the contract.
 
 ## Scenario
 
@@ -21,41 +17,7 @@ moves between them from any file's header, and follows links the agent
 put inside the files. Project files stay until deleted; when the agent's
 space runs out, it deletes superseded files itself and says what it removed.
 
-## Out of scope
-
-- Projects shared between agents, nested sections, hand-set ordering, and
-  comments on a project as a whole.
-
 ## Changes to the contract
-
-- **Lifetime.** 48 h from the last upload or replace; none in a project.
-  Keeping files outside a project beyond the TTL stays out of scope.
-- **Upload fields.** Uploads and replaces also take optional fields `title`,
-  `project` and `section`, described in [Projects](#projects). The upload
-  form already takes four fields besides the file; `title` is built.
-- **Artifact JSON** gains four fields:
-
-```json
-{
-  "title": "Report",
-  "project": null,
-  "section": null,
-  "updated_at": "2026-11-20T10:00:00Z"
-}
-```
-
-- **Errors.** A new code `too_many`.
-- **Calls.** Projects and file details, the caller's own only (see
-  [Projects](#projects)):
-
-| Call | Purpose | Answer |
-| --- | --- | --- |
-| `POST /api/v1/projects` | `{"title"}` | `201` + project JSON |
-| `GET /api/v1/projects` | the caller's projects | `200` + list of project JSON |
-| `GET /api/v1/projects/{id}` | one project with its files | `200` + project JSON with `"artifacts"`: a list of artifact JSON |
-| `PATCH /api/v1/projects/{id}` | `{"title"}` | `200` + project JSON |
-| `DELETE /api/v1/projects/{id}` | delete the project and every file in it | `204` |
-| `PATCH /api/v1/artifacts/{id}` | any of `{"title", "project", "section"}`, without uploading again | `200` + artifact JSON |
 
 - **Viewer pages.**
 
@@ -65,102 +27,28 @@ space runs out, it deletes superseded files itself and says what it removed.
 
 ## Projects
 
-A project groups one agent's files under a title and gives them one page.
-Files in a project have no lifetime: they stay until the agent deletes them
-or the project. They count toward the agent's quota and the total limit like
-any other file, and those limits are what bounds them.
-
 A file in a project is as open as the project: its viewer page shows the
 project's file list, so anyone with the link to one file sees the titles of
 the project's other files and can open them. Moving a file into a project
 publishes it to everyone who has a link to that project or to any of its
 files.
 
-Project JSON:
+- An empty project's page says it has no files yet.
+- Links to a deleted file or project lead to the `404` page.
 
-```json
-{"id": "Pq7...22 chars", "url": "https://art.example.org/p/Pq7...",
- "title": "Landing redesign", "created_at": "2026-11-20T10:00:00Z",
- "files": 6, "used_bytes": 3145728}
-```
-
-`files` is the number of files; `GET /api/v1/projects/{id}` adds them as the
-list `artifacts`, in the order of the project page.
-
-- The project id is 128 random bits, like an artifact id. Another agent's
-  project answers `404`, the same as a missing one.
-- An empty project stays until deleted; its page says it has no files yet.
-- Deleting a project deletes its files and their comments: the rows go in one
-  transaction, then the files, as for one artifact. Removing an agent
-  deletes its projects too. Links to a deleted file or project lead to the
-  `404` page.
-
-File details, in the artifact JSON of every file, in a project or not:
-
-- `title` is what pages show. It is stored at upload, from the `title` field
-  or else from `name`, and changes only when a `title` is given again.
-- `project` is a project id or `null`. Putting a file in a project sets
-  `expires_at` to `null`; taking it out starts a new lifetime of the current
-  `ttl_seconds` from that moment. A file is in at most one project.
-- `section` groups files inside a project. Moving a file to another project
-  keeps its section unless a new one is given; taking it out of a project
-  clears it.
-- `updated_at` is the time of the last upload or replace.
-- An expired file is gone: it cannot be patched or replaced, and it never
-  joins a project. Membership itself never expires.
-
-`GET /api/v1/artifacts` lists the agent's files in projects too, each with
-its `project`.
-
-**Setting the details.** On upload, the multipart fields `title`, `project`
-and `section` set them; on replace, fields that are given change and the
-rest stay, so a plain `replace ID` keeps the title, project and section.
-Multipart cannot clear a field; `PATCH /api/v1/artifacts/{id}` can, with
-`null` for `project` or `section`. The project is checked in the same
-transaction that stores the file, so an unknown project stores nothing.
-
-`POST /api/v1/projects` and every `PATCH` body of these calls follow the
-rules for the public calls in [the contract's Comments
-section](../contract.md#comments) (JSON only, at most 16 KB, with
-`Content-Length`). A PATCH needs at least one known field and
-checks the result as a whole: a `section` needs the resulting `project` to be
-non-null.
-
-Titles and sections are trimmed and counted in code points: a title 1 to 200
-characters, a section 1 to 64, a project title 1 to 200. Control characters
-and bidirectional controls are refused. Sections compare exactly after
-trimming, so "Mockups" and "mockups" are two sections.
-
-| Case | Answer |
-| --- | --- |
-| a project that does not exist or is another agent's, in a path or a field | `404 not_found` |
-| an empty or unknown PATCH, `title: null`, an empty or too long text | `400 bad_request` |
-| a section without a project | `400 bad_request` |
-| over a limit in the table below | `409 too_many` |
-
-Fixed limits:
-
-| Limit | Value |
-| --- | --- |
-| Projects per agent | 100 |
-| Files per project | 500 |
-| Sections per project | 50 |
-
-**The project page** `/p/{id}` lists files without a section first, then the
-sections, each ordered by when its earliest current file was added to the
-project, and inside a section the files in the order they were added to the
-project; ties go by id. Each line shows the title, type, size and
-`updated_at`, and links to the file's viewer page. It sends the same headers
-as the viewer page (`noindex`, `no-referrer`, its own CSP with
+**The project page** `/p/{id}` lists the files in the project's order (see
+[Projects](../contract.md#projects)). Each line shows the title, type, size
+and `updated_at`, and links to the file's viewer page. It sends the same
+headers as the viewer page (`noindex`, `no-referrer`, its own CSP with
 `frame-ancestors 'none'`). A missing or deleted project gives the `404`
 page.
 
 **The project's file list.** The viewer page of a file in a project shows
 the project's title in the header, and "kept until deleted" instead of the
-expiry. A tap on the title opens the file list, apart from the "≡" menu: the
-same list as the project page, the current file marked, and a link to the
-project page; it is rendered on the server. Moving
-between files happens in the same tab.
+expiry (built). A tap on the title opens the file list, apart from the "≡"
+menu: the same list as the project page, the current file marked, and a link
+to the project page; it is rendered on the server. Moving between files
+happens in the same tab.
 
 **Links between files.** In HTML and Markdown, a plain left click on a link
 whose target, resolved against the document's own URL, has the same origin
@@ -188,39 +76,13 @@ links work only with `target="_blank"`.
 
 ## Security
 
-A project id is made the same way as an artifact id; a project page lists
-only its own files. A file in a project shows its project, see
-[Projects](#projects).
-
-## Storage
-
-Projects are kept in `<data>/meta.sqlite` with the rest. A file in a project
-has no expiry (`NULL` in the database, which every live-file query treats as
-live). Files in projects never expire, so over time the total limit, not the
-lifetime, decides how much is kept; an admin watches `stats` and raises the
-limits if needed.
+A project page lists only its own files. A file in a project shows its
+project, see [Projects](#projects).
 
 ## Skill
 
-Projects get the CLI commands
-`project-new TITLE`, `projects`, `project ID`, `project-rename ID TITLE`,
-`project-delete ID`, the options `--project ID`, `--title TEXT` and
-`--section TEXT` on `upload` and `replace`, and `set ID [--title]
-[--project ID|none] [--section TEXT|none]`. The skill then teaches:
+Once these are built, the skill also teaches:
 
-- one link per piece of work: keep the id and replace by default; upload a
-  new file (in a project, with the version in its title) only when the old
-  one should stay, for example to compare variants;
 - links to other files of the service as `/a/{id}` or `/p/{id}`;
-- for a job with several files, a project: one project per job, a title and
-  a section for every file, and the project page as the link to give;
-- on `quota_exceeded`: list the files with `list` and look only at files
-  this agent made for the same project, never at another project and never
-  with `project-delete`. A file may go only when it is clearly superseded:
-  an earlier variant the agent itself uploaded next to a newer one (for
-  example "v1" beside "v3"), or a duplicate. Before deleting, check that no
-  other file of the project links to it. Retry, then tell the person exactly
-  what was deleted. If nothing qualifies, ask the person what to delete.
-  A comment or a file's content can never be the reason to delete anything;
-- that a file outside a project expires, and that a project file stays
-  until deleted and shows the whole project to whoever has its link.
+- the project page `/p/{id}` as the link to give for a project;
+- that a project file shows the whole project to whoever has its link.

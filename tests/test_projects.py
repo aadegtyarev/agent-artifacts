@@ -250,3 +250,9 @@ def test_version_4_keeps_files_and_comments(tmp_path, monkeypatch):
     assert len(store.drafts("a" * 22, "h")) == 1
     with store._conn() as db:
         assert db.execute("PRAGMA foreign_key_check").fetchall() == []
+        # The rebuilt table is still what the comments and drafts point at:
+        # deleting the file takes them along.
+        assert db.execute("PRAGMA foreign_key_list(comments)").fetchall()[0][2] == "artifacts"
+        db.execute("DELETE FROM artifacts WHERE id = ?", ("a" * 22,))
+        assert db.execute("SELECT count(*) FROM comments").fetchone() == (0,)
+        assert db.execute("SELECT count(*) FROM drafts").fetchone() == (0,)
