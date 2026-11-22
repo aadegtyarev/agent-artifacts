@@ -417,8 +417,10 @@ bottom sheet with four heights:
 | ½ | the list: drafts and comments, text and state only |
 | full | the list and **Finish review** |
 
-A tap on the strip opens ½, a tap on a card or a pin opens ¼ with that item,
-dragging the sheet's head snaps it to the nearest height. Moving down from a
+A tap on the strip opens ½. A tap on a card or a pin opens that item at ¼,
+or at ½ when the sheet was at ½ or full. Dragging the grip or the sheet's
+title line (its buttons too) snaps it to the nearest height; a tap on the
+grip or the title steps the height. Moving down from a
 new draft's ¼ drops it, with Undo if text was typed. The keyboard pushes the
 sheet up and the pin stays in sight above it. Buttons show only on the
 selected item: **Edit** and **Delete** on the person's own draft, none on a

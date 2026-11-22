@@ -370,7 +370,7 @@
       if (drafts) title = `Review · ${drafts} ${drafts === 1 ? "draft" : "drafts"}`
         + (S.comments.length ? ` · ${S.comments.length} published` : "");
       else if (S.comments.length) title = `Comments · ${S.comments.length}`;
-      out.push(el("h2", "ttl", title));
+      out.push(el("h2", "ttl handle", title));
       if (!all.length) {
         out.push(el("p", "empty", S.mode && canPin()
           ? `Tap a spot on the ${pinType === "point" ? "image" : "page"} to leave a comment.`
@@ -392,7 +392,7 @@
       if (!it) return views.list();
       const all = items();
       const at = all.findIndex((i) => i.key === it.key);
-      const nav = el("div", "nav");
+      const nav = el("div", "nav handle");
       nav.append(
         button("‹ All", () => go("list"), "btn all"),
         button(`${at + 1} of ${all.length} · ${where(it)}`, () => go("list", "h"), "lbl"),
@@ -436,7 +436,7 @@
 
     compose() {
       const c = S.compose;
-      const out = [el("p", "cap", c.anchor ? "New draft" : "New draft · about the whole file")];
+      const out = [el("p", "cap handle", c.anchor ? "New draft" : "New draft · about the whole file")];
       if (!stored) out.push(el("p", "note", "This browser keeps nothing: your drafts last only while this page is open."));
       const pill = el("div", "pill");
       pill.append(fields.compose, sendButton);
@@ -448,7 +448,7 @@
 
     finish() {
       const drafts = items().filter((i) => i.draft);
-      const out = [el("h2", "ttl", `Finish review · ${drafts.length}`)];
+      const out = [el("h2", "ttl handle", `Finish review · ${drafts.length}`)];
       if (!drafts.length) out.push(el("p", "empty", "No drafts: you can publish a general comment only."));
       for (const it of drafts) out.push(row(it, where(it)));
       const general = el("div", "general");
@@ -744,7 +744,9 @@
     if (S.compose) dropCompose(false);
     if (S.sel !== key) S.edit = null;
     S.sel = key;
-    go("item", "q");
+    // A sheet opened to half stays there; from full it comes down to half,
+    // so the spot is in sight.
+    go("item", S.pos === "h" || S.pos === "f" ? "h" : "q");
     revealSoon(key);
   }
 
@@ -1070,9 +1072,10 @@
   });
 
   // --- The sheet: tap and drag -------------------------------------------------------
-  // A tap on the strip opens the list; one on the grip steps ¼ or full to
-  // ½ and ½ to full. Dragging the grip or the strip moves the sheet with the
-  // finger; let go, it snaps to the height nearest to where it is.
+  // A tap on the strip opens the list; one on the grip or the sheet's title
+  // line steps ¼ or full to ½ and ½ to full. Dragging the grip, the title
+  // line (its buttons too) or the strip moves the sheet with the finger;
+  // let go, it snaps to the height nearest to where it is.
   const POS = ["strip", "q", "h", "f"];
   let drag = null;
 
@@ -1089,18 +1092,27 @@
     else openList();
   });
 
+  const onHandle = (t) => t === grip || !!t.closest(".sbody > .handle");
+
   function startDrag(e) {
     if (desk.matches || e.button > 0 || drag) return;
-    if (e.target.closest("button")) return;
-    drag = { id: e.pointerId, y: e.clientY, from: sheet.getBoundingClientRect().height, moved: false };
+    if (e.target.closest("button") && !onHandle(e.target)) return;
+    // From a button it takes more than a finger's tap slop to be a drag.
+    const slop = e.target.closest("button") ? 16 : 6;
+    drag = { id: e.pointerId, y: e.clientY, from: sheet.getBoundingClientRect().height,
+      pos: S.pos, slop, moved: false };
   }
   sheet.addEventListener("pointerdown", (e) => {
-    if (e.target === grip || strip.contains(e.target)) startDrag(e);
+    // Only the click that ends a drag or a height step is swallowed.
+    draggedAt = -Infinity;
+    // A drag whose pointerup was lost (its node redrawn away) is dropped.
+    if (drag && !drag.moved) drag = null;
+    if (onHandle(e.target) || strip.contains(e.target)) startDrag(e);
   });
   sheet.addEventListener("pointermove", (e) => {
     if (!drag || e.pointerId !== drag.id) return;
     const dy = e.clientY - drag.y;
-    if (!drag.moved && Math.abs(dy) < 6) return;
+    if (!drag.moved && Math.abs(dy) < drag.slop) return;
     if (!drag.moved) {
       drag.moved = true;
       // Captured only once it is a drag, so a tap stays a click on the strip.
@@ -1127,17 +1139,14 @@
     const now = sheet.getBoundingClientRect().height;
     sheet.classList.remove("dragging");
     sheet.style.height = "";
-    if (!d.moved) {
-      if (e.target === grip) {
-        if (S.compose) dropCompose(false);
-        if (S.pos === "q" || S.pos === "f") go("list", "h");
-        else if (S.pos === "h") go("list", "f");
-      }
-      return;
-    }
+    // A tap is handled by its click, which then lands on what was tapped.
+    if (!d.moved) return;
     draggedAt = performance.now();
     const stage = sheet.parentElement.clientHeight;
     const heights = { strip: 44, q: stage * 0.3, h: stage * 0.52, f: stage };
+    // The height it started from is where it was, not the nominal one, so a
+    // small slip snaps back instead of folding a short ¼ sheet.
+    if (d.pos in heights && d.pos !== "strip") heights[d.pos] = d.from;
     const up = now > d.from;
     let best = "strip";
     let distance = Infinity;
@@ -1146,7 +1155,7 @@
       if (dd < distance) { distance = dd; best = p; }
     }
     // Let go well below a quarter: folded.
-    if (!up && now < heights.q * 0.75) best = "strip";
+    if (!up && now < Math.min(heights.q, stage * 0.3) * 0.75) best = "strip";
     if (best === "strip") {
       if (S.compose) dropCompose(false);
       fold();
@@ -1155,13 +1164,26 @@
       else go("list", "h");
     } else if (best === "h") {
       if (S.compose) dropCompose(false);
-      go("list", "h");
+      go(S.view === "item" ? "item" : "list", "h");
     } else {
       if (S.compose) dropCompose(false);
-      go(S.view === "finish" ? "finish" : "list", "f");
+      go(S.view === "finish" || S.view === "item" ? S.view : "list", "f");
     }
   }
   sheet.addEventListener("pointerup", endDrag);
+  // A drag that began on a button of the title line is not a tap on it.
+  sheet.addEventListener("click", (e) => {
+    if (dragged()) { e.stopPropagation(); e.preventDefault(); }
+  }, true);
+  // A tap on the grip or the title line steps the height; one on a new
+  // draft's caption or the Finish title leaves that view alone.
+  sheet.addEventListener("click", (e) => {
+    if (desk.matches || !onHandle(e.target) || e.target.closest("button")) return;
+    if (e.target !== grip && (S.view === "compose" || S.view === "finish")) return;
+    if (S.compose) dropCompose(false);
+    if (S.pos === "q" || S.pos === "f") go("list", "h");
+    else if (S.pos === "h") go("list", "f");
+  });
   sheet.addEventListener("pointercancel", endDrag);
 
   // --- Keys, resizes, coming back ---------------------------------------------------
