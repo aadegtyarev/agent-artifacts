@@ -10,6 +10,7 @@ from agent_artifacts import comments
 
 PACKAGE = Path(comments.__file__).parent
 COMMENTS_JS = (PACKAGE / "static" / "comments.js").read_text()
+VIEWER_PINS_JS = (PACKAGE / "static" / "comments-pins.js").read_text()
 PINS_JS = (PACKAGE / "static" / "pins.js").read_text()
 VIEWER_HTML = (PACKAGE / "templates" / "viewer.html").read_text()
 
@@ -37,7 +38,7 @@ def test_comment_text():
 
 
 def test_anchor_checks_in_the_viewer():
-    js = one(r"const isAnchor = (.+?);\n", COMMENTS_JS)[0]
+    js = one(r"const isAnchor = (.+?);\n", VIEWER_PINS_JS)[0]
     assert number(r"\[\.\.\.a\.selector\]\.length <= (\d+)", js) == comments.MAX_SELECTOR
     assert number(r"\[\.\.\.a\.text\]\.length <= (\d+)", js) == comments.MAX_ANCHOR_TEXT
     assert number(r"a\.width <= (\d+)", js) == comments.MAX_WIDTH
@@ -71,4 +72,4 @@ def test_both_scripts_refuse_what_the_server_refuses():
 
 def test_frame_keys_agree():
     key = r"const isKey = \(k\) => ([^\n]+);\n"
-    assert one(key, COMMENTS_JS) == one(key, PINS_JS)
+    assert one(key, VIEWER_PINS_JS) == one(key, PINS_JS)
