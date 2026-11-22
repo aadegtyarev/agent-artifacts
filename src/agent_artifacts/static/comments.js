@@ -476,7 +476,7 @@
   }
 
   function row(it, line) {
-    const r = el("button", `it${desk.matches && S.view === "item" && S.sel === it.key ? " cur" : ""}`);
+    const r = el("button", `it${it.draft ? " dr" : ""}${desk.matches && S.view === "item" && S.sel === it.key ? " cur" : ""}`);
     r.type = "button";
     const tx = el("span", "tx");
     tx.append(el("span", "main", (it.anchor ? "" : "About the whole file: ") + it.text));

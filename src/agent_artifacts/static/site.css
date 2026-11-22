@@ -41,10 +41,12 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
    what this browser wrote, orange everybody else's. */
 :root { --fill: #f2f2f7; --fill2: #e9e9ee; --hair: rgb(60 60 67 / 0.12);
   --pri-bg: #1c1c1e; --pri-fg: #fff; --send: #0a84ff; --own: #0a84ff;
-  --other: #e8890c; --other-text: #b25e00; --sheet-bg: #fff; }
+  --other: #e8890c; --other-text: #b25e00; --sheet-bg: #fff;
+  --draft-bg: rgb(10 132 255 / 0.08); --draft-bg2: rgb(10 132 255 / 0.16); }
 @media (prefers-color-scheme: dark) { :root { --fill: #2c2c2e; --fill2: #3a3a3c;
   --hair: rgb(235 235 245 / 0.16); --pri-bg: #f2f2f7; --pri-fg: #1c1c1e;
-  --other-text: #ffb340; --sheet-bg: #1c1c1e; } }
+  --other-text: #ffb340; --sheet-bg: #1c1c1e;
+  --draft-bg: rgb(10 132 255 / 0.16); --draft-bg2: rgb(10 132 255 / 0.26); } }
 
 .stage { flex: 1; min-height: 0; display: flex; }
 /* The content fills main by absolute position, not height: 100%, which
@@ -109,6 +111,11 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
   font: inherit; cursor: pointer; transition: background 0.15s; }
 .it:last-of-type { box-shadow: none; }
 .it:active, .it.cur { background: var(--fill); }
+/* Drafts come first, on a light blue ground, their state in blue. */
+.it.dr { background: var(--draft-bg); box-shadow: none; }
+.it.dr + .it.dr { margin-top: 2px; }
+.it.dr:active, .it.dr.cur { background: var(--draft-bg2); }
+.it.dr .st { color: var(--own); font-weight: 600; }
 .it .tx { flex: 1; min-width: 0; font-size: 15px; line-height: 1.3; }
 .it .main { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .st { display: block; overflow: hidden; color: var(--muted); font-size: 13px;
@@ -132,8 +139,7 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
 .chev:active { background: var(--fill); }
 .msg { display: flex; gap: 9px; align-items: flex-start; margin: 1px -8px; padding: 7px 8px;
   border-radius: 12px; }
-.msg.unsent { background: #fafafc; box-shadow: inset 0 0 0 1px rgb(60 60 67 / 0.18); }
-@media (prefers-color-scheme: dark) { .msg.unsent { background: #232325; } }
+.msg.unsent { background: var(--draft-bg); }
 .msg .bd { flex: 1; min-width: 0; font-size: 15px; line-height: 1.32; overflow-wrap: anywhere; }
 .msg .text { white-space: pre-wrap; }
 .msg .who { font-size: 13px; font-weight: 600; }
@@ -162,7 +168,7 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
 .general textarea { min-height: 60px; }
 
 /* Pins: 24px to the eye, 44px to a finger; the sharp corner marks the spot.
-   Solid with a number once published, dashed with a letter while a draft. */
+   Solid with a number once published, a white dashed ring and a letter while a draft. */
 .pin { position: absolute; display: flex; align-items: center; justify-content: center;
   width: 24px; min-width: 24px; height: 24px; padding: 0; transform: translateY(-100%);
   color: #fff; background: var(--other); border: 0; border-radius: 50% 50% 50% 4px;
@@ -171,12 +177,17 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
   -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
 .pin::before { content: ""; position: absolute; inset: -10px; }
 .pin.own { background: var(--own); }
-.pin.draft { color: var(--other-text); background: rgb(255 255 255 / 0.96);
-  border: 1.5px dashed var(--other); box-shadow: 0 1px 4px rgb(0 0 0 / 0.18); }
-.pin.draft.own { color: var(--own); border-color: var(--own); }
+/* A draft: filled like a published pin, with a white dashed ring inside
+   its coloured edge, so it shows on any background. */
+.pin.draft { border: 1.5px dashed #fff;
+  box-shadow: 0 0 0 2px var(--other), 0 2px 6px rgb(0 0 0 / 0.3); }
+.pin.draft.own { box-shadow: 0 0 0 2px var(--own), 0 2px 6px rgb(0 0 0 / 0.3); }
 .pin.lit { z-index: 2; box-shadow: 0 0 0 2px #fff, 0 0 0 6px rgb(28 28 30 / 0.18),
   0 2px 6px rgb(0 0 0 / 0.25); }
-.pin.draft.lit { box-shadow: 0 0 0 5px rgb(28 28 30 / 0.14); }
+.pin.draft.lit { box-shadow: 0 0 0 2px var(--other), 0 0 0 6px rgb(28 28 30 / 0.18),
+  0 2px 6px rgb(0 0 0 / 0.25); }
+.pin.draft.own.lit { box-shadow: 0 0 0 2px var(--own), 0 0 0 6px rgb(28 28 30 / 0.18),
+  0 2px 6px rgb(0 0 0 / 0.25); }
 /* Near the right or top edge the pin turns to stay on the image. */
 .pin.left { transform: translate(-100%, -100%); border-radius: 50% 50% 4px 50%; }
 .pin.down { transform: none; border-radius: 4px 50% 50% 50%; }
@@ -185,7 +196,8 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
 .pin.mini { position: relative; flex: none; width: 22px; min-width: 22px; height: 22px;
   margin-top: 1px; transform: none; font-size: 11px; cursor: inherit;
   box-shadow: 0 0 0 1.5px #fff, 0 1px 3px rgb(0 0 0 / 0.2); }
-.pin.mini.draft { box-shadow: none; }
+.pin.mini.draft { border-width: 1px; box-shadow: 0 0 0 1.5px var(--other); }
+.pin.mini.draft.own { box-shadow: 0 0 0 1.5px var(--own); }
 .pin.mini::before { display: none; }
 /* The layer over an image: the size of the image, pins placed in %,
    clipped so a pin at an edge never widens the page. */

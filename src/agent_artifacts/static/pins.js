@@ -18,7 +18,7 @@
   const root = host.attachShadow({ mode: "closed" });
   // The same pins as on an image in the viewer (site.css): blue for what
   // this browser wrote, orange for others; solid with a number when
-  // published, dashed with a letter while a draft.
+  // published; a draft is filled too, with a white dashed ring and a letter.
   root.innerHTML = "<style>"
     + ".box{position:absolute;display:none;box-sizing:border-box;border-radius:4px;pointer-events:none}"
     + ".hover{border:2px dashed #0a84ff;background:rgb(10 132 255/.07)}"
@@ -30,14 +30,14 @@
     + "pointer-events:auto;cursor:pointer;-webkit-tap-highlight-color:transparent}"
     + ".pin::before{content:'';position:absolute;inset:-10px}"
     + ".pin.own{background:#0a84ff}"
-    + ".pin.draft{color:#b25e00;background:rgb(255 255 255/.96);border:1.5px dashed #e8890c;"
-    + "box-shadow:0 1px 4px rgb(0 0 0/.18)}"
-    + ".pin.draft.own{color:#0a84ff;border-color:#0a84ff}"
+    + ".pin.draft{border:1.5px dashed #fff;box-shadow:0 0 0 2px #e8890c,0 2px 6px rgb(0 0 0/.3)}"
+    + ".pin.draft.own{box-shadow:0 0 0 2px #0a84ff,0 2px 6px rgb(0 0 0/.3)}"
     + ".pin.left{transform:translate(-100%,-100%);border-radius:50% 50% 4px 50%}"
     + ".pin.down{transform:none;border-radius:4px 50% 50% 50%}"
     + ".pin.left.down{transform:translateX(-100%);border-radius:50% 4px 50% 50%}"
     + ".pin.lit{z-index:2;box-shadow:0 0 0 2px #fff,0 0 0 6px rgb(28 28 30/.18),0 2px 6px rgb(0 0 0/.25)}"
-    + ".pin.draft.lit{box-shadow:0 0 0 5px rgb(28 28 30/.14)}"
+    + ".pin.draft.lit{box-shadow:0 0 0 2px #e8890c,0 0 0 6px rgb(28 28 30/.18),0 2px 6px rgb(0 0 0/.25)}"
+    + ".pin.draft.own.lit{box-shadow:0 0 0 2px #0a84ff,0 0 0 6px rgb(28 28 30/.18),0 2px 6px rgb(0 0 0/.25)}"
     + "</style><div class='box hover'></div><div class='box fresh'></div><div class='pins'></div>";
   const hoverBox = root.querySelector(".hover");
   const draftBox = root.querySelector(".fresh");
