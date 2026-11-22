@@ -10,6 +10,7 @@ key in X-Author-Key; only its SHA-256 is stored.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import re
@@ -22,7 +23,20 @@ from starlette.routing import Route
 
 from . import kinds
 from .api import ApiError, error, iso, json_object, require_agent
-from .store import Comment, Draft, NothingToPublish, Store, TooManyComments, TooManyDrafts
+from .store import (
+    ANSWERED,
+    DRAFT_KINDS,
+    Comment,
+    Draft,
+    DraftRefused,
+    NoSuchComment,
+    NothingToPublish,
+    Reply,
+    Store,
+    TooManyComments,
+    TooManyDrafts,
+    TooManyReplies,
+)
 
 MAX_BODY_BYTES = 16 * 1024
 MAX_AUTHOR, MAX_TEXT = 64, 2000
@@ -59,10 +73,13 @@ def comment_routes(store: Store) -> list[Route]:
     async def public_list(request: Request) -> Response:
         # A missing or malformed key here only means no comment is "mine".
         key = _author_key(request, required=False)
-        found = await run_in_threadpool(store.comments, request.path_params["id"], key_hash=key)
-        if found is None:
+        artifact_id = request.path_params["id"]
+        # Read before the comments, so a replace in between shows next time.
+        artifact = store.get(artifact_id)
+        found = await run_in_threadpool(store.comments, artifact_id, key_hash=key)
+        if artifact is None or found is None:
             raise _no_artifact()
-        return _answer([_json(c) for c in found])
+        return _updated(_answer([_json(c) for c in found]), artifact.updated_at)
 
     async def drafts(request: Request) -> Response:
         artifact_id, key = request.path_params["id"], _author_key(request)
@@ -71,18 +88,44 @@ def comment_routes(store: Store) -> list[Route]:
             if found is None:
                 raise _no_artifact()
             return _answer([_draft_json(d) for d in found])
-        data = await _body(request, {"author", "text", "anchor"}, {"text"})
+        data = await _body(request, {"author", "kind", "of", "text", "anchor"})
         author = _author(data)
-        text = _text(data["text"])
+        kind = data.get("kind", "comment")
+        if kind not in DRAFT_KINDS:
+            raise ApiError(400, "bad_request", f"kind must be one of {', '.join(DRAFT_KINDS)}")
+        # A comment takes text and an optional anchor; a reply, the comment
+        # it is about and text; a decision, only the comment.
+        fields = {
+            "comment": ({"text"}, {"anchor"}),
+            "reply": ({"of", "text"}, set()),
+        }.get(kind, ({"of"}, set()))
+        needed, optional = fields
+        if not needed <= set(data) - {"author", "kind"} <= needed | optional:
+            raise ApiError(400, "bad_request", f"a {kind} draft takes {sorted(needed | optional)}")
+        text = _text(data["text"]) if "text" in data else ""
         anchor = _anchor(data.get("anchor"), artifact_kind(artifact_id).pin)
+        of_n = _of(data["of"]) if "of" in data else None
         try:
             draft = await run_in_threadpool(
-                store.add_draft, artifact_id, key, author=author, text=text, anchor=anchor
+                functools.partial(
+                    store.add_draft,
+                    artifact_id,
+                    key,
+                    author=author,
+                    text=text,
+                    anchor=anchor,
+                    kind=kind,
+                    of_n=of_n,
+                )
             )
         except TooManyDrafts:
             raise ApiError(
                 409, "too_many_drafts", "there are too many drafts on this file"
             ) from None
+        except NoSuchComment:
+            raise _no_comment() from None
+        except DraftRefused as e:
+            raise ApiError(400, "bad_request", str(e)) from None
         if draft is None:
             raise _no_artifact()
         return _answer(_draft_json(draft), 201)
@@ -120,16 +163,45 @@ def comment_routes(store: Store) -> list[Route]:
             raise ApiError(
                 409, "too_many_comments", "this file has the most comments it can hold"
             ) from None
+        except TooManyReplies:
+            raise _too_many_replies() from None
         if made is None:
             raise _no_artifact()
         return _answer([_json(c) for c in made], 201)
 
     async def owner_list(request: Request) -> Response:
         agent = require_agent(store, request)
-        found = await run_in_threadpool(store.comments, request.path_params["id"], owner=agent)
-        if found is None:
+        artifact_id = request.path_params["id"]
+        artifact = store.get(artifact_id, owner=agent)
+        found = await run_in_threadpool(store.comments, artifact_id, owner=agent)
+        if artifact is None or found is None:
             raise _no_artifact()
-        return _answer([_json(c) for c in found])
+        return _updated(_answer([_json(c) for c in found]), artifact.updated_at)
+
+    async def owner_take(request: Request) -> Response:
+        agent = require_agent(store, request)
+        taken = await run_in_threadpool(store.take, request.path_params["id"], owner=agent)
+        if taken is None:
+            raise _no_artifact()
+        return _answer([_json(c) for c in taken])
+
+    async def owner_reply(request: Request) -> Response:
+        agent = require_agent(store, request)
+        artifact_id, n = request.path_params["id"], _number(request)
+        data = await _body(request, {"text", "state"}, {"text"})
+        text = _text(data["text"])
+        state = data.get("state", "done")
+        if state not in ANSWERED:
+            raise ApiError(400, "bad_request", f"state must be one of {', '.join(ANSWERED)}")
+        try:
+            comment = await run_in_threadpool(
+                functools.partial(store.agent_reply, artifact_id, n, text, state, owner=agent)
+            )
+        except TooManyReplies:
+            raise _too_many_replies() from None
+        if comment is None:
+            raise _no_comment()
+        return _answer(_json(comment), 201)
 
     async def owner_item(request: Request) -> Response:
         agent = require_agent(store, request)
@@ -168,6 +240,8 @@ def comment_routes(store: Store) -> list[Route]:
         _route("/a/{id:artifact_id}/review", review, "POST"),
         _route("/api/v1/artifacts/{id:artifact_id}/comments", owner_list, "GET"),
         _route("/api/v1/artifacts/{id:artifact_id}/comments/{n}", owner_item, "PATCH", "DELETE"),
+        _route("/api/v1/artifacts/{id:artifact_id}/comments/{n}/reply", owner_reply, "POST"),
+        _route("/api/v1/artifacts/{id:artifact_id}/take", owner_take, "POST"),
         _route("/api/v1/artifacts/{id:artifact_id}/drafts", owner_drafts, "DELETE"),
     ]
 
@@ -205,18 +279,41 @@ def _json(c: Comment) -> dict:
         "before_replace": c.before_replace,
         "mine": c.mine,
         "for_agent": c.for_agent,
+        "agent": c.agent,
+        "approved_by": c.approved_by,
+        "rejected_by": c.rejected_by,
+        "replies": [_reply_json(r) for r in c.replies],
+    }
+
+
+def _reply_json(r: Reply) -> dict:
+    return {
+        "author": r.author,
+        "text": r.text,
+        "created_at": iso(r.created_at),
+        "mine": r.mine,
+        "agent": r.by_agent,
     }
 
 
 def _draft_json(d: Draft) -> dict:
     return {
         "id": d.id,
+        "kind": d.kind,
+        "of": d.of_n,
         "author": d.author,
-        "text": d.text,
+        # A decision has no text.
+        "text": d.text if d.kind in ("comment", "reply") else None,
         "anchor": json.loads(d.anchor) if d.anchor else None,
         "created_at": iso(d.created_at),
         "updated_at": iso(d.updated_at),
     }
+
+
+def _updated(response: Response, updated_at: float) -> Response:
+    """Tell the viewer when the file was last uploaded, so it sees a replace."""
+    response.headers["X-Artifact-Updated"] = iso(updated_at) or ""
+    return response
 
 
 def _answer(content: object, status: int = 200) -> JSONResponse:
@@ -244,6 +341,19 @@ def _no_comment() -> ApiError:
 
 def _no_draft() -> ApiError:
     return ApiError(404, "not_found", "no such draft")
+
+
+def _too_many_replies() -> ApiError:
+    return ApiError(409, "too_many_replies", "this comment has the most replies it can hold")
+
+
+def _of(v: object) -> int:
+    """The number of the comment a reply or a decision is about."""
+    if isinstance(v, bool) or not isinstance(v, int):
+        raise ApiError(400, "bad_request", "of must be a comment number")
+    if not 0 < v < 10**9:
+        raise _no_comment()
+    return v
 
 
 def _number(request: Request) -> int:

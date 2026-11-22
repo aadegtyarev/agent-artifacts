@@ -70,8 +70,22 @@ CREATE TABLE IF NOT EXISTS comments (
     read_at REAL,
     resolved_at REAL,
     for_agent INTEGER NOT NULL DEFAULT 0,  -- the review was sent to the agent
+    approved_by TEXT,  -- the name of the person who approved it last
+    rejected_by TEXT,  -- the name of the person who rejected it last
+    agent TEXT,  -- NULL or one of AGENT_STATES
     PRIMARY KEY (artifact_id, n)
 );
+CREATE TABLE IF NOT EXISTS replies (
+    artifact_id TEXT NOT NULL,
+    n INTEGER NOT NULL,
+    author TEXT NOT NULL,
+    text TEXT NOT NULL,
+    author_key_hash TEXT,  -- NULL: written by the owner agent
+    created_at REAL NOT NULL,
+    by_agent INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (artifact_id, n) REFERENCES comments(artifact_id, n) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS replies_comment ON replies(artifact_id, n);
 CREATE TABLE IF NOT EXISTS drafts (
     artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
     id TEXT NOT NULL,
@@ -81,6 +95,8 @@ CREATE TABLE IF NOT EXISTS drafts (
     anchor TEXT,  -- JSON; NULL: about the whole file
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'comment',  -- one of DRAFT_KINDS
+    of_n INTEGER,  -- the comment a reply or a decision is about
     PRIMARY KEY (artifact_id, id)
 );
 CREATE INDEX IF NOT EXISTS drafts_updated ON drafts(updated_at);
@@ -104,6 +120,13 @@ _ADDED_COLUMNS = {
     "comments": {
         "written_at": "REAL",
         "for_agent": "INTEGER NOT NULL DEFAULT 0",
+        "approved_by": "TEXT",
+        "rejected_by": "TEXT",
+        "agent": "TEXT",
+    },
+    "drafts": {
+        "kind": "TEXT NOT NULL DEFAULT 'comment'",
+        "of_n": "INTEGER",
     },
 }
 # Columns renamed since, old name to new, for databases made before.
@@ -125,13 +148,15 @@ class Artifact:
     expires_at: float
     comments: int = 0
     open_comments: int = 0
+    updated_at: float = 0.0  # the last upload: replaced, else created
 
 
 # An artifact row with its comment counts, for Artifact(*row).
 _ARTIFACT_SQL = (
     "SELECT a.id, a.owner, a.name, a.kind, a.size, a.created_at, a.expires_at, "
     "(SELECT COUNT(*) FROM comments c WHERE c.artifact_id = a.id), "
-    "(SELECT COUNT(*) FROM comments c WHERE c.artifact_id = a.id AND c.resolved_at IS NULL) "
+    "(SELECT COUNT(*) FROM comments c WHERE c.artifact_id = a.id AND c.resolved_at IS NULL), "
+    "COALESCE(a.replaced_at, a.created_at) "
     "FROM artifacts a"
 )
 
@@ -139,6 +164,25 @@ MAX_COMMENTS = 200
 MAX_DRAFTS_PER_KEY = 50  # one author key's drafts on one file
 MAX_DRAFTS = 200  # all drafts on one file
 DRAFT_TTL_SECONDS = 7 * 24 * 3600  # a draft not changed for this long is deleted
+MAX_REPLIES = 100  # replies in one comment's chat
+
+# What the owner agent is doing about a comment; NULL: nothing asked of it.
+# waiting: sent to it; working: taken; done, wrote, asked: answered.
+AGENT_STATES = ("waiting", "working", "done", "wrote", "asked")
+ANSWERED = ("done", "wrote", "asked")  # the states a person can accept
+# A comment or a reply carries text; a decision (approve, reject, accept)
+# carries only the comment it is about.
+DRAFT_KINDS = ("comment", "reply", "approve", "reject", "accept")
+DECISIONS = ("approve", "reject", "accept")
+
+
+@dataclass(frozen=True)
+class Reply:
+    author: str
+    text: str
+    created_at: float
+    mine: bool
+    by_agent: bool
 
 
 @dataclass(frozen=True)
@@ -153,15 +197,26 @@ class Comment:
     before_replace: bool
     mine: bool
     for_agent: bool
+    approved_by: str | None = None
+    rejected_by: str | None = None
+    agent: str | None = None  # one of AGENT_STATES
+    replies: tuple[Reply, ...] = ()
 
 
 # :key is the author key hash asking, or NULL: then no comment is its own.
 _COMMENT_SQL = (
     "SELECT c.n, c.author, c.text, c.anchor, c.created_at, c.read_at, c.resolved_at, "
     "a.replaced_at IS NOT NULL AND COALESCE(c.written_at, c.created_at) < a.replaced_at, "
-    "COALESCE(c.author_key_hash = :key, 0), c.for_agent "
+    "COALESCE(c.author_key_hash = :key, 0), c.for_agent, "
+    "c.approved_by, c.rejected_by, c.agent "
     "FROM comments c JOIN artifacts a ON a.id = c.artifact_id "
     "WHERE c.artifact_id = :id AND a.expires_at > :now"
+)
+
+# The replies on the artifact :id, oldest first, each marked as :key's or not.
+_REPLY_SQL = (
+    "SELECT n, author, text, created_at, COALESCE(author_key_hash = :key, 0), by_agent "
+    "FROM replies WHERE artifact_id = :id ORDER BY created_at, rowid"
 )
 
 
@@ -173,11 +228,15 @@ class Draft:
     anchor: str | None  # JSON
     created_at: float
     updated_at: float
+    kind: str = "comment"  # one of DRAFT_KINDS
+    of_n: int | None = None  # the comment a reply or a decision is about
 
+
+_DRAFT_COLUMNS = "id, author, text, anchor, created_at, updated_at, kind, of_n"
 
 # One author key's live drafts on a live artifact.
 _DRAFT_SQL = (
-    "SELECT d.id, d.author, d.text, d.anchor, d.created_at, d.updated_at "
+    "SELECT d.id, d.author, d.text, d.anchor, d.created_at, d.updated_at, d.kind, d.of_n "
     "FROM drafts d JOIN artifacts a ON a.id = d.artifact_id "
     "WHERE d.artifact_id = :id AND d.author_key_hash = :key "
     "AND a.expires_at > :now AND d.updated_at > :stale"
@@ -201,6 +260,18 @@ class TooManyDrafts(Exception):
 
 class NothingToPublish(Exception):
     pass
+
+
+class TooManyReplies(Exception):
+    pass
+
+
+class NoSuchComment(Exception):
+    """A reply or a decision about a comment that is not open on the file."""
+
+
+class DraftRefused(Exception):
+    """A decision the author key may not make on that comment now."""
 
 
 class StorageFull(Exception):
@@ -558,12 +629,8 @@ class Store:
                     "WHERE artifact_id = :id AND read_at IS NULL",
                     args,
                 )
-                rows = db.execute(f"{_COMMENT_SQL} ORDER BY c.n", args).fetchall()
-            else:
-                rows = db.execute(
-                    f"{_COMMENT_SQL} AND c.resolved_at IS NULL ORDER BY c.n", args
-                ).fetchall()
-        return [_comment(r) for r in rows]
+                return _load(db, "ORDER BY c.n", args)
+            return _load(db, "AND c.resolved_at IS NULL ORDER BY c.n", args)
 
     def resolve_comment(
         self, artifact_id: str, n: int, resolved: bool, *, owner: str
@@ -587,11 +654,57 @@ class Store:
             return db.execute(sql, (artifact_id, n)).rowcount > 0
 
     def _comment(self, db: sqlite3.Connection, artifact_id: str, n: int) -> Comment | None:
-        row = db.execute(
-            f"{_COMMENT_SQL} AND c.n = :n",
-            {"id": artifact_id, "now": self.clock(), "n": n, "key": None},
-        ).fetchone()
-        return _comment(row) if row else None
+        args = {"id": artifact_id, "now": self.clock(), "n": n, "key": None}
+        found = _load(db, "AND c.n = :n", args)
+        return found[0] if found else None
+
+    def take(self, artifact_id: str, *, owner: str) -> list[Comment] | None:
+        """The owner agent takes every open comment waiting for it: they
+        become working. Returns those; None if there is no such artifact."""
+        with self._conn() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if self._artifact(db, artifact_id, owner) is None:
+                return None
+            args = {"id": artifact_id, "now": self.clock(), "key": None}
+            taken = db.execute(
+                "UPDATE comments SET agent = 'working' WHERE artifact_id = :id "
+                "AND agent = 'waiting' AND resolved_at IS NULL RETURNING n",
+                args,
+            ).fetchall()
+            if not taken:
+                return []
+            numbers = ", ".join(str(r[0]) for r in taken)
+            return _load(db, f"AND c.n IN ({numbers}) ORDER BY c.n", args)
+
+    def agent_reply(
+        self, artifact_id: str, n: int, text: str, state: str, *, owner: str
+    ) -> Comment | None:
+        """The owner agent's reply in comment ``n``'s chat, setting its
+        agent state; None if there is no such comment. Raises TooManyReplies."""
+        assert state in ANSWERED, state
+        with self._conn() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if self._artifact(db, artifact_id, owner) is None:
+                return None
+            args = {"id": artifact_id, "n": n, "now": self.clock(), "state": state}
+            if not db.execute(
+                "SELECT 1 FROM comments WHERE artifact_id = :id AND n = :n", args
+            ).fetchone():
+                return None
+            (replies,) = db.execute(
+                "SELECT COUNT(*) FROM replies WHERE artifact_id = :id AND n = :n", args
+            ).fetchone()
+            if replies >= MAX_REPLIES:
+                raise TooManyReplies
+            db.execute(
+                "INSERT INTO replies (artifact_id, n, author, text, author_key_hash, created_at, "
+                "by_agent) VALUES (:id, :n, 'agent', :text, NULL, :now, 1)",
+                args | {"text": text},
+            )
+            db.execute(
+                "UPDATE comments SET agent = :state WHERE artifact_id = :id AND n = :n", args
+            )
+            return self._comment(db, artifact_id, n)
 
     def _draft_args(self, artifact_id: str, key_hash: str, **more: object) -> dict:
         now = self.clock()
@@ -614,14 +727,45 @@ class Store:
         return [Draft(*r) for r in rows]
 
     def add_draft(
-        self, artifact_id: str, key_hash: str, *, author: str, text: str, anchor: str | None
+        self,
+        artifact_id: str,
+        key_hash: str,
+        *,
+        author: str,
+        text: str,
+        anchor: str | None,
+        kind: str = "comment",
+        of_n: int | None = None,
     ) -> Draft | None:
-        """A new draft; None if the artifact is gone. Raises TooManyDrafts."""
+        """A new draft; None if the artifact is gone. A reply or a decision
+        is about the open comment ``of_n``; a decision replaces the key's
+        earlier one on that comment. Raises TooManyDrafts, NoSuchComment,
+        DraftRefused."""
+        assert kind in DRAFT_KINDS and (of_n is None) == (kind == "comment"), (kind, of_n)
         with self._conn() as db:
             db.execute("BEGIN IMMEDIATE")
             if self._artifact(db, artifact_id) is None:
                 return None
-            args = self._draft_args(artifact_id, key_hash)
+            args = self._draft_args(artifact_id, key_hash, of=of_n)
+            if of_n is not None:
+                about = db.execute(
+                    "SELECT author_key_hash = :key, agent FROM comments "
+                    "WHERE artifact_id = :id AND n = :of AND resolved_at IS NULL",
+                    args,
+                ).fetchone()
+                if about is None:
+                    raise NoSuchComment
+                own, agent = about
+                if kind in ("approve", "reject") and own:
+                    raise DraftRefused(f"you cannot {kind} your own comment")
+                if kind == "accept" and agent not in ANSWERED:
+                    raise DraftRefused("the agent has not answered this comment yet")
+                if kind in DECISIONS:
+                    db.execute(
+                        "DELETE FROM drafts WHERE artifact_id = :id AND author_key_hash = :key "
+                        "AND of_n = :of AND kind IN ('approve', 'reject', 'accept')",
+                        args,
+                    )
             # Expired drafts make room before they are counted.
             db.execute("DELETE FROM drafts WHERE artifact_id = :id AND updated_at <= :stale", args)
             mine, total = db.execute(
@@ -631,20 +775,22 @@ class Store:
             ).fetchone()
             if mine >= MAX_DRAFTS_PER_KEY or total >= MAX_DRAFTS:
                 raise TooManyDrafts
-            draft = Draft(secrets.token_urlsafe(8), author, text, anchor, args["now"], args["now"])
+            now = args["now"]
+            draft = Draft(secrets.token_urlsafe(8), author, text, anchor, now, now, kind, of_n)
             db.execute(
                 "INSERT INTO drafts (artifact_id, id, author_key_hash, author, text, anchor, "
-                "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (artifact_id, draft.id, key_hash, author, text, anchor, args["now"], args["now"]),
+                "created_at, updated_at, kind, of_n) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (artifact_id, draft.id, key_hash, author, text, anchor, now, now, kind, of_n),
             )
         return draft
 
     def edit_draft(self, artifact_id: str, key_hash: str, draft_id: str, text: str) -> Draft | None:
-        """Change a draft's text; None if there is no such draft of ``key_hash``'s."""
+        """Change the text of a comment or reply draft; None if there is no
+        such draft of ``key_hash``'s, or it is a decision, which has no text."""
         with self._conn() as db:
             row = db.execute(
                 f"UPDATE drafts SET text = :text, updated_at = :now WHERE {_OWN_DRAFT} "  # noqa: S608
-                "RETURNING id, author, text, anchor, created_at, updated_at",
+                f"AND kind IN ('comment', 'reply') RETURNING {_DRAFT_COLUMNS}",
                 self._draft_args(artifact_id, key_hash, draft=draft_id, text=text),
             ).fetchone()
         return Draft(*row) if row else None
@@ -673,11 +819,18 @@ class Store:
         text: str | None,
         for_agent: bool = False,
     ) -> list[Comment] | None:
-        """Finish ``key_hash``'s review: its drafts on the artifact, in the
-        order made, then ``text`` as a comment about the whole file, become
-        comments with the next numbers, all or none, marked as sent to the
-        agent when ``for_agent``. None if the artifact is gone; raises
-        NothingToPublish, TooManyComments."""
+        """Finish ``key_hash``'s review, all or nothing. Its comment drafts on
+        the artifact, in the order made, then ``text`` as a comment about the
+        whole file, become comments with the next numbers; its replies join
+        their comments' chats; its decisions take effect: approve and reject
+        record the draft's author (the later one clears the other), accept
+        resolves the comment. Replies and decisions about a comment no longer
+        open are dropped. When ``for_agent``, the new comments and those
+        replied to or approved go to the agent: for_agent, agent "waiting".
+
+        Returns the comments made or touched and still open, by number; None
+        if the artifact is gone. Raises NothingToPublish, TooManyComments,
+        TooManyReplies."""
         with self._conn() as db:
             db.execute("BEGIN IMMEDIATE")
             artifact = self._artifact(db, artifact_id)
@@ -688,40 +841,97 @@ class Store:
             pin = kinds.get(artifact.kind).pin
             args = self._draft_args(artifact_id, key_hash)
             drafts = db.execute(
-                "SELECT d.rowid, d.author, d.text, d.anchor, d.created_at FROM drafts d "
-                "WHERE d.artifact_id = :id AND d.author_key_hash = :key "
+                "SELECT d.rowid, d.author, d.text, d.anchor, d.created_at, d.kind, d.of_n "
+                "FROM drafts d WHERE d.artifact_id = :id AND d.author_key_hash = :key "
                 "AND d.updated_at > :stale ORDER BY d.created_at, d.rowid",
                 args,
             ).fetchall()
+            if not drafts and text is None:
+                raise NothingToPublish
             items = [
                 (d_author, d_text, d_anchor if _anchor_fits(d_anchor, pin) else None, written)
-                for _, d_author, d_text, d_anchor, written in drafts
+                for _, d_author, d_text, d_anchor, written, kind, _ in drafts
+                if kind == "comment"
             ]
             if text is not None:
                 items.append((author, text, None, args["now"]))
-            if not items:
-                raise NothingToPublish
             if artifact.comments + len(items) > MAX_COMMENTS:
                 raise TooManyComments
-            (last,) = db.execute(
-                "UPDATE artifacts SET comment_seq = comment_seq + ? WHERE id = ? "
-                "RETURNING comment_seq",
-                (len(items), artifact_id),
-            ).fetchone()
-            first = last - len(items) + 1
+            open_n = {
+                r[0]
+                for r in db.execute(
+                    "SELECT n FROM comments WHERE artifact_id = :id AND resolved_at IS NULL", args
+                )
+            }
+            about = [
+                (kind, of_n, d_author, d_text)
+                for _, d_author, d_text, _, _, kind, of_n in drafts
+                if kind != "comment" and of_n in open_n
+            ]
+            replies = [(of_n, a, t) for kind, of_n, a, t in about if kind == "reply"]
+            self._check_replies(db, artifact_id, [of_n for of_n, _, _ in replies])
+            touched: set[int] = set()
+            if items:
+                (last,) = db.execute(
+                    "UPDATE artifacts SET comment_seq = comment_seq + ? WHERE id = ? "
+                    "RETURNING comment_seq",
+                    (len(items), artifact_id),
+                ).fetchone()
+                first = last - len(items) + 1
+                db.executemany(
+                    "INSERT INTO comments (artifact_id, n, author, text, anchor, "
+                    "author_key_hash, created_at, written_at, for_agent, agent) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        (artifact_id, first + i, a, t, anchor, key_hash, args["now"], written)
+                        + (for_agent, "waiting" if for_agent else None)
+                        for i, (a, t, anchor, written) in enumerate(items)
+                    ],
+                )
+                touched.update(range(first, last + 1))
             db.executemany(
-                "INSERT INTO comments (artifact_id, n, author, text, anchor, author_key_hash, "
-                "created_at, written_at, for_agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [
-                    (artifact_id, first + i, a, t, anchor, key_hash, args["now"], written, for_agent)
-                    for i, (a, t, anchor, written) in enumerate(items)
-                ],
+                "INSERT INTO replies (artifact_id, n, author, text, author_key_hash, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                [(artifact_id, n, a, t, key_hash, args["now"]) for n, a, t in replies],
             )
+            to_agent = {n for n, _, _ in replies}
+            for kind, n, d_author, _ in about:
+                if kind == "approve":
+                    sql = "approved_by = :name, rejected_by = NULL"
+                    to_agent.add(n)
+                elif kind == "reject":
+                    sql = "approved_by = NULL, rejected_by = :name"
+                elif kind == "accept":
+                    sql = "resolved_at = COALESCE(resolved_at, :now)"
+                else:
+                    continue
+                db.execute(
+                    f"UPDATE comments SET {sql} WHERE artifact_id = :id AND n = :n",  # noqa: S608
+                    args | {"n": n, "name": d_author},
+                )
+                touched.add(n)
+            touched |= to_agent
+            if for_agent and to_agent:
+                db.executemany(
+                    "UPDATE comments SET for_agent = 1, agent = 'waiting' "
+                    "WHERE artifact_id = ? AND n = ? AND resolved_at IS NULL",
+                    [(artifact_id, n) for n in to_agent],
+                )
             db.executemany("DELETE FROM drafts WHERE rowid = ?", [(d[0],) for d in drafts])
-            rows = db.execute(
-                f"{_COMMENT_SQL} AND c.n >= :first ORDER BY c.n", args | {"first": first}
-            ).fetchall()
-        return [_comment(r) for r in rows]
+            if not touched:
+                return []
+            numbers = ", ".join(str(n) for n in sorted(touched))
+            return _load(db, f"AND c.n IN ({numbers}) AND c.resolved_at IS NULL ORDER BY c.n", args)
+
+    def _check_replies(self, db: sqlite3.Connection, artifact_id: str, numbers: list[int]) -> None:
+        """Raise TooManyReplies if adding a reply to each of ``numbers`` (one
+        per mention) would pass MAX_REPLIES on any comment."""
+        for n in set(numbers):
+            (have,) = db.execute(
+                "SELECT COUNT(*) FROM replies WHERE artifact_id = ? AND n = ?", (artifact_id, n)
+            ).fetchone()
+            if have + numbers.count(n) > MAX_REPLIES:
+                raise TooManyReplies
 
     def delete(self, artifact_id: str, *, owner: str) -> bool:
         with self._conn() as db:
@@ -762,9 +972,29 @@ class Store:
         self.path(artifact_id).unlink(missing_ok=True)
 
 
-def _comment(row: tuple) -> Comment:
+def _load(db: sqlite3.Connection, where: str, args: dict) -> list[Comment]:
+    """The comments ``_COMMENT_SQL`` + ``where`` selects, with their replies."""
+    rows = db.execute(f"{_COMMENT_SQL} {where}", args).fetchall()
+    replies: dict[int, list[Reply]] = {}
+    if rows:
+        for n, author, text, created_at, mine, by_agent in db.execute(_REPLY_SQL, args):
+            replies.setdefault(n, []).append(
+                Reply(author, text, created_at, bool(mine), bool(by_agent))
+            )
+    return [_comment(r, tuple(replies.get(r[0], ()))) for r in rows]
+
+
+def _comment(row: tuple, replies: tuple[Reply, ...] = ()) -> Comment:
+    *fields, before_replace, mine, for_agent, approved_by, rejected_by, agent = row
     return Comment(
-        *row[:-3], before_replace=bool(row[-3]), mine=bool(row[-2]), for_agent=bool(row[-1])
+        *fields,
+        before_replace=bool(before_replace),
+        mine=bool(mine),
+        for_agent=bool(for_agent),
+        approved_by=approved_by,
+        rejected_by=rejected_by,
+        agent=agent,
+        replies=replies,
     )
 
 
