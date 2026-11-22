@@ -699,7 +699,7 @@
     && Number.isInteger(a.width) && a.width > 0 && a.width <= 100000
     && (a.screen === undefined || (typeof a.screen === "string" && [...a.screen].length <= 80))
     && (a.hash === undefined || (typeof a.hash === "string" && [...a.hash].length <= 200
-      && (a.hash === "" || /^#./.test(a.hash))));
+      && /^#[\x21-\x7e]*$/.test(a.hash)));
   const isKey = (k) => typeof k === "string" && /^[A-Za-z0-9_-]{1,24}$/.test(k);
 
   function onFrameMessage(e) {

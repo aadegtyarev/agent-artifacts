@@ -42,6 +42,7 @@ _LINE_BREAKS = re.compile(r"[\t\n\r]")
 # Every method reaches _route's check, so even a 405 is JSON.
 _ALL_METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
 _N_RE = re.compile(r"[1-9][0-9]{0,8}")
+_HASH_RE = re.compile(r"#[\x21-\x7e]*")
 # 128 random bits, URL-safe base64 without padding.
 _AUTHOR_KEY_RE = re.compile(r"[A-Za-z0-9_-]{22}")
 # 64 random bits, the same way.
@@ -350,8 +351,10 @@ def _anchor(v: object, pin: str | None) -> str | None:
                 anchor["screen"] = screen
         if "hash" in v:
             h = _line(v["hash"], "anchor.hash", MAX_HASH)
-            if h and (not h.startswith("#") or len(h) < 2):
-                raise ApiError(400, "bad_request", "anchor.hash must start with #")
+            # As a browser reports it: "#" and printable ASCII ("#" alone is
+            # the page with no hash, its start screen).
+            if h and not _HASH_RE.fullmatch(h):
+                raise ApiError(400, "bad_request", "anchor.hash must be # and printable ASCII")
             if h:
                 anchor["hash"] = h
     return json.dumps(anchor)

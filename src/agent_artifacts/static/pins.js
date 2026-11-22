@@ -128,22 +128,35 @@
     return clean(t || el.getAttribute("aria-label") || el.getAttribute("alt") || el.title || "", 200);
   }
 
-  // The screen an element is on, by name: the outermost section, main,
-  // article, dialog or labelled block around it, named by its aria-label,
-  // else its first heading, else its id; else the page's title.
-  const SCREEN = "section,main,article,dialog,[role=dialog],[role=main],[role=region],[aria-label]";
+  // The screen an element is on, by name. Its blocks (section, article,
+  // dialog, region or labelled block, not main and not a control) from the
+  // element up; the screen is the outermost one that sits beside another
+  // such block (one of several screens), else the outermost one. Named by
+  // its aria-label, else its own first heading, else its id; else the
+  // page's title.
+  const BLOCK = "section,article,dialog,[role=dialog],[role=region],[aria-label]";
+  const CONTROL = "a,button,input,select,textarea,label,summary,[role=button],[role=link],svg,img";
+  const isBlock = (x) => x.matches(BLOCK) && !x.matches(CONTROL) && !x.matches("main,[role=main]");
   function screenOf(el) {
     let outer = null;
-    for (let x = el; x && x !== document.body; x = x.parentElement) {
-      if (x.matches(SCREEN)) outer = x;
+    let beside = null;
+    for (let x = el.parentElement; x && x !== document.body; x = x.parentElement) {
+      if (!isBlock(x)) continue;
+      outer = x;
+      if (x.parentElement && [...x.parentElement.children].some((y) => y !== x && isBlock(y))) beside = x;
     }
+    const screen = beside || outer;
     let name = "";
-    if (outer) {
-      const h = outer.querySelector("h1,h2,h3");
-      name = outer.getAttribute("aria-label") || (h && h.textContent) || outer.id || "";
+    if (screen) {
+      const h = [...screen.querySelectorAll("h1,h2,h3")].find((x) => x.closest(BLOCK) === screen
+        || !screen.contains(x.closest(BLOCK)));
+      name = screen.getAttribute("aria-label") || (h && h.textContent) || screen.id || "";
     }
     return clean(name || document.title || "", 80);
   }
+  // The page's #hash as kept with an anchor: "#" for none (the start screen).
+  const hashNow = () => location.hash || "#";
+  const isHash = (h) => typeof h === "string" && h.length <= 200 && /^#[\x21-\x7e]*$/.test(h);
 
   // The selector first; if it matches nothing, the first element whose
   // visible text starts with the anchor's text, the innermost such.
@@ -215,8 +228,7 @@
         missing.push(p.key);
         const el = found.get(p.key);
         // Its element is here but not shown, or it was on another #screen.
-        const elsewhere = typeof p.anchor.hash === "string" && p.anchor.hash.length > 1
-          && location.hash !== p.anchor.hash;
+        const elsewhere = isHash(p.anchor.hash) && hashNow() !== p.anchor.hash;
         if ((el && el.isConnected) || elsewhere) hidden.push(p.key);
         continue;
       }
@@ -276,7 +288,8 @@
     };
     const screen = screenOf(el);
     if (screen) anchor.screen = screen;
-    if (location.hash.length > 1) anchor.hash = location.hash.slice(0, 200);
+    // Kept only whole: a cut one would never match the page's again.
+    if (isHash(hashNow())) anchor.hash = hashNow();
     tell({ type: "anchor", anchor });
     schedule();
   }, true);
@@ -336,7 +349,6 @@
     && typeof a.text === "string" && length(a.text) <= 200
     && [a.x, a.y].every((v) => typeof v === "number" && v >= 0 && v <= 1);
   const isKey = (k) => typeof k === "string" && /^[A-Za-z0-9_-]{1,24}$/.test(k);
-  const isHash = (h) => typeof h === "string" && h.length <= 200 && /^#./.test(h);
   window.addEventListener("message", (e) => {
     if (e.source !== viewer) return;
     const m = e.data;
@@ -360,11 +372,18 @@
       if (!pin) return;
       // On another screen with an address: go there first, then show it once
       // the page has drawn that screen.
-      const el = find(pin.anchor);
-      if (!visible(el) && isHash(pin.anchor.hash) && location.hash !== pin.anchor.hash) {
-        location.hash = pin.anchor.hash;
-        found = new Map();
-        setTimeout(() => { layout(); reveal(pin.anchor); }, 120);
+      if (!visible(find(pin.anchor)) && isHash(pin.anchor.hash) && hashNow() !== pin.anchor.hash) {
+        // Replaced, not pushed: Back leaves the viewer, not the page's screens.
+        location.replace(pin.anchor.hash);
+        // Shown once the page has drawn that screen: tried for up to a second.
+        let tries = 0;
+        const later = () => {
+          found = new Map();
+          layout();
+          if (visible(find(pin.anchor))) reveal(pin.anchor);
+          else if (++tries < 10) setTimeout(later, 100);
+        };
+        setTimeout(later, 60);
         return;
       }
       reveal(pin.anchor);
@@ -372,6 +391,8 @@
   });
   window.addEventListener("scroll", () => schedule(), { capture: true, passive: true });
   window.addEventListener("resize", () => schedule(true));
+  // A screen shown by :target changes nothing in the DOM.
+  window.addEventListener("hashchange", () => schedule(true));
   new ResizeObserver(() => schedule(true)).observe(document.documentElement);
   new MutationObserver(() => schedule(true)).observe(document.documentElement, {
     subtree: true, childList: true, attributes: true, characterData: true,
