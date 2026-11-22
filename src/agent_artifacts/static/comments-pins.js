@@ -1,34 +1,25 @@
 // Comment pins on the content: drawn over an image here, or in a page's
 // frame by pins.js, which this talks to by messages. Loaded as its own
-// script before comments.js, which calls this once with its elements, its
-// state `S` (read on every call) and what a pin or a spot does to the view:
-//   items, itemOf, pinnable: what is listed, and which of it has a pin here
-//   go, openItem, dropCompose, render: move between the sheet's views
-//   place(anchor): a spot was chosen for a new draft
-//   escape(): Escape was pressed in the page
+// script before comments.js, which calls this once with its elements, what
+// to read from the sheet and what to tell it. The sheet decides what a pin
+// or a spot does; this only draws and listens:
+//   pins(): the pins to draw now ({key, label, anchor, own, fill, badge, lit})
+//   picking(): whether a tap on the page is taken as a spot
+//   onPin(key): a pin was tapped
+//   onSpot(anchor): a spot was chosen for a new draft (in comment mode)
+//   onEscape(): Escape was pressed in the page while picking
+//   onChange(spotsOnly): what is known of the page changed; with
+//     `spotsOnly`, only which spots were not found or are hidden
 // It returns `page`, what is known of the frame's script, and the calls the
 // sheet makes when it redraws or moves.
 const commentsPins = ({
-  pinType, image, imageBox, imageLink, pinLayer, frame, body, dialog,
-  S, desk, fields, items, itemOf, pinnable, el,
-  go, openItem, dropCompose, render, place, escape,
+  pinType, image, imageBox, imageLink, pinLayer, frame,
+  pins, picking, onPin, onSpot, onEscape, onChange,
 }) => {
   const { badge: badgeEl } = pinMarks;
   // The script in a page's frame: `ready` once it said so, `off` once it
   // clearly is not coming; `missing`: keys of pins it did not find.
   const page = { ready: false, off: false, missing: new Set(), hidden: new Set(), picking: false };
-
-  function pinList() {
-    const shown = items().filter((it) => pinnable(it.anchor)).map((it) => ({
-      key: it.key, label: it.label, anchor: it.anchor, own: it.own, fill: it.fill, badge: it.badge,
-      lit: S.sel === it.key && (S.view === "item"
-        || (S.view === "list" && (desk.matches || S.pos !== "strip"))),
-    }));
-    if (S.compose && pinnable(S.compose.anchor)) {
-      shown.push({ key: "new", label: "", anchor: S.compose.anchor, own: true, fill: "draft", badge: "", lit: true });
-    }
-    return shown;
-  }
 
   // The frame gets a draft's place in the list ("d0", "d1"…) as its key,
   // never its id: the page's own scripts can read what the frame gets.
@@ -45,18 +36,20 @@ const commentsPins = ({
       if (!page.ready) return;
       frameKeys = new Map();
       let n = 0;
-      const pins = pinList().map((pin) => {
+      const shown = pins().map((pin) => {
         if (!pin.key.startsWith("d")) return pin;
         const key = `d${n++}`;
         frameKeys.set(key, pin.key);
         return { ...pin, key };
       });
-      tell({ type: "pins", pins });
+      tell({ type: "pins", pins: shown });
       return;
     }
     if (pinType !== "point") return;
-    const drawn = pinList().map((p) => {
-      const pin = el("button", `pin${p.own ? " own" : ""}${p.fill !== "solid" ? ` ${p.fill}` : ""}${p.lit ? " lit" : ""}`, p.label);
+    const drawn = pins().map((p) => {
+      const pin = document.createElement("button");
+      pin.className = `pin${p.own ? " own" : ""}${p.fill !== "solid" ? ` ${p.fill}` : ""}${p.lit ? " lit" : ""}`;
+      pin.textContent = p.label;
       if (p.badge) pin.append(badgeEl(p.badge));
       pin.type = "button";
       pin.dataset.key = p.key;
@@ -115,31 +108,6 @@ const commentsPins = ({
   // After the sheet has its new height.
   const revealSoon = (key) => requestAnimationFrame(() => requestAnimationFrame(() => reveal(key)));
 
-  // A tap on a pin: with the list open, its row lights up and comes into
-  // view, the sheet stays; otherwise it opens its item. On the new draft's
-  // pin, its field.
-  function tapPin(key) {
-    if (key === "new") {
-      if (S.compose) {
-        if (S.view !== "compose" || S.pos === "strip") go("compose", "q");
-        fields.compose.focus({ preventScroll: true });
-      }
-      return;
-    }
-    if (!itemOf(key)) return;
-    if (S.view === "list" && (desk.matches || S.pos !== "strip")) {
-      if (S.compose) dropCompose(false);
-      S.sel = key;
-      render();
-      showRow(key);
-    } else openItem(key);
-  }
-
-  function showRow(key) {
-    const r = body.querySelector(`.it[data-key="${CSS.escape(key)}"]`);
-    if (r) r.scrollIntoView({ block: "nearest" });
-  }
-
   // On a phone a pin's tap area is larger than the pin, so the areas of pins
   // close together overlap: a tap goes to the pin nearest to it.
   function nearestPin(x, y) {
@@ -161,18 +129,18 @@ const commentsPins = ({
       e.stopPropagation();
       // A keyboard press has no point (detail 0): it is the focused pin.
       const pin = e.detail ? nearestPin(e.clientX, e.clientY) || hit : hit;
-      tapPin(pin.dataset.key);
+      onPin(pin.dataset.key);
     });
-    // In comment mode a tap places a draft pin; otherwise it does nothing.
-    // A Ctrl/Cmd or middle click still opens the image full size.
+    // In comment mode a tap places a draft pin (the sheet checks the mode);
+    // otherwise it does nothing. A Ctrl/Cmd or middle click still opens the
+    // image full size.
     imageLink.addEventListener("click", (e) => {
       if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
       e.preventDefault();
-      if (!S.mode) return;
       const box = image.getBoundingClientRect();
       if (!box.width || !box.height) return;
       const fraction = (v) => Math.round(Math.min(1, Math.max(0, v)) * 10000) / 10000;
-      place({
+      onSpot({
         type: "point",
         x: fraction((e.clientX - box.left) / box.width),
         y: fraction((e.clientY - box.top) / box.height),
@@ -193,7 +161,7 @@ const commentsPins = ({
   // In comment mode the script takes a tap on the page as a spot.
   function syncPicking() {
     if (pinType !== "element" || !page.ready) return;
-    const on = S.mode && dialog.hidden;
+    const on = picking();
     if (on !== page.picking) tell({ type: "mode", on });
     page.picking = on;
   }
@@ -219,7 +187,7 @@ const commentsPins = ({
       page.off = false;
       // A page loaded again starts with pin mode off.
       page.picking = false;
-      render();
+      onChange(false);
     } else if (!page.ready) {
       // Nothing else counts before the script has said it is there.
     } else if (m.type === "anchor" && page.picking && isAnchor(m.anchor)) {
@@ -229,7 +197,7 @@ const commentsPins = ({
       const one = (s) => s.replace(/[\t\n\r]+/g, " ").trim();
       if (screen && one(screen)) anchor.screen = one(screen);
       if (hash && !/[\t\n\r]/.test(hash)) anchor.hash = hash;
-      place(anchor);
+      onSpot(anchor);
     } else if (m.type === "placed" && Array.isArray(m.missing) && m.missing.length <= 500
       && m.missing.every(isKey)) {
       const missing = new Set(m.missing.map(fromFrame));
@@ -239,13 +207,11 @@ const commentsPins = ({
         && hidden.size === page.hidden.size && [...hidden].every((k) => page.hidden.has(k));
       page.missing = missing;
       page.hidden = hidden;
-      // The list and the item say which spots were not found; a field being
-      // typed in is not redrawn for that.
-      if (!same && !Object.values(fields).includes(document.activeElement)) render();
+      if (!same) onChange(true);
     } else if (m.type === "pin" && isKey(m.key)) {
-      tapPin(fromFrame(m.key));
+      onPin(fromFrame(m.key));
     } else if (m.type === "escape" && page.picking) {
-      escape();
+      onEscape();
     }
   }
 
@@ -258,7 +224,7 @@ const commentsPins = ({
     if (page.ready) return;
     readyTimer = setTimeout(() => {
       page.off = true;
-      render();
+      onChange(false);
     }, ms);
   }
 
@@ -271,7 +237,7 @@ const commentsPins = ({
       page.picking = false;
       page.missing = new Set();
       page.hidden = new Set();
-      render();
+      onChange(false);
       tell({ type: "hello" });
       waitForScript(2000);
     });
@@ -279,5 +245,5 @@ const commentsPins = ({
     waitForScript(4000);
   }
 
-  return { page, drawPins, fitPins, reveal, revealSoon, showRow, syncPicking };
+  return { page, drawPins, fitPins, reveal, revealSoon, syncPicking };
 };
