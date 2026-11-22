@@ -147,7 +147,7 @@ iframe { display: block; border: 0; width: 100%; height: 100%; background: #fff;
 /* Before the strip's line: the agent's pin, or the red dot. */
 .strip-text .pin.mini { display: inline-flex; width: 22px; min-width: 22px; height: 22px;
   margin: 0 8px 0 0; vertical-align: -5px; box-shadow: none; }
-.strip-text .pin.mini > svg { width: 11px; height: 11px; }
+.strip-text .pin.mini > svg { width: 15px; height: 15px; }
 .strip-dot { display: inline-block; width: 10px; height: 10px; margin: 0 10px 0 4px;
   vertical-align: 1px; border-radius: 50%; background: #ff3b30; }
 /* Under a comment: the person's decision, with a small Undo. */
@@ -253,13 +253,13 @@ iframe { display: block; border: 0; width: 100%; height: 100%; background: #fff;
   margin-top: 1px; transform: none; font-family: inherit; font-size: 13px; cursor: inherit;
   box-shadow: 0 0 0 1.5px #fff, 0 1px 3px rgb(0 0 0 / 0.2); }
 .pin.mini.line { border-width: 1.5px; box-shadow: none; }
-.pin.mini > svg { width: 13px; height: 13px; }
+.pin.mini > svg { width: 18px; height: 18px; }
 .pin.mini::before { display: none; }
 .pin.mini .bdg { right: -3px; top: -3px; width: 11px; height: 11px; box-shadow: 0 0 0 1.5px var(--sheet-bg); }
 /* The agent in a comment's chat. */
 .ai { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 28px;
   height: 28px; margin-top: 1px; border-radius: 50%; color: #fff; background: #5e5ce6; }
-.ai svg { width: 14px; height: 14px; display: block; }
+.ai svg { width: 19px; height: 19px; display: block; }
 /* The layer over an image: the size of the image, pins placed in %,
    clipped so a pin at an edge never widens the page. */
 .pins { position: absolute; pointer-events: none; overflow: hidden; }
