@@ -419,8 +419,8 @@ body.commenting .fan-item[data-act="comment"] .fan-sq { color: #fff; background:
   height: 28px; margin-top: 1px; border-radius: 50%; color: #fff; background: var(--other);
   font-size: 13px; font-weight: 600; }
 .av.own { background: var(--own); }
-.thread-acts { display: flex; gap: 8px; margin: 4px 0 2px 31px; }
-.sbody > .dec { margin: 0 0 4px 31px; }
+.thread-acts { display: flex; gap: 8px; margin: 4px 0 2px 37px; }
+.sbody > .dec { margin: 0 0 4px 37px; }
 .sfoot .pill + .foot2 { margin-top: 10px; }
 /* The file was replaced: offered, not swapped under the finger. Just below
    the header; in full screen, near the top. */
