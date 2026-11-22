@@ -251,11 +251,13 @@
   }
 
   // The badge at a pin's corner, the same as pins.js draws in the page.
-  const { mark, badge: badgeEl } = pinMarks;
+  const { mark, badge: badgeEl, inside } = pinMarks;
 
   function miniPin(it) {
-    const pin = el("span", `pin mini${it.own ? " own" : ""}${it.fill !== "solid" ? ` ${it.fill}` : ""}`,
-      it.anchor ? it.label : "≡");
+    const tone = { own: " own", other: "", agent: " ag" }[it.tone] || "";
+    const pin = el("span", `pin mini${tone}${it.fill !== "solid" ? ` ${it.fill}` : ""}`);
+    // About the whole file: ≡ for a person's; the agent's keeps its star.
+    pin.append(it.anchor || it.label === pinMarks.STAR ? inside(it.label) : document.createTextNode("≡"));
     if (it.badge) pin.append(badgeEl(it.badge));
     pin.setAttribute("aria-hidden", "true");
     return pin;
@@ -391,6 +393,16 @@
     document.dispatchEvent(new CustomEvent("aa:sheet"));
   }
 
+  // Before the strip's line, the pin of what the agent has: its star in a
+  // purple ring while it works, filled once done; a red dot when it asks.
+  function stripMark(kind) {
+    if (kind === "ask") return el("span", "strip-dot");
+    const pin = el("span", `pin mini ag${kind === "fin" ? "" : " line"}`);
+    pin.append(mark("star"));
+    pin.setAttribute("aria-hidden", "true");
+    return pin;
+  }
+
   function renderStrip() {
     const review = reviewCount();
     const a = agentCounts();
@@ -416,7 +428,7 @@
     } else if (S.comments.length) line = `Comments · ${S.comments.length}${more}`;
     else if (S.mode && canPin()) line = `Tap a spot on the ${pinType === "point" ? "image" : "page"} to comment`;
     else line = "No comments yet";
-    stripText.replaceChildren(...(badge ? [badgeEl(badge)] : []), line);
+    stripText.replaceChildren(...(badge ? [stripMark(badge)] : []), line);
     strip.replaceChildren(stripText);
     // In comment mode, with comments to list, the hint goes to the right.
     if (!review && !badge && S.comments.length && S.mode && canPin()) {
@@ -744,12 +756,12 @@
   // What is drawn: the listed items with a pin here, and the new draft's spot.
   function pinList() {
     const shown = items().filter((it) => pinnable(it.anchor)).map((it) => ({
-      key: it.key, label: it.label, anchor: it.anchor, own: it.own, fill: it.fill, badge: it.badge,
+      key: it.key, label: it.label, anchor: it.anchor, tone: it.tone, fill: it.fill, badge: it.badge,
       lit: S.sel === it.key && (S.view === "item"
         || (S.view === "list" && (desk.matches || S.pos !== "strip"))),
     }));
     if (S.compose && pinnable(S.compose.anchor)) {
-      shown.push({ key: "new", label: "", anchor: S.compose.anchor, own: true, fill: "draft", badge: "", lit: true });
+      shown.push({ key: "new", label: "", anchor: S.compose.anchor, tone: "own", fill: "line", badge: "", lit: true });
     }
     return shown;
   }

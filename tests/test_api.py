@@ -95,7 +95,7 @@ def test_pages_get_the_pin_script_the_download_stays_the_file(env, filename, dat
     script = PINS_SCRIPT.decode()
     assert raw.count(script) == 1
     # The badge marks it shares with the viewer come first, in its block.
-    assert script.startswith("<script>{\n// The badge at a pin's corner")
+    assert script.startswith("<script>{\n// What a pin holds")
     # So are the pin styles, as a string the script puts in its shadow root.
     assert "const pinCss = \"/* Pins and their badges" in script
     assert "</" not in script.split("const pinCss = ", 1)[1].split(";\n", 1)[0]

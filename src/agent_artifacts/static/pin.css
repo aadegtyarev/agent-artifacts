@@ -4,9 +4,10 @@
    site's rules or tokens reach, so the rules here say everything themselves.
 
    Pins: 30px to the eye, 44px to a finger; the sharp corner marks the spot.
-   Colour: whose (blue this browser, orange others). Fill: the stage (a
-   dashed hollow draft, an outline awaiting approval, solid in force, grey
-   rejected). One badge at the corner: the agent's state or a decision. */
+   Colour: whose (orange a colleague's, blue this browser's or accepted
+   here, purple the agent's). Outline: not done yet; filled: done; grey:
+   rejected. Inside: the author's first letter, or the agent's star. One
+   badge at the corner: the red dot, something new to read. */
 .pin { --c: #e8890c; position: absolute; box-sizing: border-box; display: flex; align-items: center;
   justify-content: center; width: 30px; min-width: 30px; height: 30px; margin: 0; padding: 0;
   transform: translateY(-100%); color: #fff; background: var(--c); border: 0;
@@ -16,29 +17,19 @@
   -webkit-tap-highlight-color: transparent; }
 .pin::before { content: ""; position: absolute; inset: -10px; }
 .pin.own { --c: #0a84ff; }
-.pin.draft, .pin.pend { color: var(--c); background: #fff; border: 2px dashed var(--c);
+.pin.ag { --c: #5e5ce6; }
+.pin.line { color: var(--c); background: #fff; border: 2px solid var(--c);
   box-shadow: 0 2px 6px rgb(0 0 0 / 0.2); }
-.pin.pend { border-style: solid; }
 .pin.rej { background: #8e8e93; }
+.pin > svg { width: 14px; height: 14px; display: block; }
 /* The selected pin is bigger, with a halo. */
 .pin.lit { z-index: 2; width: 36px; min-width: 36px; height: 36px; font-size: 16px; box-shadow: 0 0 0 2px #fff, 0 0 0 6px rgb(28 28 30 / 0.18),
   0 2px 6px rgb(0 0 0 / 0.25); }
-.pin.draft.lit, .pin.pend.lit { box-shadow: 0 0 0 6px rgb(28 28 30 / 0.18), 0 2px 6px rgb(0 0 0 / 0.25); }
-/* The badge: grey the agent has it, purple working, green done, "?" the
-   agent wrote or asks (orange: not done), blue the person's decision. */
-.bdg { position: absolute; right: -10px; top: -10px; width: 20px; height: 20px; border-radius: 50%;
-  box-shadow: 0 0 0 2px #fff; display: flex; align-items: center; justify-content: center;
-  pointer-events: none; }
-.bdg svg { width: 12px; height: 12px; display: block; }
-.bdg.wait { background: #8e8e93; }
-.bdg.work { background: #5e5ce6; }
-.bdg.work::after { content: ""; position: absolute; inset: -5px; border-radius: 50%;
-  border: 2px solid rgb(94 92 230 / 0.4); }
-.bdg.fin, .bdg.wrote { background: #34c759; }
-.bdg.ask { background: #ff9f0a; }
-.bdg.ok, .bdg.re { background: #0a84ff; }
-.bdg.no { background: #636366; }
-.bdg.new { right: -4px; top: -4px; width: 14px; height: 14px; background: #ff3b30; }
+.pin.line.lit { box-shadow: 0 0 0 6px rgb(28 28 30 / 0.18), 0 2px 6px rgb(0 0 0 / 0.25); }
+.pin.lit > svg { width: 16px; height: 16px; }
+/* The red dot. */
+.bdg { position: absolute; right: -4px; top: -4px; width: 14px; height: 14px; border-radius: 50%;
+  background: #ff3b30; box-shadow: 0 0 0 2px #fff; pointer-events: none; }
 /* Near the right or top edge the pin turns to stay in sight. */
 .pin.left { transform: translate(-100%, -100%); border-radius: 50% 50% 4px 50%; }
 .pin.down { transform: none; border-radius: 4px 50% 50% 50%; }

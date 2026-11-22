@@ -3,7 +3,7 @@
 // script before comments.js, which calls this once with its elements, what
 // to read from the sheet and what to tell it. The sheet decides what a pin
 // or a spot does; this only draws and listens:
-//   pins(): the pins to draw now ({key, label, anchor, own, fill, badge, lit})
+//   pins(): the pins to draw now ({key, label, anchor, tone, fill, badge, lit})
 //   picking(): whether a tap on the page is taken as a spot
 //   onPin(key): a pin was tapped
 //   onSpot(anchor): a spot was chosen for a new draft (in comment mode)
@@ -16,7 +16,8 @@ const commentsPins = ({
   pinType, image, imageBox, imageLink, pinLayer, frame,
   pins, picking, onPin, onSpot, onEscape, onChange,
 }) => {
-  const { badge: badgeEl } = pinMarks;
+  const { badge: badgeEl, inside, STAR } = pinMarks;
+  const TONES = { own: " own", other: "", agent: " ag" };
   // The script in a page's frame: `ready` once it said so, `off` once it
   // clearly is not coming; `missing`: keys of pins it did not find.
   const page = { ready: false, off: false, missing: new Set(), hidden: new Set(), picking: false };
@@ -48,8 +49,8 @@ const commentsPins = ({
     if (pinType !== "point") return;
     const drawn = pins().map((p) => {
       const pin = document.createElement("button");
-      pin.className = `pin${p.own ? " own" : ""}${p.fill !== "solid" ? ` ${p.fill}` : ""}${p.lit ? " lit" : ""}`;
-      pin.textContent = p.label;
+      pin.className = `pin${TONES[p.tone] || ""}${p.fill !== "solid" ? ` ${p.fill}` : ""}${p.lit ? " lit" : ""}`;
+      pin.append(inside(p.label));
       if (p.badge) pin.append(badgeEl(p.badge));
       pin.type = "button";
       pin.dataset.key = p.key;
@@ -57,7 +58,7 @@ const commentsPins = ({
       pin.style.left = `${p.anchor.x * 100}%`;
       pin.style.top = `${p.anchor.y * 100}%`;
       pin.setAttribute("aria-label", p.key === "new" ? "The spot of the new draft"
-        : `${p.fill === "draft" ? "Draft" : "Comment"} ${p.label}`);
+        : p.label === STAR ? "Comment with the agent" : `Comment by ${p.label}`);
       return pin;
     });
     pinLayer.replaceChildren(...drawn);
