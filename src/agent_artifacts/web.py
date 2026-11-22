@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import unicodedata
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
@@ -292,10 +293,21 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
     return app
 
 
+# Marks that turn the direction of text, refused in a title on top of the
+# controls one_line refuses; and characters that show nothing.
+_TITLE_BIDI = re.compile("[\u200e\u200f\u061c]")
+_INVISIBLE = re.compile("[\u200b-\u200d\u2060\ufeff]")
+
+
 def _title(v: object) -> str:
-    """What pages show for a file: one line of 1 to MAX_TITLE characters."""
+    """What pages show for a file: one line of 1 to MAX_TITLE characters,
+    composed (NFC) like file names, so one title is stored one way."""
+    if isinstance(v, str):
+        v = unicodedata.normalize("NFC", v)
+        if _TITLE_BIDI.search(v):
+            raise ApiError(400, "bad_request", "title must be text without control characters")
     title = one_line(v, "title", MAX_TITLE)
-    if not title:
+    if not _INVISIBLE.sub("", title).strip():
         raise ApiError(400, "bad_request", "title is empty")
     return title
 

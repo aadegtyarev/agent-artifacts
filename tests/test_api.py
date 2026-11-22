@@ -106,6 +106,8 @@ def test_patch_sets_the_title(env):
     assert (r.json()["title"], r.json()["name"]) == ("Notes", "a.txt")
     assert r.json()["updated_at"] == art["updated_at"]
     assert patch({"title": "x" * 200}).status_code == 200
+    # Stored composed, like file names.
+    assert patch({"title": "e\u0301"}).json()["title"] == "\u00e9"
     for bad in (
         {},
         {"title": None},
@@ -113,6 +115,8 @@ def test_patch_sets_the_title(env):
         {"title": "x" * 201},
         {"title": "a\nb"},
         {"title": "a\u202eb"},
+        {"title": "a\u200fb"},
+        {"title": "\u200b"},
         {"title": "ok", "colour": "red"},
     ):
         assert patch(bad).status_code == 400, bad
