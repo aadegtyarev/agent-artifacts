@@ -307,33 +307,8 @@
     return svg;
   }
 
-  // The badge at a pin's corner (pins.js draws the same in the page).
-  const MARK = {
-    star: "M6 .6C6.45 4 8 5.55 11.4 6 8 6.45 6.45 8 6 11.4 5.55 8 4 6.45.6 6 4 5.55 5.55 4 6 .6z",
-    check: "M2.4 6.3l2.4 2.4L9.6 3.6",
-    ask: "M4 4.3a2 2 0 1 1 2.9 1.8c-.6.3-.9.7-.9 1.3v.4M6 9.6v.2",
-    reply: "M4.8 2.8L2 5.6l2.8 2.8M2.3 5.6h5a2.6 2.6 0 0 1 2.6 2.6v1",
-    cross: "M3 3l6 6M9 3L3 9",
-  };
-  const BADGES = { wait: "star", work: "star", fin: "star", wrote: "ask", ask: "ask", ok: "check", re: "reply", no: "cross", new: "" };
-  function mark(name) {
-    const ns = "http://www.w3.org/2000/svg";
-    const svg = document.createElementNS(ns, "svg");
-    svg.setAttribute("viewBox", "0 0 12 12");
-    svg.setAttribute("aria-hidden", "true");
-    const path = document.createElementNS(ns, "path");
-    path.setAttribute("d", MARK[name]);
-    // Inline styles: the page's icon rules (fill, stroke) must not reach it.
-    if (name === "star") path.style.cssText = "fill:#fff;stroke:none";
-    else path.style.cssText = "fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round";
-    svg.append(path);
-    return svg;
-  }
-  function badgeEl(name) {
-    const span = el("span", `bdg ${name}`);
-    if (BADGES[name]) span.append(mark(BADGES[name]));
-    return span;
-  }
+  // The badge at a pin's corner, the same as pins.js draws in the page.
+  const { mark, badge: badgeEl } = pinMarks;
 
   function miniPin(it) {
     const pin = el("span", `pin mini${it.own ? " own" : ""}${it.fill !== "solid" ? ` ${it.fill}` : ""}`,
