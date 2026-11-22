@@ -257,7 +257,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
 
     async def project_view(request: Request) -> Response:
         # Public by its link, like a file: no owner asked.
-        found = await run_in_threadpool(store.project, request.path_params["id"])
+        found = await run_in_threadpool(store.public_project, request.path_params["id"])
         if found is None:
             return pages.not_found()
         p, files = found

@@ -241,6 +241,12 @@ def _migrate_to_v4(db: sqlite3.Connection) -> None:
     db.execute("CREATE INDEX artifacts_project ON artifacts(project)")
 
 
+def _migrate_to_v5(db: sqlite3.Connection) -> None:
+    """A key's drafts about one comment, found by an index: the project
+    page's counters look them up for every open comment of every file."""
+    db.execute("CREATE INDEX drafts_key ON drafts(artifact_id, author_key_hash, of_n)")
+
+
 def _repair_comment_seq(db: sqlite3.Connection) -> None:
     """A counter behind its comments (added to a database that had comments,
     or comments written by an older version after a rollback) would hand out
@@ -260,6 +266,7 @@ _MIGRATIONS: tuple[Callable[[sqlite3.Connection], None], ...] = (
     _migrate_to_v2,
     _migrate_to_v3,
     _migrate_to_v4,
+    _migrate_to_v5,
 )
 
 
@@ -918,11 +925,21 @@ class Store:
         ).fetchone()
         return Project(*row) if row else None
 
-    def project(
-        self, project_id: str, *, owner: str | None = None
+    def project(self, project_id: str, *, owner: str) -> tuple[Project, list[Artifact]] | None:
+        """``owner``'s project and its files, in the project page's order."""
+        return self._project_files(project_id, owner)
+
+    def public_project(self, project_id: str) -> tuple[Project, list[Artifact]] | None:
+        """Anyone's project and its files, for its page: whoever has the link
+        may see it. Kept apart from ``project`` so an API call cannot drop
+        the owner check by leaving it out."""
+        return self._project_files(project_id, None)
+
+    def _project_files(
+        self, project_id: str, owner: str | None
     ) -> tuple[Project, list[Artifact]] | None:
-        """A project, optionally only if ``owner`` owns it, and its files in
-        the project page's order: those without a section first, then each
+        """A project (``owner``'s only, unless None) and its files in the
+        project page's order: those without a section first, then each
         section by when its earliest file was added; inside, by when added;
         ties by id."""
         with self._conn() as db:
@@ -956,10 +973,10 @@ class Store:
                 "COALESCE(SUM(c.n IS NOT NULL AND (c.agent IN ('done', 'wrote', 'asked') "
                 "OR (c.agent IS NULL "
                 "AND NOT COALESCE(c.author_key_hash = :key, 0) AND c.approved_by IS NULL "
-                "AND c.rejected_by IS NULL)) AND NOT EXISTS (SELECT 1 FROM drafts d "
-                "WHERE d.artifact_id = c.artifact_id AND d.of_n = c.n "
-                "AND d.author_key_hash = :key AND d.kind != 'comment' "
-                "AND d.updated_at > :stale)), 0), "
+                "AND c.rejected_by IS NULL)) AND (:key IS NULL OR NOT EXISTS (SELECT 1 FROM drafts d "
+                "WHERE d.artifact_id = c.artifact_id AND d.author_key_hash = :key "
+                "AND d.of_n = c.n AND d.kind != 'comment' "
+                "AND d.updated_at > :stale))), 0), "
                 "COALESCE(SUM(c.agent IN ('waiting', 'working')), 0) "
                 "FROM artifacts a LEFT JOIN comments c "
                 "ON c.artifact_id = a.id AND c.resolved_at IS NULL "
