@@ -312,7 +312,13 @@ the pin stays in sight above it. Buttons show only on the selected item:
 comment, as a small chat with its replies (the agent's marked as the agent),
 **✓ Approve** and **✕ Reject** while it is someone else's awaiting approval,
 **✓ Accept** when the agent is done (`done` or `wrote`), and a reply field.
-A decision shows as one line under the comment with a small **Undo**. With
+A decision shows as one line under the comment with a small **Undo**.
+With two or more waiting, **✓ Accept all · N** (in the list, the agent's
+list and Finish review's "Not decided yet") accepts every piece of the
+agent's finished work (`done`, `wrote`) and approves every colleague's
+comment awaiting approval, as drafts like one by one; the agent's
+questions (`asked`) are left to be answered. One **Undo** in the toast takes
+them all back. With
 drafts, **Finish review · N** sits at the bottom of an item too. On a computer the same
 views sit in a panel at the right, and the strip's line heads it.
 

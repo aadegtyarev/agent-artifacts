@@ -436,7 +436,11 @@
       if (review) title = `Review · ${review}` + (S.comments.length ? ` · ${S.comments.length} published` : "");
       else if (S.comments.length) title = `Comments · ${S.comments.length}`;
       out.push(titled(title));
-      if (all.some((i) => i.pend)) out.push(el("p", "cap", "Colleagues’ comments wait for your approval."));
+      if (all.some((i) => i.pend && !actsOn(i.c.n).length)) {
+        out.push(el("p", "cap", "Colleagues’ comments wait for your approval."));
+      }
+      const acceptRow = acceptAllButton();
+      if (acceptRow) out.push(acceptRow);
       if (!all.length) {
         out.push(el("p", "empty", S.mode && canPin()
           ? `Tap a spot on the ${pinType === "point" ? "image" : "page"} to leave a comment.`
@@ -464,6 +468,8 @@
       const out = [titled(title)];
       const last = lastSent();
       if (last) out.push(el("p", "cap", `Sent ${last.at}`));
+      const all = acceptAllButton();
+      if (all) out.push(all);
       for (const it of sent) out.push(row(it, status(it)));
       if (S.mode) {
         const add = el("div", "addwhole");
@@ -532,12 +538,14 @@
       const count = drafts.length + touched.length;
       // The agent's answers not decided yet come first, so none is left
       // behind; then what this review changes, what is accepted last.
-      const undecided = items().filter((i) => i.c && ["done", "wrote", "asked"].includes(i.c.agent)
+      const undecided = items().filter((i) => i.c && (["done", "wrote", "asked"].includes(i.c.agent) || i.pend)
         && !actsOn(i.c.n).length);
       const accepting = (i) => (decisionOn(i.c.n) || {}).kind === "accept";
       const out = [titled(`Finish review · ${count}`)];
       if (undecided.length) {
         out.push(el("p", "sec", `Not decided yet · ${undecided.length}`));
+        const all = acceptAllButton();
+        if (all) out.push(all);
         for (const it of undecided) out.push(row(it, status(it)));
         out.push(el("p", "sec", "In this review"));
       }
@@ -1029,6 +1037,61 @@
       if (!nameRefused(e)) toast(e.message, { error: true, ms: 8000 });
     } finally {
       deciding = false;
+    }
+  }
+
+  // What waits for the person's yes, with neither a decision nor a reply of
+  // theirs yet: the agent's finished work (done, or done and wrote) to
+  // accept, and colleagues' comments awaiting approval to approve. The
+  // agent's questions are left to be answered one by one.
+  function acceptable() {
+    const out = [];
+    for (const it of items()) {
+      if (!it.c || actsOn(it.c.n).length) continue;
+      if (it.c.agent === "done" || it.c.agent === "wrote") out.push([it.c, "accept"]);
+      else if (it.pend) out.push([it.c, "approve"]);
+    }
+    return out;
+  }
+  function acceptAllButton() {
+    const n = acceptable().length;
+    if (n < 2) return null;
+    const row = el("div", "accept-all");
+    row.append(button(`✓ Accept all · ${n}`, () => acceptAll(), "btn pri"));
+    return row;
+  }
+  // Each becomes an acceptance draft, as if accepted one by one; one Undo
+  // takes them all back.
+  async function acceptAll() {
+    if (deciding) return;
+    if (name === null) {
+      askName(() => acceptAll());
+      return;
+    }
+    deciding = true;
+    const made = [];
+    try {
+      for (const [c, kind] of acceptable()) {
+        const draft = await call("POST", "/drafts", { author: name || "", kind, of: c.n });
+        S.drafts.push(draft);
+        made.push(draft);
+      }
+    } catch (e) {
+      if (!nameRefused(e)) toast(e.message, { error: true, ms: 8000 });
+    } finally {
+      deciding = false;
+      changed();
+      render();
+    }
+    if (made.length) {
+      const approved = made.filter((d) => d.kind === "approve").length;
+      const accepted = made.length - approved;
+      toast([accepted && `Accepted ${accepted}`, approved && `approved ${approved}`].filter(Boolean).join(", ")
+        .replace(/^a/, "A"), {
+        undo: async () => {
+          for (const d of made) await undoDecision(d);
+        },
+      });
     }
   }
 
