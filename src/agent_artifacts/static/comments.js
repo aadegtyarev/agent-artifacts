@@ -102,6 +102,11 @@
   }
 
   async function call(method, path, payload, keepalive = false) {
+    return (await exchange(method, path, payload, keepalive)).data;
+  }
+
+  // As call(), with the answer's headers too.
+  async function exchange(method, path, payload, keepalive = false) {
     const init = { method, headers: { ...asAuthor }, cache: "no-store" };
     if (keepalive) init.keepalive = true;
     if (payload !== undefined) {
@@ -114,10 +119,10 @@
     } catch {
       throw new ApiError(0, "network", "Could not reach the server. Check the connection and try again.");
     }
-    if (response.status === 204) return null;
+    if (response.status === 204) return { data: null, headers: response.headers };
     let data = null;
     try { data = await response.json(); } catch { /* not JSON, e.g. a proxy's page */ }
-    if (response.ok && data !== null) return data;
+    if (response.ok && data !== null) return { data, headers: response.headers };
     if (response.status === 429) {
       throw new ApiError(429, "rate_limited", "Too many requests from your address. Wait a minute and try again.");
     }
@@ -127,11 +132,19 @@
     throw new ApiError(response.status, data && data.error, message);
   }
 
+  // The one way the comments are fetched: by load() and by poll(). The
+  // header tells when the file was last uploaded.
+  async function fetchComments() {
+    const { data, headers } = await exchange("GET", "/comments");
+    noteFile(headers.get("X-Artifact-Updated"));
+    return data;
+  }
+
   async function load() {
     const mine = ++generation;
     let found;
     try {
-      found = await Promise.all([call("GET", "/comments"), call("GET", "/drafts")]);
+      found = await Promise.all([fetchComments(), call("GET", "/drafts")]);
     } catch (e) {
       if (mine === generation) toast(`Could not load comments. ${e.message}`, { error: true, ms: 8000 });
       return;
@@ -1720,6 +1733,12 @@
   banner.setAttribute("role", "status");
   banner.append(el("span", "", "The file was updated"), button("Show", () => location.reload(), "btn pri"));
   document.body.append(banner);
+  // The first answer sets what the page shows; a later different one means
+  // the file was replaced.
+  function noteFile(at) {
+    if (at && fileAt === null) fileAt = at;
+    else if (at && at !== fileAt) banner.hidden = false;
+  }
   let pollSeq = 0;
   let pollStopped = false;
   async function poll() {
@@ -1729,18 +1748,13 @@
     // A poll never cancels a load or a change: it checks they did not land.
     const mine = generation;
     const seq = ++pollSeq;
-    let response;
     let data;
     try {
-      response = await fetch(`/a/${artifact}/comments`, { headers: { ...asAuthor }, cache: "no-store" });
-      data = response.ok ? await response.json() : null;
-    } catch {
+      data = await fetchComments();
+    } catch (e) {
+      if (e.status === 404) pollStopped = true;
       return;
     }
-    if (response.status === 404) pollStopped = true;
-    const at = response.headers.get("X-Artifact-Updated");
-    if (at && fileAt === null) fileAt = at;
-    else if (at && at !== fileAt) banner.hidden = false;
     if (mine !== generation || seq !== pollSeq || !Array.isArray(data)) return;
     if (JSON.stringify(data) === JSON.stringify(S.comments)) return;
     S.comments = data;
@@ -1751,5 +1765,4 @@
 
   render();
   load();
-  poll();
 })();
