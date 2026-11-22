@@ -21,6 +21,13 @@ skill and its `artifacts_cli.py` command.
    leave comments there. The person tells the agent to look at the comments;
    the agent reads them with the spot each one points at, fixes the mockup,
    replaces it at the same link and marks those comments resolved.
+7. A job grows into many files: contracts, app mockups, site mockups. The
+   agent puts them in a project, each with a title and a section. The person
+   keeps one link to the project page, sees the files grouped by section,
+   moves between them from any file's header, and follows links the agent
+   put inside the files. Project files stay until deleted; when the agent's
+   space runs out, it deletes superseded files itself and says what it
+   removed.
 
 ## Out of scope
 
@@ -30,8 +37,7 @@ skill and its `artifacts_cli.py` command.
 - Keeping files outside a project beyond their lifetime.
 - Versions or a history of replaced files. A replace overwrites; an agent
   that wants to keep the old one uploads a new file instead.
-- Links between files: designed, not built; see [design/projects.md](design/projects.md). Also
-  projects shared between agents, nested sections, hand-set ordering, and
+- Projects shared between agents, nested sections, hand-set ordering, and
   comments on a project as a whole.
 - Also out: devices, owner identity, mentions, notifications, editing or
   deleting a published comment from the viewer, and pins on PDFs, SVG and
@@ -177,6 +183,11 @@ to the project; ties go by id. `url` is the [project's page](#the-project-page).
 
 - The project id is 128 random bits, like an artifact id. Another agent's
   project answers `404`, the same as a missing one.
+- A file in a project is as open as the project: its viewer page shows the
+  project's file list, so anyone with the link to one file sees the titles
+  of the project's other files and can open them. Moving a file into a
+  project publishes it to everyone who has a link to that project or to any
+  of its files.
 - An empty project stays until deleted.
 - Deleting a project deletes its files and their comments: the rows go in one
   transaction, then the files, as for one artifact. Removing an agent
@@ -367,6 +378,44 @@ nor rejected); less those this key already decided or replied to in a
 draft. Without a key (or with a malformed one) the counts are as for a
 stranger. It is a read: the reverse proxy counts it with viewing, not with
 comment writes. Its answers are JSON with `Cache-Control: no-store`.
+
+### Links between files
+
+In HTML and Markdown, a plain left click on a link to another file or project
+of the service opens that page in the viewer's own tab instead of inside the
+frame, which could not show it. Such a link's target, resolved against the
+document's own URL (not its `<base href>`), has the same origin and the path
+`/a/{id}` or `/p/{id}`, with no query string. In the viewer the frame's
+document is the service's own `/a/{id}/raw`: the sandbox makes its origin
+opaque, but its URL stays on the service's origin, so `/a/{id}` written as a
+path and the service's full URLs both count. The pin script (see **Pins on pages**
+in [Comments](#comments)) catches such a click in the bubble phase, cancels it and
+sends the viewer the path and fragment; a link the viewer then refuses does
+nothing. The viewer:
+
+- accepts it only from its frame's window (`event.source`), outside comment
+  mode, and only while the page has a user activation from that click
+  (`navigator.userActivation.isActive`; a click in the frame counts for its
+  parent too), so the content cannot move the tab on its own;
+- matches the path in full against `^/(a|p)/[A-Za-z0-9_-]{22}$` and the
+  fragment against `^[A-Za-z0-9_.:-]{0,64}$`, and builds the new URL from
+  those parts on its own origin; anything else it ignores;
+- navigates its own tab there (`location.assign`);
+- on arrival, opens the content at that fragment: it passes a fragment of
+  its own URL that matches the same pattern on to the frame's `src`
+  (`/a/{id}/raw#…`), also when only the fragment changes; a Markdown page
+  scrolls to it after rendering.
+
+At worst, content can send the person to another page of the same service
+on a click inside it. Comment mode takes precedence: while it is on, a tap
+places a pin and follows no link. Links with a modifier key, a `target`
+other than `_self` (`target="_blank"` included), or `download`, a click the
+page's own script already cancelled, links to other sites, and links to
+`/raw`, `/download` or with a query string behave as before. The Markdown
+page opens links to other sites in a new tab, but leaves these in its own.
+Text files have no links, and SVG gets no script. Opened on its own (at the
+raw origin), a page has no viewer: its script does nothing, and such links
+lead to the raw origin's 404.
 
 ### The raw origin
 
@@ -698,7 +747,9 @@ talk only through `postMessage`:
   decision or an unseen reply) and whether it is lit, never texts or names;
 - the script answers with the anchor of the tapped spot, or with the key of
   a tapped pin. While placing, it takes each click in the capture phase and
-  cancels it, so a link or a button under it does not fire.
+  cancels it, so a link or a button under it does not fire;
+- outside placing, it asks the viewer to open a link to another file or
+  project, see [Links between files](#links-between-files).
 
 A pin is placed by its selector; if that matches nothing, by the first
 element whose visible text starts with the anchor's `text`; if neither, it is
@@ -782,8 +833,9 @@ X-Content-Type-Options: nosniff
 There is no `allow-same-origin`, so the content runs in an opaque origin: it
 cannot read the service's pages, other artifacts, or browser storage. It also
 cannot load anything from the network, which is why the skill requires
-self-contained files. Scripts, forms handled by scripts, `#anchor` links and
-links opening in a new tab work, so interactive prototypes do. A form that
+self-contained files. Scripts, forms handled by scripts, `#anchor` links,
+links opening in a new tab and [links to other files](#links-between-files)
+work, so interactive prototypes do. A form that
 really submits goes nowhere (`form-action 'none'`), and `localStorage` is not
 there.
 

@@ -6,7 +6,7 @@ from the code around it, so a moved or rewritten check fails loudly too."""
 import re
 from pathlib import Path
 
-from agent_artifacts import comments
+from agent_artifacts import comments, store
 
 PACKAGE = Path(comments.__file__).parent
 COMMENTS_JS = (PACKAGE / "static" / "comments.js").read_text()
@@ -73,3 +73,8 @@ def test_both_scripts_refuse_what_the_server_refuses():
 def test_frame_keys_agree():
     key = r"const isKey = \(k\) => ([^\n]+);\n"
     assert one(key, VIEWER_PINS_JS) == one(key, PINS_JS)
+
+
+def test_links_between_files_take_ids_as_the_server_makes_them():
+    js = (PACKAGE / "static" / "links.js").read_text()
+    assert one(r"const PAGE = /\^\\/\(a\|p\)\\/(.+?)\$/;", js)[0] == store.ID_RE

@@ -40,7 +40,7 @@ _env.globals["static"] = {
     n: _static_url(n)
     for n in (
         "pin.css", "site.css", "theme.js", "copy.js",
-        "pin-marks.js", "comments-model.js", "sheet-drag.js", "comments-pins.js",
+        "pin-marks.js", "comments-model.js", "sheet-drag.js", "links.js", "comments-pins.js",
         "comments.js", "viewer.js", "project.js",
     )
 }
@@ -84,15 +84,18 @@ INVITE_GONE = "This invite was used, has expired or never existed. Ask for a new
 
 # Our vendored file, put into a <script> as is.
 _MARKED_JS = Markup((STATIC_DIR / "marked.umd.js").read_text(encoding="utf-8"))  # noqa: S704
+# Which links open another page of the service, see static/links.js.
+_LINKS_JS = (STATIC_DIR / "links.js").read_text(encoding="utf-8")
 # The script that draws pins inside a sandboxed page, see static/pins.js,
-# after the badge marks and the pin styles it shares with the viewer. One
-# block around all, so their names are local to it and cannot clash with the
-# page's own. The styles go in as a JS string; "<" escaped, so no "</script>"
-# can end the block early.
+# after the badge marks, the links and the pin styles it shares with the
+# viewer. One block around all, so their names are local to it and cannot
+# clash with the page's own. The styles go in as a JS string; "<" escaped, so
+# no "</script>" can end the block early.
 _PIN_CSS = json.dumps((STATIC_DIR / "pin.css").read_text(encoding="utf-8")).replace("<", "\\u003c")
 _PINS = Markup(  # noqa: S704
     "<script>{\n"
     + (STATIC_DIR / "pin-marks.js").read_text(encoding="utf-8")
+    + _LINKS_JS
     + f"const pinCss = {_PIN_CSS};\n"
     + (STATIC_DIR / "pins.js").read_text(encoding="utf-8")
     + "}</script>"
@@ -241,6 +244,7 @@ def markdown_page(path: Path, title: str) -> str:
         title=title,
         marked=_MARKED_JS,
         source=Markup(source),  # noqa: S704 (JSON with "<" escaped, see above)
+        links=Markup(_LINKS_JS),  # noqa: S704 (our own file)
         pins=_PINS,
     )
 

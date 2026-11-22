@@ -10,7 +10,7 @@ from starlette.testclient import TestClient
 
 from agent_artifacts.config import Config, check_public_url, check_raw_url
 from agent_artifacts.kinds import KindError, clean_name, detect
-from agent_artifacts.pages import PINS_SCRIPT, SANDBOX_CSP
+from agent_artifacts.pages import PINS_SCRIPT, SANDBOX_CSP, STATIC_DIR
 from agent_artifacts.store import Store
 from agent_artifacts.web import create_app
 
@@ -155,6 +155,26 @@ def test_pages_get_the_pin_script_the_download_stays_the_file(env, filename, dat
     assert "</" not in script.split("const pinCss = ", 1)[1].split(";\n", 1)[0]
     assert raw.endswith(script if filename == "a.html" else script + "</body></html>")
     assert client.get(f"/a/{art['id']}/download").content == data
+
+
+def test_pages_tell_links_to_other_files_by_one_copy_of_links_js():
+    links = (STATIC_DIR / "links.js").read_text()
+    script = PINS_SCRIPT.decode()
+    # In the pin script's block, before the script that uses it.
+    assert script.index(links) < script.index("// Pins on a page.")
+    assert "pageLinks.target(link.getAttribute(\"href\"), location.href)" in script
+
+
+def test_markdown_keeps_links_to_other_files_in_its_tab(env):
+    client, _, keys = env
+    art = upload(client, keys["alice"], "n.md", b"[next](/a/x)").json()
+    page = client.get(f"/a/{art['id']}/raw").text
+    links = (STATIC_DIR / "links.js").read_text()
+    # Its own copy, before the renderer that decides which links get a new
+    # tab, and the pin script's after it.
+    assert page.index(f"<script>{links}</script>") < page.index("const SOURCE = ")
+    assert '!pageLinks.target(href, location.href)) { a.target = "_blank"' in page
+    assert page.index("const SOURCE = ") < page.index(PINS_SCRIPT.decode())
 
 
 def test_image_is_shown_inline_archive_is_download_only(env):
@@ -794,6 +814,7 @@ def test_viewer_page_has_comments_on_every_type(env):
             r'<script src="/static/pin-marks\.js\?v=[0-9a-f]{12}"></script>\n'
             r'<script src="/static/comments-model\.js\?v=[0-9a-f]{12}"></script>\n'
             r'<script src="/static/sheet-drag\.js\?v=[0-9a-f]{12}"></script>\n'
+            r'<script src="/static/links\.js\?v=[0-9a-f]{12}"></script>\n'
             r'<script src="/static/comments-pins\.js\?v=[0-9a-f]{12}"></script>\n'
             r'<script src="/static/comments\.js\?v=[0-9a-f]{12}"></script>',
             page.text,
@@ -804,6 +825,7 @@ def test_viewer_page_has_comments_on_every_type(env):
     assert client.get("/static/comments-model.js").status_code == 200
     assert client.get("/static/sheet-drag.js").status_code == 200
     assert client.get("/static/comments-pins.js").status_code == 200
+    assert client.get("/static/links.js").status_code == 200
     pin_css = re.search(r'<link rel="stylesheet" href="(/static/pin\.css\?v=[0-9a-f]{12})">\n<link rel="stylesheet" href="/static/site\.css', page.text)
     assert pin_css and client.get(pin_css.group(1)).status_code == 200
     css = re.search(r'href="(/static/site\.css\?v=[0-9a-f]{12})"', page.text)

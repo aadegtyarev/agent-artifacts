@@ -1503,7 +1503,8 @@
     banner.hidden = true;
     fileAt = null;
     // Replaced, not pushed: Back still leaves the viewer in one step.
-    if (content) content.contentWindow.location.replace(content.src);
+    // Without a #fragment, which would only move within the old content.
+    if (content) content.contentWindow.location.replace(content.src.split("#")[0]);
     else {
       const again = fresh.getElementById("image");
       if (again) img.alt = again.alt;

@@ -213,7 +213,43 @@ const commentsPins = ({
       onPin(fromFrame(m.key));
     } else if (m.type === "escape" && page.picking) {
       onEscape();
+    } else if (m.type === "open") {
+      openLink(m.path, m.fragment);
     }
+  }
+
+  // --- Links between files: see static/links.js ----------------------------------
+  // The page asks to open another file or project of the service in this
+  // tab. Taken only outside comment mode and while this page has a user
+  // activation from that click (a click in the frame counts for its
+  // parent too), so the content cannot move the tab on its own; the
+  // address is built here, on this origin, from a checked path and
+  // fragment. Anything else does nothing.
+  // The activation must come from the frame: a tap or a key in this page
+  // (its buttons, the comment field, the name dialog) gives one too, and a
+  // timer in the content could use it. Input here in the last 5 s, about
+  // as long as an activation lasts, makes the page's request wait for a
+  // click of its own.
+  let ownInput = -Infinity;
+  for (const type of ["pointerdown", "keydown"]) {
+    document.addEventListener(type, () => { ownInput = performance.now(); }, true);
+  }
+  function openLink(path, fragment) {
+    // Comment mode wins, even while its name dialog is open.
+    if (picking() || document.body.classList.contains("commenting")) return;
+    if (!(navigator.userActivation && navigator.userActivation.isActive)) return;
+    if (performance.now() - ownInput < 5000) return;
+    const to = pageLinks.destination(path, fragment, location.origin);
+    if (to) location.assign(to);
+  }
+
+  // Opened at a #fragment: the content is shown at it too. Only a fragment
+  // as the links pass it on; a change of it alone (a link to this same file)
+  // moves the content without loading it again.
+  const raw = frame && frame.getAttribute("src");
+  function toFragment() {
+    const fragment = pageLinks.fragmentOf(location.hash);
+    if (fragment) frame.src = `${raw}#${fragment}`;
   }
 
   // The script may have reported ready before this page listened; asked
@@ -230,6 +266,8 @@ const commentsPins = ({
   }
 
   if (pinType === "element") {
+    toFragment();
+    window.addEventListener("hashchange", toFragment);
     window.addEventListener("message", onFrameMessage);
     frame.addEventListener("load", () => {
       // Another document may be in the frame now (a link, a refresh): it
