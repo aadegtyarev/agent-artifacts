@@ -108,9 +108,16 @@ def _page(template: str, csp: str, status: int = 200, **context: object) -> HTML
     )
 
 
-def viewer_page(a: Artifact, url: str, separate: str | None = None) -> HTMLResponse:
+def viewer_page(
+    a: Artifact,
+    url: str,
+    separate: str | None = None,
+    project: tuple[Project, list[Artifact]] | None = None,
+    now: float = 0,
+) -> HTMLResponse:
     """The page at /a/{id}: a one-line header and the content below.
-    ``separate`` is the file at the raw origin, for "Open separately"."""
+    ``separate`` is the file at the raw origin, for "Open separately";
+    ``project``, the file's project and its files, for the header's list."""
     page = _page(
         "viewer.html",
         VIEWER_CSP,
@@ -124,6 +131,8 @@ def viewer_page(a: Artifact, url: str, separate: str | None = None) -> HTMLRespo
         sandbox=SANDBOX,
         size=size(a.size),
         expires=iso(a.expires_at, human=True),
+        in_project=project and project[0],
+        rows=project and file_rows(project[1], now),
     )
     # Cuts window.opener for pages a sandboxed artifact opens, so they cannot
     # navigate this tab away.
@@ -134,6 +143,23 @@ def viewer_page(a: Artifact, url: str, separate: str | None = None) -> HTMLRespo
 def project_page(p: Project, files: list[Artifact], url: str, now: float) -> HTMLResponse:
     """The page at /p/{id}: the project's files in its order, a heading
     before each section; the counters come from its script."""
+    count = f"{len(files)} file" + ("" if len(files) == 1 else "s")
+    page = _page(
+        "project.html",
+        PROJECT_CSP,
+        title=p.title,
+        project=p,
+        rows=file_rows(files, now),
+        count=count,
+        url=url,
+    )
+    page.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    return page
+
+
+def file_rows(files: list[Artifact], now: float) -> list[dict]:
+    """The lines of a project's file list (the project page and a file's
+    header), in the project's order, a heading before each section."""
     rows, section = [], None
     for a in files:
         rows.append(
@@ -146,12 +172,7 @@ def project_page(p: Project, files: list[Artifact], url: str, now: float) -> HTM
             }
         )
         section = a.section
-    count = f"{len(files)} file" + ("" if len(files) == 1 else "s")
-    page = _page(
-        "project.html", PROJECT_CSP, title=p.title, project=p, rows=rows, count=count, url=url
-    )
-    page.headers["Cross-Origin-Opener-Policy"] = "same-origin"
-    return page
+    return rows
 
 
 def invite_page(invite: Invite) -> HTMLResponse:

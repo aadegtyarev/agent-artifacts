@@ -4,9 +4,10 @@
 are not built yet. What is shipped is described in [the
 contract](../contract.md): a file's `title`, `project`, `section` and
 `updated_at`, the project calls under `/api/v1/projects`, lifetimes, limits,
-storage and the CLI commands (see [Projects](../contract.md#projects)), and
-the `/p/{id}` page (see [The project page](../contract.md#the-project-page)).
-Not built: the project's file list in the viewer and links between files.
+storage and the CLI commands (see [Projects](../contract.md#projects)), the
+`/p/{id}` page (see [The project page](../contract.md#the-project-page)) and
+the project's file list in a file's header (see [The viewer
+page](../contract.md#the-viewer-page)). Not built: links between files.
 When a part is built, it moves into the contract.
 
 ## Scenario
@@ -27,13 +28,6 @@ publishes it to everyone who has a link to that project or to any of its
 files.
 
 - Links to a deleted file or project lead to the `404` page.
-
-**The project's file list.** The viewer page of a file in a project shows
-the project's title in the header, and "kept until deleted" instead of the
-expiry (built). A tap on the title opens the file list, apart from the "≡"
-menu: the same list as the project page, the current file marked, and a link
-to the project page; it is rendered on the server. Moving between files
-happens in the same tab.
 
 **Links between files.** In HTML and Markdown, a plain left click on a link
 whose target, resolved against the document's own URL, has the same origin

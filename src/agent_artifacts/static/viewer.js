@@ -83,9 +83,14 @@
       nextTheme();
       return;
     }
-    // Download and Open separately are links and go on by themselves.
+    // Download and Open separately are links and go on by themselves; the
+    // project's file list (project.js) takes the focus itself.
+    const from = opener;
     closeFan(act === "download" || act === "separate" || act === "copy");
     if (act === "exit") exitFull();
+    else if (act === "files") {
+      document.dispatchEvent(new CustomEvent("aa:files", { detail: { from } }));
+    }
     else if (act === "comment") commentsToggle.click();
     else if (act === "copy") copyLink(item.dataset.url);
   });

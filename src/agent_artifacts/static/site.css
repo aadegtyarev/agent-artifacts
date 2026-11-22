@@ -434,6 +434,37 @@ body.commenting .fan-item[data-act="comment"] .fan-sq { color: #fff; background:
   transform: none; }
 .cnt .pin.mini > svg { width: 14px; height: 14px; }
 
+.pf[aria-current="page"] { background: var(--fill); }
+
+/* A file in a project: the header's second line is the project's title, a
+   button that drops the project's file list down under the header. Same
+   height as the line it replaces; the title is cut, the chevron stays. */
+:root { --plink: var(--accent); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --plink: #64b5ff; } }
+:root[data-theme="dark"] { --plink: #64b5ff; }
+.meta.pm { overflow: visible; }
+.pmeta { position: relative; display: flex; align-items: center; gap: 4px; max-width: 100%;
+  min-width: 0; height: auto; padding: 0; color: var(--plink); background: none; border: 0;
+  border-radius: 0; font: 600 12px/1.4 system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent; }
+/* 44px to a finger: over the file's title too. */
+.pmeta::before { content: ""; position: absolute; inset: -22px -6px -6px -6px; }
+.pmeta .pt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pchev { flex: none; width: 10px; height: 10px; fill: none; stroke: currentColor;
+  stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.pmeta:focus-visible { outline: 2px solid #0a84ff; outline-offset: 2px; border-radius: 3px; }
+.drop { position: fixed; z-index: 46; left: 0; right: 0; bottom: 0; top: 0; }
+.drop-scrim { position: absolute; inset: 0; background: rgb(0 0 0 / 0.35);
+  animation: fan-fade 0.18s ease; }
+.drop-list { position: absolute; top: 0; left: 0; right: 0; max-height: 80%; padding: 2px 14px 10px;
+  border-radius: 0 0 16px 16px; box-shadow: 0 12px 30px rgb(0 0 0 / 0.35); outline: none; }
+.drop-list .sec { margin: 12px 0 2px; }
+@media (min-width: 641px) { .drop-list { right: auto; width: 440px; left: 8px; } }
+.drop-foot { display: flex; justify-content: flex-end; padding-top: 10px; }
+.drop-foot a { display: flex; align-items: center; min-height: 44px; padding: 0 4px;
+  color: var(--plink); font-size: 16px; font-weight: 600; text-decoration: none; }
+@media (prefers-reduced-motion: reduce) { .drop-scrim { animation: none; } }
+
 /* Invite pages. */
 .join { max-width: 560px; margin: 0 auto; padding: 24px 16px; }
 .join h1 { font-size: 20px; margin-bottom: 12px; white-space: normal; }
