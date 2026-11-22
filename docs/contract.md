@@ -446,8 +446,11 @@ comment. On a computer the same
 views sit in a panel at the right, and the strip's line heads it.
 
 **Finish review** shows the person's drafts, a field for a general comment
-(optional, about the whole file) and **Back** / **Finish review**, with the
-note "Everyone will see them. Ask the agent to look at the comments." Finishing
+(optional, about the whole file), a choice **Send to agent** (the default) or
+**Only publish** with a line saying what follows, and **Back** and a button
+named after the choice (**Send to agent** or **Publish**). Sent to the agent,
+the comments are marked `for_agent`: the agent takes them to work on; only
+published, they are there for everyone to read. Finishing
 publishes all the person's drafts on this file and the general comment in one
 transaction: each becomes a comment with the next number, in the order the
 drafts were made, the general comment last. If they do not all fit under the
@@ -484,7 +487,7 @@ Pins and cards show texts and names as text nodes, never as HTML.
 | `POST /a/{id}/drafts` | `{"author", "text", "anchor"}` | `201` + draft JSON; `409 too_many_drafts` |
 | `PATCH /a/{id}/drafts/{d}` | `{"text"}` | `200` + draft JSON |
 | `DELETE /a/{id}/drafts/{d}` | delete the draft | `204` |
-| `POST /a/{id}/review` | `{"author", "text"}`, `text` optional: publish the key's drafts and the general comment | `201` + list of the comments made, `mine` true; `400` with nothing to publish; `409 too_many_comments` |
+| `POST /a/{id}/review` | `{"author", "text", "agent"}`, `text` optional, `agent` true to send to the agent (default false): publish the key's drafts and the general comment | `201` + list of the comments made, `mine` true; `400` with nothing to publish; `409 too_many_comments` |
 
 The draft and review calls need `X-Author-Key`; without it, or malformed,
 they answer `400 bad_request`. `GET /a/{id}/comments` takes it to set `mine`
@@ -497,7 +500,8 @@ Comment JSON, the same for the owner:
  "anchor": {"type": "element", "selector": "main > form > button.primary",
             "text": "Send", "x": 0.42, "y": 0.5, "width": 1280},
  "created_at": "2026-11-20T10:00:00Z", "read": false,
- "resolved": false, "before_replace": false, "mine": true}
+ "resolved": false, "before_replace": false, "mine": true,
+ "for_agent": true}
 ```
 
 Draft JSON: `{"id", "author", "text", "anchor", "created_at",
@@ -535,6 +539,8 @@ it tells nothing about other people's drafts.
   the owner agent has fetched it; `resolved` once the agent marked it done.
 - `before_replace` is true when the file was replaced after the comment, or
   the draft it came from, was written, so it may be about the old version.
+- `for_agent` is true when the review that published the comment was sent
+  to the agent, false when it was only published.
 - `mine` is always present: true when the comment was published by the
   `X-Author-Key` sent, false without a key and for the owner.
 - An artifact holds at most 200 comments; a review that would pass that gets

@@ -106,12 +106,13 @@ def comment_routes(store: Store) -> list[Route]:
 
     async def review(request: Request) -> Response:
         artifact_id, key = request.path_params["id"], _author_key(request)
-        data = await _body(request, {"author", "text"}, {"author"})
+        data = await _body(request, {"author", "text", "agent"}, {"author"})
         author = _author(data)
         text = _text(data["text"]) if "text" in data else None
+        for_agent = _bool(data.get("agent", False), "agent")
         try:
             made = await run_in_threadpool(
-                store.publish, artifact_id, key, author=author, text=text
+                store.publish, artifact_id, key, author=author, text=text, for_agent=for_agent
             )
         except NothingToPublish:
             raise ApiError(400, "bad_request", "no drafts and no text to publish") from None
@@ -203,6 +204,7 @@ def _json(c: Comment) -> dict:
         "resolved": c.resolved_at is not None,
         "before_replace": c.before_replace,
         "mine": c.mine,
+        "for_agent": c.for_agent,
     }
 
 
@@ -299,9 +301,9 @@ def _text(v: object) -> str:
     return text
 
 
-def _bool(v: object) -> bool:
+def _bool(v: object, field: str = "resolved") -> bool:
     if not isinstance(v, bool):
-        raise ApiError(400, "bad_request", "resolved must be true or false")
+        raise ApiError(400, "bad_request", f"{field} must be true or false")
     return v
 
 

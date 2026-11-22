@@ -270,12 +270,27 @@ def test_review_publishes_drafts_in_order_and_the_general_comment_last(env):
         "resolved",
         "before_replace",
         "mine",
+        "for_agent",
     }
+    assert not any(c["for_agent"] for c in made)
     # Only the general comment, no drafts: fine too.
     r = review(client, art["id"], {"author": "", "text": "One more"})
     assert [(c["n"], c["author"]) for c in r.json()] == [(4, "anonymous")]
     listed = client.get("/api/v1/artifacts", headers=auth(keys["alice"])).json()
     assert (listed[0]["comments"], listed[0]["open_comments"]) == (4, 4)
+
+
+def test_a_review_sent_to_the_agent_marks_its_comments(env):
+    client, _, keys = env
+    art = upload(client, keys["alice"], "a.html", b"<p>Hi</p>")
+    add_draft(client, art["id"], {"text": "for the agent"})
+    sent = review(client, art["id"], {"author": "Ivan", "agent": True}).json()
+    published = review(client, art["id"], {"author": "Ivan", "text": "just a note"}).json()
+    assert [c["for_agent"] for c in sent + published] == [True, False]
+    owner = owner_comments(client, keys["alice"], art["id"]).json()
+    assert [(c["n"], c["for_agent"]) for c in owner] == [(1, True), (2, False)]
+    r = review(client, art["id"], {"author": "Ivan", "text": "x", "agent": "yes"})
+    assert r.status_code == 400
 
 
 def test_review_with_nothing_to_publish(env):

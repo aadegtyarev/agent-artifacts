@@ -81,6 +81,8 @@
     compose: null,
     // the id of the draft being edited
     edit: null,
+    // Finish review sends to the agent, or only publishes
+    toAgent: true,
     comments: [],
     // drafts: the server's, with `gone` while a Delete waits for its Undo
     drafts: [],
@@ -470,9 +472,9 @@
       for (const it of drafts) out.push(row(it, where(it)));
       const general = el("div", "general");
       general.append(fields.general);
-      out.push(general, el("p", "note", "Everyone will see them. Ask the agent to look at the comments."));
+      out.push(general, toWhom());
       const bar = el("div", "foot2");
-      const done = button("Finish review", () => finish(done), "btn pri big");
+      const done = button(S.toAgent ? "Send to agent" : "Publish", () => finish(done), "btn pri big");
       finishButton = done;
       done.disabled = !drafts.length && !fields.general.value.trim();
       bar.append(button("Back", () => go("list", "h")), done);
@@ -482,6 +484,28 @@
 
   // Finish review on the finish view, enabled by a general comment.
   let finishButton = null;
+
+  // Where the review goes: to the agent (the default) or only published.
+  function toWhom() {
+    const box = el("div", "towhom");
+    const seg = el("div", "seg");
+    seg.setAttribute("role", "radiogroup");
+    seg.setAttribute("aria-label", "Finish review");
+    for (const [agent, label] of [[true, "Send to agent"], [false, "Only publish"]]) {
+      const b = button(label, () => {
+        if (S.toAgent === agent) return;
+        S.toAgent = agent;
+        render();
+      }, "opt");
+      b.setAttribute("role", "radio");
+      b.setAttribute("aria-checked", String(S.toAgent === agent));
+      seg.append(b);
+    }
+    box.append(seg, el("p", "note", S.toAgent
+      ? "Everyone will see them, and the agent gets them to work on."
+      : "Everyone will see them. The agent is not asked to act."));
+    return box;
+  }
 
   function status(it) {
     if (it.draft) return lost(it) && !page.off ? `your draft · ${lostText(it)}` : "your draft";
@@ -1085,7 +1109,10 @@
       const payload = { author: name || "" };
       // Omitted when empty: the review is then the drafts alone.
       if (general.trim()) payload.text = general;
+      if (S.toAgent) payload.agent = true;
+      const sent = S.toAgent;
       const made = await call("POST", "/review", payload);
+      S.toAgent = true;
       changed();
       S.comments = [...S.comments, ...made];
       S.drafts = [];
@@ -1096,7 +1123,8 @@
       S.view = "list";
       S.pos = "strip";
       render();
-      toast(`Published ${made.length} ${made.length === 1 ? "comment" : "comments"}`);
+      const what = `${made.length} ${made.length === 1 ? "comment" : "comments"}`;
+      toast(sent ? `Sent ${what} to the agent` : `Published ${what}`);
     } catch (e) {
       if (!nameRefused(e)) toast(e.message, { error: true, ms: 8000 });
       // The drafts on the server may differ now (one gone, say).

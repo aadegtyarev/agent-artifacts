@@ -142,7 +142,10 @@ before the last replace, so it may be about the old version) and `anchor`:
 else by the element's visible `text`; `width` is the window width the person
 saw. A page anchor may add `screen` (the name of the screen it was on) and
 `hash` (the page's `#hash` then, `#` alone for none: the start screen): on a
-page with several screens they say which one. Fix the file, `replace` it at the same id, `resolve` what you did (it
+page with several screens they say which one. `for_agent` is true when the
+person finished the review with **Send to agent**: those comments are your
+work; the others were only published, read them as context and act on them
+only when the person asks. Fix the file, `replace` it at the same id, `resolve` what you did (it
 leaves the viewer), and tell the person what changed and what is still open.
 A published comment cannot be changed from the viewer. Use `drop-drafts` only
 when the person asks, for example when drafts fill a file (`too_many_drafts`).

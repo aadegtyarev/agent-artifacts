@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS comments (
     written_at REAL,  -- its draft made; NULL: as created_at
     read_at REAL,
     resolved_at REAL,
+    for_agent INTEGER NOT NULL DEFAULT 0,  -- the review was sent to the agent
     PRIMARY KEY (artifact_id, n)
 );
 CREATE TABLE IF NOT EXISTS drafts (
@@ -102,6 +103,7 @@ _ADDED_COLUMNS = {
     },
     "comments": {
         "written_at": "REAL",
+        "for_agent": "INTEGER NOT NULL DEFAULT 0",
     },
 }
 # Columns renamed since, old name to new, for databases made before.
@@ -150,13 +152,14 @@ class Comment:
     resolved_at: float | None
     before_replace: bool
     mine: bool
+    for_agent: bool
 
 
 # :key is the author key hash asking, or NULL: then no comment is its own.
 _COMMENT_SQL = (
     "SELECT c.n, c.author, c.text, c.anchor, c.created_at, c.read_at, c.resolved_at, "
     "a.replaced_at IS NOT NULL AND COALESCE(c.written_at, c.created_at) < a.replaced_at, "
-    "COALESCE(c.author_key_hash = :key, 0) "
+    "COALESCE(c.author_key_hash = :key, 0), c.for_agent "
     "FROM comments c JOIN artifacts a ON a.id = c.artifact_id "
     "WHERE c.artifact_id = :id AND a.expires_at > :now"
 )
@@ -662,12 +665,19 @@ class Store:
         return True
 
     def publish(
-        self, artifact_id: str, key_hash: str, *, author: str, text: str | None
+        self,
+        artifact_id: str,
+        key_hash: str,
+        *,
+        author: str,
+        text: str | None,
+        for_agent: bool = False,
     ) -> list[Comment] | None:
         """Finish ``key_hash``'s review: its drafts on the artifact, in the
         order made, then ``text`` as a comment about the whole file, become
-        comments with the next numbers, all or none. None if the artifact is
-        gone; raises NothingToPublish, TooManyComments."""
+        comments with the next numbers, all or none, marked as sent to the
+        agent when ``for_agent``. None if the artifact is gone; raises
+        NothingToPublish, TooManyComments."""
         with self._conn() as db:
             db.execute("BEGIN IMMEDIATE")
             artifact = self._artifact(db, artifact_id)
@@ -701,9 +711,9 @@ class Store:
             first = last - len(items) + 1
             db.executemany(
                 "INSERT INTO comments (artifact_id, n, author, text, anchor, author_key_hash, "
-                "created_at, written_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "created_at, written_at, for_agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
-                    (artifact_id, first + i, a, t, anchor, key_hash, args["now"], written)
+                    (artifact_id, first + i, a, t, anchor, key_hash, args["now"], written, for_agent)
                     for i, (a, t, anchor, written) in enumerate(items)
                 ],
             )
@@ -753,7 +763,9 @@ class Store:
 
 
 def _comment(row: tuple) -> Comment:
-    return Comment(*row[:-2], before_replace=bool(row[-2]), mine=bool(row[-1]))
+    return Comment(
+        *row[:-3], before_replace=bool(row[-3]), mine=bool(row[-2]), for_agent=bool(row[-1])
+    )
 
 
 def _anchor_fits(anchor: str | None, pin: str | None) -> bool:
