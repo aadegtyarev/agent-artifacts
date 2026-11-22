@@ -352,10 +352,14 @@
     const drafts = liveDrafts().length;
     let line;
     if (drafts) line = `Review · ${drafts}`;
+    else if (S.comments.length) line = `Comments · ${S.comments.length}${desk.matches ? "" : " ›"}`;
     else if (S.mode && canPin()) line = `Tap a spot on the ${pinType === "point" ? "image" : "page"} to comment`;
-    else if (S.comments.length) line = `Comments · ${S.comments.length}`;
     else line = "No comments yet";
     stripText.textContent = line;
+    // In comment mode, with comments to list, the hint goes to the right.
+    if (!drafts && S.comments.length && S.mode && canPin()) {
+      strip.append(el("span", "strip-hint", "tap a spot to add"));
+    }
     if (drafts && S.view !== "finish") {
       strip.append(button("Finish review", (e) => { e.stopPropagation(); openFinish(); }, "btn pri"));
     }
@@ -431,7 +435,14 @@
         }
       }
       msg.append(miniPin(it), bd);
-      return [[nav, msg], []];
+      const out = [nav, msg];
+      // Pulled up to half or full on a phone: the others under it.
+      if (!desk.matches && (S.pos === "h" || S.pos === "f")) {
+        const others = all.filter((o) => o.key !== it.key);
+        if (others.length) out.push(el("p", "sec", "Others"));
+        for (const o of others) out.push(row(o, status(o)));
+      }
+      return [out, []];
     },
 
     compose() {
@@ -762,11 +773,22 @@
   }
 
   function openItem(key) {
+    // An edit with typed changes is not dropped by moving to another item.
+    if (S.edit && S.sel !== key) {
+      const it = itemOf(S.sel);
+      if (it && it.draft && fields.edit.value !== it.d.text) {
+        toast("Save or cancel the edit first");
+        return;
+      }
+    }
     if (S.compose) dropCompose(false);
     if (S.sel !== key) S.edit = null;
     S.sel = key;
-    // One comment: the sheet fits it.
-    go("item", "q");
+    // One comment: the sheet fits it. Pulled up with the others under it,
+    // it keeps its height and the chosen one comes to the top.
+    const keep = S.view === "item" && (S.pos === "h" || S.pos === "f");
+    go("item", keep ? S.pos : "q");
+    if (keep) body.scrollTop = 0;
     revealSoon(key);
   }
 

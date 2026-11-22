@@ -418,16 +418,17 @@ bottom sheet with four heights:
 
 | Height | Holds |
 | --- | --- |
-| strip | one line: "Review · N" (the person's drafts) and **Finish review**; with no drafts, the count of comments |
+| strip | one line: "Review · N" (the person's drafts) and **Finish review**; with no drafts, "Comments · N ›", and in comment mode the hint "tap a spot to add" beside it (alone when there are no comments) |
 | ¼ | one item, the sheet as tall as its content and at most half: the field of a new draft, or the selected comment or draft, with ‹ › to its neighbours |
-| ½ | the list (drafts and comments, text and state only) or **Finish review**; an item or a new draft dragged up stays itself |
+| ½ | the list (drafts and comments, text and state only) or **Finish review**; an item dragged up stays first, whole, with the other comments listed under it (a tap on one brings it to the top at the same height); a new draft dragged up stays itself |
 | full | the same as ½, taller |
 
 A drag changes the height only; what the sheet shows stays. A tap changes
 what it shows and the height follows. A tap on the strip opens the list at
 ½. A tap on a row opens that item at ¼. A tap on a pin with the list open
 lights its row and brings it into view, the sheet stays; otherwise it opens
-the item at ¼. The selected pin is drawn bigger. Dragging the grip or the
+the item at ¼. With one item pulled up to ½ or full, a tap on a row under it,
+on a pin or on ‹ › brings that item to the top at the same height. The selected pin is drawn bigger. Dragging the grip or the
 sheet's title line (its buttons too) snaps to the nearest height; a tap on
 the grip steps ½ and full, a tap on one item's title goes back to the list.
 **Finish review** opens at ½. Folding a new draft to the strip drops it, with Undo if text was typed. The keyboard pushes the sheet up and
