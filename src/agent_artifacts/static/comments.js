@@ -352,7 +352,7 @@
     const drafts = liveDrafts().length;
     let line;
     if (drafts) line = `Review · ${drafts}`;
-    else if (S.comments.length) line = `Comments · ${S.comments.length} ›`;
+    else if (S.comments.length) line = `Comments · ${S.comments.length}${desk.matches ? "" : " ›"}`;
     else if (S.mode && canPin()) line = `Tap a spot on the ${pinType === "point" ? "image" : "page"} to comment`;
     else line = "No comments yet";
     stripText.textContent = line;
@@ -439,7 +439,7 @@
       // Pulled up to half or full on a phone: the others under it.
       if (!desk.matches && (S.pos === "h" || S.pos === "f")) {
         const others = all.filter((o) => o.key !== it.key);
-        if (others.length) out.push(el("p", "sec", "Other comments"));
+        if (others.length) out.push(el("p", "sec", "Others"));
         for (const o of others) out.push(row(o, status(o)));
       }
       return [out, []];
@@ -773,6 +773,14 @@
   }
 
   function openItem(key) {
+    // An edit with typed changes is not dropped by moving to another item.
+    if (S.edit && S.sel !== key) {
+      const it = itemOf(S.sel);
+      if (it && it.draft && fields.edit.value !== it.d.text) {
+        toast("Save or cancel the edit first");
+        return;
+      }
+    }
     if (S.compose) dropCompose(false);
     if (S.sel !== key) S.edit = null;
     S.sel = key;

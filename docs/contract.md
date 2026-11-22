@@ -427,7 +427,8 @@ A drag changes the height only; what the sheet shows stays. A tap changes
 what it shows and the height follows. A tap on the strip opens the list at
 ½. A tap on a row opens that item at ¼. A tap on a pin with the list open
 lights its row and brings it into view, the sheet stays; otherwise it opens
-the item at ¼. The selected pin is drawn bigger. Dragging the grip or the
+the item at ¼. With one item pulled up to ½ or full, a tap on a row under it,
+on a pin or on ‹ › brings that item to the top at the same height. The selected pin is drawn bigger. Dragging the grip or the
 sheet's title line (its buttons too) snaps to the nearest height; a tap on
 the grip steps ½ and full, a tap on one item's title goes back to the list.
 **Finish review** opens at ½. Folding a new draft to the strip drops it, with Undo if text was typed. The keyboard pushes the sheet up and
