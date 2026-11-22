@@ -228,6 +228,8 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.12), 0 0 0 0.5px var(--hair); }
 .seg .opt:focus-visible { outline: 2px solid var(--send); outline-offset: 1px; }
 .towhom .note { margin-top: 6px; }
+.sfoot .towhom { margin: 0 0 10px; }
+.sfoot.typing .foot2 { display: none; }
 .general textarea { min-height: 60px; }
 
 /* Pins: 26px to the eye, 44px to a finger; the sharp corner marks the spot.

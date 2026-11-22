@@ -444,6 +444,9 @@
       kept.focus({ preventScroll: true });
       kept.setSelectionRange(...caret);
     }
+    // At ¼ a comment's chat shows its end: the message being answered sits
+    // right above the reply field.
+    if (open && S.view === "item" && S.pos === "q") body.scrollTop = body.scrollHeight;
     drawPins();
     syncPicking();
     dockToast();
@@ -591,19 +594,31 @@
       // One row per comment: a new one, or one decided or replied to.
       const touched = items().filter((i) => i.c && actsOn(i.c.n).length);
       const count = drafts.length + touched.length;
+      // The agent's answers not decided yet come first, so none is left
+      // behind; then what this review changes, what is accepted last.
+      const undecided = items().filter((i) => i.c && ["done", "wrote", "asked"].includes(i.c.agent)
+        && !actsOn(i.c.n).length);
+      const accepting = (i) => (decisionOn(i.c.n) || {}).kind === "accept";
       const out = [el("h2", "ttl handle", `Finish review · ${count}`)];
+      if (undecided.length) {
+        out.push(el("p", "sec", `Not decided yet · ${undecided.length}`));
+        for (const it of undecided) out.push(row(it, status(it)));
+        out.push(el("p", "sec", "In this review"));
+      }
       if (!count) out.push(el("p", "empty", "No drafts: you can publish a general comment only."));
       for (const it of drafts) out.push(row(it, where(it)));
-      for (const it of touched) out.push(row(it, status(it)));
+      for (const it of touched.filter((i) => !accepting(i))) out.push(row(it, status(it)));
+      for (const it of touched.filter(accepting)) out.push(row(it, status(it)));
       const general = el("div", "general");
       general.append(fields.general);
-      out.push(general, toWhom());
+      out.push(general);
       const bar = el("div", "foot2");
       const done = button("Finish review", () => finish(done), "btn pri big");
       finishButton = done;
       done.disabled = sending || (!count && !fields.general.value.trim());
       bar.append(button("Back", () => go("list", "h")), done);
-      return [out, [bar]];
+      // The choice stays in sight next to the button it changes.
+      return [out, [toWhom(), bar]];
     },
   };
 
@@ -1488,6 +1503,13 @@
     sendButton.disabled = !fields.compose.value.trim();
   });
   fields.edit.addEventListener("input", () => grow(fields.edit));
+  // While a reply is typed, Finish review steps aside: no tap meant for the
+  // send arrow lands on it.
+  fields.reply.addEventListener("focus", () => {
+    foot.classList.add("typing");
+    if (S.pos === "q") body.scrollTop = body.scrollHeight;
+  });
+  fields.reply.addEventListener("blur", () => foot.classList.remove("typing"));
   fields.reply.addEventListener("input", () => {
     grow(fields.reply);
     replyButton.disabled = !fields.reply.value.trim();
