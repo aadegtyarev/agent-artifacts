@@ -140,7 +140,7 @@
   function screenOf(el) {
     let outer = null;
     let beside = null;
-    for (let x = el.parentElement; x && x !== document.body; x = x.parentElement) {
+    for (let x = el; x && x !== document.body; x = x.parentElement) {
       if (!isBlock(x)) continue;
       outer = x;
       if (x.parentElement && [...x.parentElement.children].some((y) => y !== x && isBlock(y))) beside = x;
@@ -148,8 +148,12 @@
     const screen = beside || outer;
     let name = "";
     if (screen) {
-      const h = [...screen.querySelectorAll("h1,h2,h3")].find((x) => x.closest(BLOCK) === screen
-        || !screen.contains(x.closest(BLOCK)));
+      // Its own heading: not one inside a nested section, article or dialog.
+      const NEST = "section,article,dialog,[role=dialog],[role=region]";
+      const h = [...screen.querySelectorAll("h1,h2,h3")].find((x) => {
+        const n = x.closest(NEST);
+        return !n || n === screen || !screen.contains(n);
+      });
       name = screen.getAttribute("aria-label") || (h && h.textContent) || screen.id || "";
     }
     return clean(name || document.title || "", 80);
@@ -374,7 +378,11 @@
       // the page has drawn that screen.
       if (!visible(find(pin.anchor)) && isHash(pin.anchor.hash) && hashNow() !== pin.anchor.hash) {
         // Replaced, not pushed: Back leaves the viewer, not the page's screens.
-        location.replace(pin.anchor.hash);
+        // From this page's own address, not a relative one: a <base href>
+        // would take the frame elsewhere.
+        const to = new URL(location.href);
+        to.hash = pin.anchor.hash;
+        location.replace(to.href);
         // Shown once the page has drawn that screen: tried for up to a second.
         let tries = 0;
         const later = () => {

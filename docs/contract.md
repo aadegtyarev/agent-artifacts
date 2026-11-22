@@ -520,7 +520,8 @@ it tells nothing about other people's drafts.
   fractions of the element's box, and the window width in pixels at the time,
   which tells the agent which layout the person saw. It may also carry
   `screen`, the name of the screen the element was on (at most 80: the
-  outermost section, main, article, dialog or labelled block around it, by its
+  outermost section, article, dialog or labelled block around it or itself,
+  not main and not a control, by its
   aria-label, first heading or id, else the page's title; of nested blocks, the
   outermost one beside another such block, as one of several screens), and
   `hash`, the page's `#hash` at the time as the browser reports it (`#` and
