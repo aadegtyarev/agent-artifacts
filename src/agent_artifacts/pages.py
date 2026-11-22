@@ -96,7 +96,6 @@ def viewer_page(a: Artifact, url: str, separate: str | None = None) -> HTMLRespo
         "viewer.html",
         VIEWER_CSP,
         title=a.name,
-        comments=True,
         viewer=True,
         separate=separate,
         a=a,
