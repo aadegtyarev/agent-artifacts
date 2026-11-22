@@ -72,6 +72,60 @@ def test_name_field_overrides_the_file_name(env):
     assert "filename*=UTF-8''%D0%9E%D1%82%D1%87%D1%91%D1%82.md" in dl.headers["content-disposition"]
 
 
+def test_title_is_the_name_or_the_field_and_a_replace_keeps_it(env):
+    client, store, keys = env
+    plain = upload(client, keys["alice"], "a.txt", b"x").json()
+    assert plain["title"] == "a.txt" and plain["updated_at"] == plain["created_at"]
+    art = upload(client, keys["alice"], "<b>.txt", b"x", title="  Q3 <report>  ").json()
+    assert (art["name"], art["title"]) == ("<b>.txt", "Q3 <report>")
+    page = client.get(f"/a/{art['id']}").text
+    assert "<title>Q3 &lt;report&gt;</title>" in page
+    assert '<h1 title="Q3 &lt;report&gt;">Q3 &lt;report&gt;</h1>' in page
+
+    clock = store.clock
+    store.clock = lambda: clock() + 60
+    kept = upload(client, keys["alice"], "b.txt", b"y", artifact_id=art["id"]).json()
+    assert (kept["name"], kept["title"]) == ("b.txt", "Q3 <report>")
+    assert kept["updated_at"] > art["updated_at"] and kept["created_at"] == art["created_at"]
+    changed = upload(client, keys["alice"], "b.txt", b"y", artifact_id=art["id"], title="Final")
+    assert changed.json()["title"] == "Final"
+    listed = client.get("/api/v1/artifacts", headers=auth(keys["alice"])).json()
+    assert [a["title"] for a in listed] == ["a.txt", "Final"]
+    assert upload(client, keys["alice"], "c.txt", b"z", title=" ").status_code == 400
+
+
+def test_patch_sets_the_title(env):
+    client, store, keys = env
+    art = upload(client, keys["alice"], "a.txt", b"x").json()
+
+    def patch(body, key="alice", art_id=art["id"]):
+        return client.patch(f"/api/v1/artifacts/{art_id}", headers=auth(keys[key]), json=body)
+
+    r = patch({"title": " Notes "})
+    assert r.status_code == 200
+    assert (r.json()["title"], r.json()["name"]) == ("Notes", "a.txt")
+    assert r.json()["updated_at"] == art["updated_at"]
+    assert patch({"title": "x" * 200}).status_code == 200
+    # Stored composed, like file names.
+    assert patch({"title": "e\u0301"}).json()["title"] == "\u00e9"
+    for bad in (
+        {},
+        {"title": None},
+        {"title": "  "},
+        {"title": "x" * 201},
+        {"title": "a\nb"},
+        {"title": "a\u202eb"},
+        {"title": "a\u200fb"},
+        {"title": "\u200b"},
+        {"title": "ok", "colour": "red"},
+    ):
+        assert patch(bad).status_code == 400, bad
+    assert patch({"title": "mine"}, key="bob").status_code == 404
+    with store._conn() as db:
+        db.execute("UPDATE artifacts SET expires_at = 0")
+    assert patch({"title": "late"}).status_code == 404
+
+
 def test_markdown_is_sent_for_the_browser_to_render(env):
     client, _, keys = env
     text = "# Top\n\n</script><script>x()</script> [ext](https://example.org)\n"

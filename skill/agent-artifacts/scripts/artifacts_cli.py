@@ -32,15 +32,20 @@ from pathlib import Path
 
 # The date of the last change to this script or the skill; bump it with
 # every such change. `version` prints it.
-VERSION = "2026-11-22"
+VERSION = "2026-11-23"
 
 USAGE = """usage: artifacts_cli.py <command> [args]
 
   setup                     read AGENT_ARTIFACTS_URL=... and AGENT_ARTIFACTS_KEY=...
                             lines from stdin and save them for later calls;
                             a different key already there is copied to env.bak-*
-  upload FILE [NAME]        upload a file, print the artifact JSON (url, id, expires_at)
-  replace ID FILE [NAME]    replace the file behind an existing link
+  upload FILE [NAME] [--title TEXT]
+                            upload a file, print the artifact JSON (url, id,
+                            expires_at); pages show TEXT, else the name
+  replace ID FILE [NAME] [--title TEXT]
+                            replace the file behind an existing link; the
+                            title stays unless --title is given
+  set ID --title TEXT       change a file's title without uploading it again
   list                      your live files, with comments and open_comments counts
   delete ID                 delete one now
   comments ID               the comments on a file, oldest first
@@ -180,7 +185,7 @@ class Client:
     def json(self, method: str, path: str, data: object) -> str:
         return self.call(method, path, json.dumps(data).encode(), "application/json")
 
-    def upload(self, method: str, path: str, file: str, name: str | None) -> str:
+    def upload(self, method: str, path: str, file: str, fields: dict[str, str | None]) -> str:
         p = Path(file)
         if not p.is_file():
             raise Usage(f"no such file: {file}")
@@ -192,11 +197,12 @@ class Client:
             p.read_bytes(),
             b"\r\n",
         ]
-        if name:
-            parts.append(
-                f'--{boundary}\r\nContent-Disposition: form-data; name="name"\r\n\r\n'
-                f"{name}\r\n".encode()
-            )
+        for field, value in fields.items():
+            if value is not None:
+                parts.append(
+                    f'--{boundary}\r\nContent-Disposition: form-data; name="{field}"\r\n\r\n'
+                    f"{value}\r\n".encode()
+                )
         parts.append(f"--{boundary}--\r\n".encode())
         return self.call(method, path, b"".join(parts), f"multipart/form-data; boundary={boundary}")
 
@@ -218,6 +224,16 @@ def _number(n: str) -> str:
     if not n.isdecimal() or not n.isascii():
         raise Usage(f"not a comment number: {n}")
     return n
+
+
+def _option(args: list[str], option: str) -> tuple[str | None, list[str]]:
+    """The value after ``option`` and the arguments without the two."""
+    if option not in args:
+        return None, args
+    i = args.index(option)
+    if i + 1 == len(args):
+        raise Usage(f"{option} needs a value")
+    return args[i + 1], args[:i] + args[i + 2 :]
 
 
 def _quote(name: str) -> str:
@@ -257,13 +273,21 @@ def run(argv: list[str]) -> str | None:
         if len(args) < n or len(args) > (at_most if at_most is not None else n):
             raise Usage(f"usage: artifacts_cli.py {cmd} {how}")
 
+    title, args = _option(args, "--title") if cmd in ("upload", "replace", "set") else (None, args)
     match cmd:
         case "upload":
-            need(1, "FILE [NAME]", 2)
-            return c.upload("POST", api, args[0], args[1] if len(args) > 1 else None)
+            need(1, "FILE [NAME] [--title TEXT]", 2)
+            name = args[1] if len(args) > 1 else None
+            return c.upload("POST", api, args[0], {"name": name, "title": title})
         case "replace":
-            need(2, "ID FILE [NAME]", 3)
-            return c.upload("PUT", f"{api}/{args[0]}", args[1], args[2] if len(args) > 2 else None)
+            need(2, "ID FILE [NAME] [--title TEXT]", 3)
+            name = args[2] if len(args) > 2 else None
+            return c.upload("PUT", f"{api}/{args[0]}", args[1], {"name": name, "title": title})
+        case "set":
+            need(1, "ID --title TEXT")
+            if title is None:
+                raise Usage("usage: artifacts_cli.py set ID --title TEXT")
+            return c.json("PATCH", f"{api}/{args[0]}", {"title": title})
         case "list":
             return c.call("GET", api)
         case "delete":

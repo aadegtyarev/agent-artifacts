@@ -70,8 +70,9 @@ a missing one.
 
 | Call | Purpose | Answer |
 | --- | --- | --- |
-| `POST /api/v1/artifacts` | upload; multipart field `file`, optional field `name` | `201` + artifact JSON |
+| `POST /api/v1/artifacts` | upload; multipart field `file`, optional fields `name` and `title` | `201` + artifact JSON |
 | `PUT /api/v1/artifacts/{id}` | replace the file, same fields; resets the lifetime; the type may change | `200` + artifact JSON |
+| `PATCH /api/v1/artifacts/{id}` | `{"title"}`, without uploading again | `200` + artifact JSON |
 | `DELETE /api/v1/artifacts/{id}` | delete now | `204` |
 | `GET /api/v1/artifacts` | the calling agent's live artifacts | `200` + list |
 | `GET /api/v1/me` | the calling agent's name, space and role | `200` + user JSON, see [Admin calls](#admin-calls) |
@@ -79,9 +80,23 @@ a missing one.
 
 `name` defaults to the uploaded file name. It is reduced to a safe base name
 (no directories, no control characters, at most 200 characters) and must keep
-an allowed extension. The form holds one file and at most two other fields,
-each at most 4 KB; more answers `400 bad_request`. Fields other than `file`
-and `name` are read and ignored: a `title`, for example, is not stored.
+an allowed extension. The form holds one file and at most four other fields,
+each at most 4 KB; more answers `400 bad_request`. Fields other than `file`,
+`name` and `title` are read and ignored.
+
+`title` is what pages show for the file. It is stored at upload, from the
+`title` field or else from `name`, and changes only when a `title` is given
+again: on replace, or with `PATCH`. The download keeps `name`. A title is
+trimmed and counted in code points: 1 to 200 characters, with no control
+characters (line breaks and tabs included) and no bidirectional controls;
+anything else answers `400 bad_request`. `updated_at` is the time of the last
+upload or replace; a `PATCH` does not change it.
+
+The `PATCH` body follows the [rules for the public calls](#comments): JSON
+only, at most 16 KB, with `Content-Length`. It needs at least one known
+field; an empty body, an unknown field or `"title": null` answers `400
+bad_request`. Another agent's, a missing or an expired artifact answers `404
+not_found`.
 
 Artifact JSON:
 
@@ -90,9 +105,11 @@ Artifact JSON:
   "id": "Vq3...22 chars",
   "url": "https://art.example.org/a/Vq3...",
   "name": "report.html",
+  "title": "Q3 report",
   "type": "html",
   "size": 48213,
   "created_at": "2026-11-20T10:00:00Z",
+  "updated_at": "2026-11-20T10:00:00Z",
   "expires_at": "2026-11-22T10:00:00Z",
   "comments": 3,
   "open_comments": 1
@@ -175,7 +192,7 @@ no-referrer`.
 
 ### The viewer page
 
-The header is one bar: the file name with its size and expiry on a second line
+The header is one bar: the file's title with its size and expiry on a second line
 under it, and three square buttons. The speech bubble switches comment mode
 (see [Comments](#comments)); while it is on, the bubble is blue and pressed.
 The next one enters **Full screen**. The "≡" button opens the menu: a column
@@ -680,7 +697,9 @@ reads its inline metadata). Usable from any agent that runs shell commands.
 It reads `AGENT_ARTIFACTS_URL` and `AGENT_ARTIFACTS_KEY` from the environment,
 or else from the file `setup` writes with mode 600:
 `~/.config/agent-artifacts/env`, `%APPDATA%\agent-artifacts\env` on Windows,
-or `AGENT_ARTIFACTS_ENV`. The key never appears in a command line. Comments
+or `AGENT_ARTIFACTS_ENV`. The key never appears in a command line. Files
+get `upload FILE [NAME] [--title TEXT]`, `replace ID FILE [NAME] [--title
+TEXT]` and `set ID --title TEXT`, which changes the title alone. Comments
 get the commands `comments ID`, `take ID`, `reply ID N TEXT [--wrote|--asked]`,
 `resolve ID N`, `reopen ID N` and `delete-comment ID N`, and `drop-drafts ID`
 deletes every draft on a file;

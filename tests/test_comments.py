@@ -722,9 +722,14 @@ def dump(path):
 
 
 def v1_store(tmp_path, monkeypatch):
-    """A store whose database stops at version 1; undo the patch to go on."""
+    """A store whose database stops at version 1; undo the patch to go on.
+    It has the later title column too, so today's code can fill it; drop
+    that before going on."""
     monkeypatch.setattr(store_module, "_MIGRATIONS", store_module._MIGRATIONS[:1])
-    return Store(tmp_path, max_total_bytes=10**6)
+    store = Store(tmp_path, max_total_bytes=10**6)
+    with store._conn() as db:
+        db.execute("ALTER TABLE artifacts ADD COLUMN title TEXT")
+    return store
 
 
 def make_old_database(tmp_path, schema, comment_seq):
@@ -819,6 +824,7 @@ def test_a_database_from_before_chats_keeps_its_drafts(tmp_path, monkeypatch):
             ("comments", "approved_by"),
             ("comments", "rejected_by"),
             ("comments", "agent"),
+            ("artifacts", "title"),
         ):
             db.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
         db.execute("PRAGMA user_version = 0")  # made before numbered versions
@@ -890,6 +896,7 @@ def test_todays_database_without_a_version_is_only_stamped(tmp_path, monkeypatch
     store.add_draft(art.id, "h", author="p", text="pending", anchor=None)
     with store._conn() as db:
         db.execute("ALTER TABLE comments ADD COLUMN edited_at REAL")
+        db.execute("ALTER TABLE artifacts DROP COLUMN title")
         db.execute("PRAGMA user_version = 0")
     before, _ = dump(tmp_path)
 
@@ -924,18 +931,20 @@ def test_version_2_drops_for_agent_and_read_at_and_keeps_the_rest(tmp_path, monk
         "written_at, resolved_at, approved_by, rejected_by, agent FROM comments ORDER BY n",
         "SELECT * FROM replies ORDER BY rowid",
         "SELECT * FROM drafts ORDER BY rowid",
-        "SELECT * FROM artifacts",
+        "SELECT id, owner, name, kind, size, created_at, expires_at, comment_seq, replaced_at "
+        "FROM artifacts",
     )
     with store._conn() as db:
         # What version 1's code wrote: sent to the agent, read by the owner.
         db.execute("UPDATE comments SET for_agent = 1, read_at = 70 WHERE n IN (1, 2, 3)")
+        db.execute("ALTER TABLE artifacts DROP COLUMN title")
         before = [db.execute(sql).fetchall() for sql in kept]
     assert [r[-1] for r in before[0]] == ["working", "done", "waiting", None]
     monkeypatch.undo()
     store = Store(tmp_path, max_total_bytes=10**6)
     assert db_schema(tmp_path) == todays_schema(tmp_path)
     version, columns, _ = db_schema(tmp_path)
-    assert version == 2
+    assert version == len(store_module._MIGRATIONS)
     assert not {c for c in columns if c[0] == "comments" and c[1] in ("for_agent", "read_at")}
     with store._conn() as db:
         assert [db.execute(sql).fetchall() for sql in kept] == before
@@ -949,6 +958,24 @@ def test_version_2_drops_for_agent_and_read_at_and_keeps_the_rest(tmp_path, monk
         (3, "working", None, 0),
         (4, None, "q", 1),
     ]
+
+
+def test_version_3_titles_the_files_by_their_names(tmp_path, monkeypatch):
+    monkeypatch.setattr(store_module, "_MIGRATIONS", store_module._MIGRATIONS[:2])
+    store = Store(tmp_path, max_total_bytes=10**6)
+    store.add_agent("old")
+    with store._conn() as db:
+        db.execute(
+            "INSERT INTO artifacts (id, owner, name, kind, size, created_at, expires_at) "
+            "VALUES (?, 'old', 'a.txt', 'txt', 1, 0, 9e9)",
+            (ART,),
+        )
+    monkeypatch.undo()
+    store = Store(tmp_path, max_total_bytes=10**6)
+    assert db_schema(tmp_path) == todays_schema(tmp_path)
+    with store._conn() as db:
+        assert db.execute("SELECT title FROM artifacts").fetchall() == [("a.txt",)]
+    assert store.get(ART).title == "a.txt"
 
 
 def test_a_migration_cut_short_is_finished_by_the_next_start(tmp_path, monkeypatch):
