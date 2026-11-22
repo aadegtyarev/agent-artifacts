@@ -1456,14 +1456,24 @@
   // screen and fold the sheet. The page is fetched for the file's new name
   // and size; a file of another kind (an image now, say) needs the page
   // itself. The new file's time is taken from the next answer.
+  let showing = false;
   async function showNewFile() {
+    if (showing) return;
     const content = document.querySelector("main iframe");
     const img = $("image");
     let fresh = null;
+    showing = true;
     try {
       const r = await fetch(location.pathname, { cache: "no-store" });
       if (r.ok) fresh = new DOMParser().parseFromString(await r.text(), "text/html");
-    } catch { /* reloaded below */ }
+      else if (r.status !== 404) throw new Error(String(r.status));
+    } catch {
+      // Offline, say: the page stays as it is, with the banner.
+      toast("Could not load the new file. Try again.", { error: true });
+      return;
+    } finally {
+      showing = false;
+    }
     const sheetThere = fresh && fresh.getElementById("comments");
     if ((!content && !img) || !sheetThere || sheetThere.dataset.kind !== sheet.dataset.kind) {
       location.reload();
