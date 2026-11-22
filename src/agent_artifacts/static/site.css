@@ -51,7 +51,7 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --fg: #f2f2f4; --bg: #1c1c1e;
   --muted: #a1a1a6; --line: #3a3a3c; --btn: #2c2c2e; --accent: #4c9bff;
   --error: #ff6b5e; --fill: #2c2c2e; --fill2: #3a3a3c;
-  --hair: rgb(235 235 245 / 0.16); --pri-bg: #0a84ff; --pri-fg: #fff;
+  --hair: rgb(235 235 245 / 0.16); --pri-bg: #0071e3; --pri-fg: #fff;
   --other-text: #ffb340; --sheet-bg: #1c1c1e; --raised: #2c2c2e; --field: #3a3a3c;
   --grip: #545458; --send-off: #3a3a3c; --toast-bg: rgb(58 58 60 / 0.96);
   --fan-label: #48484a; --fan-sq: #2c2c2e; --float-open: #3a3a3c;
@@ -59,7 +59,7 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
 :root[data-theme="dark"] { --fg: #f2f2f4; --bg: #1c1c1e;
   --muted: #a1a1a6; --line: #3a3a3c; --btn: #2c2c2e; --accent: #4c9bff;
   --error: #ff6b5e; --fill: #2c2c2e; --fill2: #3a3a3c;
-  --hair: rgb(235 235 245 / 0.16); --pri-bg: #0a84ff; --pri-fg: #fff;
+  --hair: rgb(235 235 245 / 0.16); --pri-bg: #0071e3; --pri-fg: #fff;
   --other-text: #ffb340; --sheet-bg: #1c1c1e; --raised: #2c2c2e; --field: #3a3a3c;
   --grip: #545458; --send-off: #3a3a3c; --toast-bg: rgb(58 58 60 / 0.96);
   --fan-label: #48484a; --fan-sq: #2c2c2e; --float-open: #3a3a3c;
@@ -173,6 +173,10 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
   word-break: normal; overflow-wrap: anywhere; transition: box-shadow 0.15s, background 0.15s; }
 .sheet textarea::placeholder, .modal input::placeholder { color: #8e8e93; }
 .modal input { background: var(--field); }
+.modal .btn:not(.pri) { background: var(--field); }
+.modal .btn:not(.pri):active { filter: brightness(0.9); }
+/* The theme's label keeps one width, so repeated taps stay on it. */
+.fan-item[data-act="theme"] .fan-label { min-width: 8.5em; text-align: center; }
 .sheet textarea:focus, .modal input:focus { background: var(--sheet-bg);
   box-shadow: 0 0 0 1px var(--hair), 0 0 0 4px rgb(10 132 255 / 0.15); }
 .pill { position: relative; }

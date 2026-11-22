@@ -89,7 +89,7 @@
   // Theme: Auto (the system's), Light, Dark, in turn; kept in this browser.
   // theme.js applies it before the page is drawn.
   const THEMES = ["auto", "light", "dark"];
-  const themeLabel = document.getElementById("theme-label");
+  const themeLabel = $("theme-label");
   const theme = () => document.documentElement.dataset.theme || "auto";
   const showTheme = () => {
     const t = theme();
