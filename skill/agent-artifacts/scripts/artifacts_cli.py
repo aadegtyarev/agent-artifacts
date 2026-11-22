@@ -43,7 +43,7 @@ USAGE = """usage: artifacts_cli.py <command> [args]
   replace ID FILE [NAME]    replace the file behind an existing link
   list                      your live files, with comments and open_comments counts
   delete ID                 delete one now
-  comments ID               the comments on a file, oldest first; marks them read
+  comments ID               the comments on a file, oldest first
   take ID                   take the comments waiting for you ("agent": "waiting"):
                             they become "working"; prints them
   reply ID N TEXT [--wrote|--asked]

@@ -41,8 +41,8 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
   const AGENT = { waiting: "wait", working: "work", done: "fin", wrote: "wrote", asked: "ask" };
   function stateOf(c) {
     // Awaiting approval: someone else's comment nothing was asked of the
-    // agent about yet. Read from `agent`, not `for_agent`: the agent's own
-    // reply to an only-published comment sets `agent` alone.
+    // agent about yet: no `agent` state (the agent's own reply to an
+    // only-published comment sets it too).
     const pend = c.mine !== true && !c.agent && !c.approved_by && !c.rejected_by;
     const fill = c.rejected_by ? "rej" : pend ? "pend" : "solid";
     const dec = decisionOn(c.n);

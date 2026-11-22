@@ -127,7 +127,7 @@ and publish them by finishing their review in the viewer. When the person says
 "look at the comments", they finish their review first:
 
 ```bash
-artifacts_cli.py comments <id>           # all comments, oldest first; marks them read
+artifacts_cli.py comments <id>           # all comments, oldest first
 artifacts_cli.py take <id>               # start on the comments waiting for you
 artifacts_cli.py reply <id> <n> "<what was done>"           # done
 artifacts_cli.py reply <id> <n> "<remark>" --wrote          # done, with a remark or question
