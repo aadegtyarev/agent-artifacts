@@ -1155,7 +1155,7 @@
       if (dd < distance) { distance = dd; best = p; }
     }
     // Let go well below a quarter: folded.
-    if (!up && now < heights.q * 0.75) best = "strip";
+    if (!up && now < Math.min(heights.q, stage * 0.3) * 0.75) best = "strip";
     if (best === "strip") {
       if (S.compose) dropCompose(false);
       fold();
@@ -1176,10 +1176,10 @@
     if (dragged()) { e.stopPropagation(); e.preventDefault(); }
   }, true);
   // A tap on the grip or the title line steps the height; one on a new
-  // draft's caption leaves the draft alone.
+  // draft's caption or the Finish title leaves that view alone.
   sheet.addEventListener("click", (e) => {
     if (desk.matches || !onHandle(e.target) || e.target.closest("button")) return;
-    if (e.target !== grip && S.view === "compose") return;
+    if (e.target !== grip && (S.view === "compose" || S.view === "finish")) return;
     if (S.compose) dropCompose(false);
     if (S.pos === "q" || S.pos === "f") go("list", "h");
     else if (S.pos === "h") go("list", "f");
