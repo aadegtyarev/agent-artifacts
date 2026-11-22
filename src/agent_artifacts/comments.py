@@ -14,7 +14,7 @@ import functools
 import hashlib
 import json
 import re
-from collections.abc import Awaitable, Callable, Set
+from collections.abc import Awaitable, Callable
 
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
@@ -22,7 +22,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
 from . import kinds
-from .api import ApiError, error, iso, json_object, require_agent
+from .api import ApiError, error, iso, json_body, on_api_error, require_agent
 from .store import (
     ANSWERED,
     DRAFT_KINDS,
@@ -38,7 +38,6 @@ from .store import (
     TooManyReplies,
 )
 
-MAX_BODY_BYTES = 16 * 1024
 MAX_AUTHOR, MAX_TEXT = 64, 2000
 MAX_SELECTOR, MAX_ANCHOR_TEXT = 512, 200
 # An element anchor may also say which screen of the page it is on: its
@@ -87,7 +86,7 @@ def comment_routes(store: Store) -> list[Route]:
             if found is None:
                 raise _no_artifact()
             return _answer([_draft_json(d) for d in found])
-        data = await _body(request, {"author", "kind", "of", "text", "anchor"})
+        data = await json_body(request, {"author", "kind", "of", "text", "anchor"})
         author = _author(data)
         kind = data.get("kind", "comment")
         if kind not in DRAFT_KINDS:
@@ -138,7 +137,7 @@ def comment_routes(store: Store) -> list[Route]:
             if await run_in_threadpool(store.delete_draft, artifact_id, key, draft_id):
                 return Response(status_code=204)
             raise _no_draft()
-        data = await _body(request, {"text"}, {"text"})
+        data = await json_body(request, {"text"}, {"text"})
         draft = await run_in_threadpool(
             store.edit_draft, artifact_id, key, draft_id, _text(data["text"])
         )
@@ -148,7 +147,7 @@ def comment_routes(store: Store) -> list[Route]:
 
     async def review(request: Request) -> Response:
         artifact_id, key = request.path_params["id"], _author_key(request)
-        data = await _body(request, {"author", "text", "agent"}, {"author"})
+        data = await json_body(request, {"author", "text", "agent"}, {"author"})
         author = _author(data)
         text = _text(data["text"]) if "text" in data else None
         for_agent = _bool(data.get("agent", False), "agent")
@@ -187,7 +186,7 @@ def comment_routes(store: Store) -> list[Route]:
     async def owner_reply(request: Request) -> Response:
         agent = require_agent(store, request)
         artifact_id, n = request.path_params["id"], _number(request)
-        data = await _body(request, {"text", "state"}, {"text"})
+        data = await json_body(request, {"text", "state"}, {"text"})
         text = _text(data["text"])
         state = data.get("state", "done")
         if state not in ANSWERED:
@@ -209,7 +208,7 @@ def comment_routes(store: Store) -> list[Route]:
             if await run_in_threadpool(store.delete_comment, artifact_id, n, owner=agent):
                 return Response(status_code=204)
             raise _no_comment()
-        data = await _body(request, {"resolved"}, {"resolved"})
+        data = await json_body(request, {"resolved"}, {"resolved"})
         comment = await run_in_threadpool(
             store.resolve_comment, artifact_id, n, _bool(data["resolved"]), owner=agent
         )
@@ -259,7 +258,7 @@ def _route(path: str, handler: Callable[[Request], Awaitable[Response]], *method
             try:
                 response = await handler(request)
             except ApiError as e:
-                response = error(e.status, e.code, e.message, **e.extra)
+                response = await on_api_error(request, e)
         response.headers["Cache-Control"] = "no-store"
         return response
 
@@ -360,25 +359,6 @@ def _number(request: Request) -> int:
     if not _N_RE.fullmatch(n):
         raise _no_comment()
     return int(n)
-
-
-async def _body(request: Request, allowed: Set[str], required: Set[str] = frozenset()) -> dict:
-    """The JSON body, checked here rather than trusted to the proxy."""
-    ctype = request.headers.get("content-type", "").partition(";")[0].strip().lower()
-    if ctype != "application/json":
-        raise ApiError(400, "bad_request", "Content-Type must be application/json")
-    length = request.headers.get("content-length")
-    if length is None or not length.isdigit():
-        raise ApiError(411, "bad_request", "Content-Length is required")
-    if int(length) > MAX_BODY_BYTES:
-        raise ApiError(413, "too_large", f"limit is {MAX_BODY_BYTES} bytes")
-    # Counted as it arrives, whatever the headers claim.
-    body = bytearray()
-    async for chunk in request.stream():
-        body += chunk
-        if len(body) > MAX_BODY_BYTES:
-            raise ApiError(413, "too_large", f"limit is {MAX_BODY_BYTES} bytes")
-    return json_object(bytes(body), allowed, required)
 
 
 def _string(v: object, field: str, at_most: int) -> str:

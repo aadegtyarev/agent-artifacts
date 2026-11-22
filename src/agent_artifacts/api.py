@@ -11,6 +11,8 @@ from starlette.responses import JSONResponse
 
 from .store import AgentInfo, Store
 
+MAX_BODY_BYTES = 16 * 1024  # a JSON body, when json_body is strict
+
 
 class ApiError(Exception):
     """Raised by a handler, answered as {"error": code, "message": ...}."""
@@ -45,12 +47,36 @@ def require_admin(store: Store, request: Request) -> str:
     return agent
 
 
-async def json_body(request: Request, allowed: Set[str], required: Set[str] = frozenset()) -> dict:
-    """The request's JSON object, with only ``allowed`` keys and all ``required``."""
-    return json_object(await request.body(), allowed, required)
+async def json_body(
+    request: Request, allowed: Set[str], required: Set[str] = frozenset(), *, strict: bool = True
+) -> dict:
+    """The request's JSON object, with only ``allowed`` keys and all ``required``.
+
+    Strict, the body is checked here rather than trusted to the proxy: JSON
+    Content-Type, a Content-Length, at most MAX_BODY_BYTES counted as it
+    arrives. The admin calls pass ``strict=False``: only an admin key reaches
+    them and they have always taken any body, so their answers stay as they were.
+    """
+    if not strict:
+        return _json_object(await request.body(), allowed, required)
+    ctype = request.headers.get("content-type", "").partition(";")[0].strip().lower()
+    if ctype != "application/json":
+        raise ApiError(400, "bad_request", "Content-Type must be application/json")
+    length = request.headers.get("content-length")
+    if length is None or not length.isdigit():
+        raise ApiError(411, "bad_request", "Content-Length is required")
+    if int(length) > MAX_BODY_BYTES:
+        raise ApiError(413, "too_large", f"limit is {MAX_BODY_BYTES} bytes")
+    # Counted as it arrives, whatever the headers claim.
+    body = bytearray()
+    async for chunk in request.stream():
+        body += chunk
+        if len(body) > MAX_BODY_BYTES:
+            raise ApiError(413, "too_large", f"limit is {MAX_BODY_BYTES} bytes")
+    return _json_object(bytes(body), allowed, required)
 
 
-def json_object(body: bytes, allowed: Set[str], required: Set[str] = frozenset()) -> dict:
+def _json_object(body: bytes, allowed: Set[str], required: Set[str]) -> dict:
     """``body`` parsed as a JSON object, with only ``allowed`` keys and all ``required``."""
     try:
         data = json.loads(body)

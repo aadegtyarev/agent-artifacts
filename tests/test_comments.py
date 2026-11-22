@@ -468,29 +468,57 @@ def test_draft_limits_count_code_points_and_keep_line_breaks(env):
     assert c["text"].endswith("\r\n\tx")
 
 
-@pytest.mark.parametrize("path", ["drafts", "review"])
-def test_body_rules(env, path):
+@pytest.mark.parametrize("call", ["add draft", "edit draft", "review", "agent reply", "resolve"])
+def test_body_rules(env, call):
+    # Every call that takes a JSON body, public or the owner's, checks it the same way.
     client, _, keys = env
     art = upload(client, keys["alice"], "a.txt", b"x")
-    url = f"/a/{art['id']}/{path}"
-    json_type = as_author() | {"Content-Type": "application/json"}
-    r = client.post(
-        url, content=b'{"text": "x"}', headers=as_author() | {"Content-Type": "text/plain"}
+    comment(client, art["id"])
+    draft = add_draft(client, art["id"]).json()["id"]
+    base, owner = f"/a/{art['id']}", f"/api/v1/artifacts/{art['id']}/comments/1"
+    method, url, headers = {
+        "add draft": ("POST", f"{base}/drafts", as_author()),
+        "edit draft": ("PATCH", f"{base}/drafts/{draft}", as_author()),
+        "review": ("POST", f"{base}/review", as_author()),
+        "agent reply": ("POST", f"{owner}/reply", auth(keys["alice"])),
+        "resolve": ("PATCH", owner, auth(keys["alice"])),
+    }[call]
+
+    def state():
+        owners = owner_comments(client, keys["alice"], art["id"])
+        return owners.json(), drafts(client, art["id"]).json()
+
+    before = state()
+
+    def send(content, more):
+        return client.request(method, url, content=content, headers=headers | more)
+
+    json_type = {"Content-Type": "application/json"}
+    r = send(b'{"text": "x"}', {"Content-Type": "text/plain"})
+    assert (r.status_code, r.json()) == (
+        400,
+        {"error": "bad_request", "message": "Content-Type must be application/json"},
     )
-    assert (r.status_code, r.json()["error"]) == (400, "bad_request")
-    r = client.post(url, content=b"{" * 16385, headers=json_type)
-    assert (r.status_code, r.json()["error"]) == (413, "too_large")
-    r = client.post(url, content=iter([b'{"text": "x"}']), headers=json_type)
-    assert (r.status_code, r.json()["error"]) == (411, "bad_request")
+    r = send(b"{" * 16385, json_type)
+    assert (r.status_code, r.json()) == (
+        413,
+        {"error": "too_large", "message": "limit is 16384 bytes"},
+    )
+    r = send(iter([b'{"text": "x"}']), json_type)
+    assert (r.status_code, r.json()) == (
+        411,
+        {"error": "bad_request", "message": "Content-Length is required"},
+    )
+    assert r.headers["cache-control"] == "no-store"
     lone = b'{"text": "lone \\ud800"}'  # valid JSON, but not encodable as UTF-8
-    assert client.post(url, content=lone, headers=json_type).status_code == 400
-    r = client.post(url, content=b"[" * 16000, headers=json_type)
+    assert send(lone, json_type).status_code == 400
+    r = send(b"[" * 16000, json_type)
     assert r.status_code == 400  # nested too deep for the parser
     # Counted as it arrives, whatever Content-Length claims.
     big = b'{"text": "' + b"x" * 17000 + b'"}'
-    r = client.post(url, content=iter([big]), headers=json_type | {"Content-Length": "20"})
+    r = send(iter([big]), json_type | {"Content-Length": "20"})
     assert (r.status_code, r.json()["error"]) == (413, "too_large")
-    assert drafts(client, art["id"]).json() == []
+    assert state() == before
 
 
 def test_head_old_calls_and_other_methods_never_write(env):
