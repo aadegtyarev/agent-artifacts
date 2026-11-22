@@ -1,8 +1,8 @@
 :root { color-scheme: light dark; --fg: #1d1d1f; --bg: #fff; --muted: #6e6e73;
   --line: #d2d2d7; --btn: #f2f2f4; --accent: #0a64d8; --error: #c4281c; }
-/* The dark theme is a palette of its own, not an inversion: dark grey
-   surfaces, raised ones lighter, light text, a lighter blue. It follows the
-   system unless the menu's Theme picked light or dark ([data-theme]). */
+/* The dark theme is a palette of its own, dark.css, linked after this file.
+   It follows the system unless the menu's Theme picked light or dark
+   ([data-theme]; theme.js switches the link's media to match). */
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
 * { box-sizing: border-box; }
@@ -45,23 +45,7 @@ img { max-width: 100%; max-height: 100%; }
   --draft-bg: rgb(10 132 255 / 0.08); --draft-bg2: rgb(10 132 255 / 0.16);
   --raised: #fff; --field: #f2f2f7; --grip: #d1d1d6; --send-off: #c7c7cc;
   --toast-bg: rgb(28 28 30 / 0.92); --fan-label: rgb(28 28 30 / 0.92); --fan-sq: #fff;
-  --float-open: #1c1c1e; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --fg: #f2f2f4; --bg: #1c1c1e;
-  --muted: #a1a1a6; --line: #3a3a3c; --btn: #2c2c2e; --accent: #4c9bff;
-  --error: #ff6b5e; --fill: #2c2c2e; --fill2: #3a3a3c;
-  --hair: rgb(235 235 245 / 0.16); --pri-bg: #0071e3; --pri-fg: #fff;
-  --sheet-bg: #1c1c1e; --raised: #2c2c2e; --field: #3a3a3c;
-  --grip: #545458; --send-off: #3a3a3c; --toast-bg: rgb(58 58 60 / 0.96);
-  --fan-label: #48484a; --fan-sq: #2c2c2e; --float-open: #3a3a3c;
-  --draft-bg: rgb(10 132 255 / 0.16); --draft-bg2: rgb(10 132 255 / 0.26); --seg-on: #636366; } }
-:root[data-theme="dark"] { --fg: #f2f2f4; --bg: #1c1c1e;
-  --muted: #a1a1a6; --line: #3a3a3c; --btn: #2c2c2e; --accent: #4c9bff;
-  --error: #ff6b5e; --fill: #2c2c2e; --fill2: #3a3a3c;
-  --hair: rgb(235 235 245 / 0.16); --pri-bg: #0071e3; --pri-fg: #fff;
-  --sheet-bg: #1c1c1e; --raised: #2c2c2e; --field: #3a3a3c;
-  --grip: #545458; --send-off: #3a3a3c; --toast-bg: rgb(58 58 60 / 0.96);
-  --fan-label: #48484a; --fan-sq: #2c2c2e; --float-open: #3a3a3c;
-  --draft-bg: rgb(10 132 255 / 0.16); --draft-bg2: rgb(10 132 255 / 0.26); --seg-on: #636366; }
+  --float-open: #1c1c1e; --st-fin: #248a3d; --st-ask: #b25e00; --st-work: #5e5ce6; }
 
 .stage { flex: 1; min-height: 0; display: flex; }
 /* The content fills main by absolute position, not height: 100%, which
@@ -155,11 +139,7 @@ img { max-width: 100%; max-height: 100%; }
 .dec .undo::before { content: ""; position: absolute; inset: -14px -10px; }
 .ref { display: block; margin-top: 3px; color: var(--muted); font-size: 13px; }
 .st b { font-weight: 600; }
-.st b.fin { color: #248a3d; } .st b.ask { color: #b25e00; } .st b.work { color: #5e5ce6; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .st b.fin { color: #30d158; }
-  :root:not([data-theme="light"]) .st b.ask { color: #ff9f0a; } :root:not([data-theme="light"]) .st b.work { color: #7d7aff; } }
-:root[data-theme="dark"] .st b.fin { color: #30d158; } :root[data-theme="dark"] .st b.ask { color: #ff9f0a; }
-:root[data-theme="dark"] .st b.work { color: #7d7aff; }
+.st b.fin { color: var(--st-fin); } .st b.ask { color: var(--st-ask); } .st b.work { color: var(--st-work); }
 .st b.mine { color: var(--accent); }
 .more { display: block; width: 100%; min-height: 44px; margin: 6px 0 0; padding: 0;
   color: var(--accent); background: none; border: 0;

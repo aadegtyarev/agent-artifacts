@@ -1,0 +1,14 @@
+/* The dark theme: a palette of its own, not an inversion: dark grey
+   surfaces, raised ones lighter, light text, a lighter blue. One copy for
+   both ways it is on. Its link's media is the system's dark scheme, and
+   theme.js turns it always on or off when the menu's Theme picked dark or
+   light. Linked after site.css, so these win over its light values. */
+:root { --fg: #f2f2f4; --bg: #1c1c1e;
+  --muted: #a1a1a6; --line: #3a3a3c; --btn: #2c2c2e; --accent: #4c9bff;
+  --error: #ff6b5e; --fill: #2c2c2e; --fill2: #3a3a3c;
+  --hair: rgb(235 235 245 / 0.16); --pri-bg: #0071e3; --pri-fg: #fff;
+  --sheet-bg: #1c1c1e; --raised: #2c2c2e; --field: #3a3a3c;
+  --grip: #545458; --send-off: #3a3a3c; --toast-bg: rgb(58 58 60 / 0.96);
+  --fan-label: #48484a; --fan-sq: #2c2c2e; --float-open: #3a3a3c;
+  --draft-bg: rgb(10 132 255 / 0.16); --draft-bg2: rgb(10 132 255 / 0.26); --seg-on: #636366;
+  --st-fin: #30d158; --st-ask: #ff9f0a; --st-work: #7d7aff; }
