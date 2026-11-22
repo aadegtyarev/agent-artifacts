@@ -447,8 +447,8 @@ views sit in a panel at the right, and the strip's line heads it.
 
 **Finish review** shows the person's drafts, a field for a general comment
 (optional, about the whole file), a choice **Send to agent** (the default) or
-**Only publish** with a line saying what follows, and **Back** and a button
-named after the choice (**Send to agent** or **Publish**). Sent to the agent,
+**Only publish** with a line saying what follows, and **Back** / **Finish
+review**. Sent to the agent,
 the comments are marked `for_agent`: the agent takes them to work on; only
 published, they are there for everyone to read. Finishing
 publishes all the person's drafts on this file and the general comment in one

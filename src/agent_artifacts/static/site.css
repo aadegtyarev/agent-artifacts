@@ -197,7 +197,7 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
 .towhom { margin: 0 0 12px; }
 .seg { display: flex; padding: 2px; background: var(--fill); border-radius: 10px; }
 .seg .opt { position: relative; flex: 1; min-height: 36px; padding: 0 8px; color: var(--fg);
-  background: none; border: 0; border-radius: 8px; font: inherit; font-size: 14px;
+  background: none; border: 0; border-radius: 8px; font: inherit; font-size: 15px;
   cursor: pointer; transition: background 0.15s; }
 .seg .opt::before { content: ""; position: absolute; inset: -4px 0; }
 .seg .opt[aria-checked="true"] { background: var(--seg-on, var(--raised)); font-weight: 600;

@@ -474,9 +474,9 @@
       general.append(fields.general);
       out.push(general, toWhom());
       const bar = el("div", "foot2");
-      const done = button(S.toAgent ? "Send to agent" : "Publish", () => finish(done), "btn pri big");
+      const done = button("Finish review", () => finish(done), "btn pri big");
       finishButton = done;
-      done.disabled = !drafts.length && !fields.general.value.trim();
+      done.disabled = sending || (!drafts.length && !fields.general.value.trim());
       bar.append(button("Back", () => go("list", "h")), done);
       return [out, [bar]];
     },
@@ -484,26 +484,35 @@
 
   // Finish review on the finish view, enabled by a general comment.
   let finishButton = null;
+  // A review on its way: no second one, and the choice holds.
+  let sending = false;
 
   // Where the review goes: to the agent (the default) or only published.
   function toWhom() {
     const box = el("div", "towhom");
     const seg = el("div", "seg");
     seg.setAttribute("role", "radiogroup");
-    seg.setAttribute("aria-label", "Finish review");
+    seg.setAttribute("aria-label", "Where the comments go");
+    const note = el("p", "note");
+    const show = () => {
+      for (const b of seg.children) b.setAttribute("aria-checked", String(b.agent === S.toAgent));
+      note.textContent = S.toAgent
+        ? "Everyone will see them, and the agent gets them to work on."
+        : "Everyone will see them. Ask the agent to look at the comments.";
+    };
     for (const [agent, label] of [[true, "Send to agent"], [false, "Only publish"]]) {
+      // Changed in place, not by render(), so focus stays on the option.
       const b = button(label, () => {
-        if (S.toAgent === agent) return;
+        if (sending) return;
         S.toAgent = agent;
-        render();
+        show();
       }, "opt");
+      b.agent = agent;
       b.setAttribute("role", "radio");
-      b.setAttribute("aria-checked", String(S.toAgent === agent));
       seg.append(b);
     }
-    box.append(seg, el("p", "note", S.toAgent
-      ? "Everyone will see them, and the agent gets them to work on."
-      : "Everyone will see them. The agent is not asked to act."));
+    show();
+    box.append(seg, note);
     return box;
   }
 
@@ -1098,6 +1107,8 @@
   }
 
   async function finish(done) {
+    if (sending) return;
+    sending = true;
     done.disabled = true;
     try {
       if (!(await flushDeletes())) {
@@ -1130,6 +1141,7 @@
       // The drafts on the server may differ now (one gone, say).
       load();
     } finally {
+      sending = false;
       if (done.isConnected) done.disabled = !liveDrafts().length && !fields.general.value.trim();
     }
   }
@@ -1143,7 +1155,7 @@
   fields.general.addEventListener("input", () => {
     grow(fields.general);
     const done = finishButton;
-    if (done && done.isConnected) done.disabled = !liveDrafts().length && !fields.general.value.trim();
+    if (done && done.isConnected) done.disabled = sending || (!liveDrafts().length && !fields.general.value.trim());
   });
   // Enter adds the draft; Shift+Enter is a new line.
   fields.compose.addEventListener("keydown", (e) => {
