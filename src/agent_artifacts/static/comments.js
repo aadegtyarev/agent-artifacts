@@ -184,7 +184,10 @@
   // A comment's pin: the fill says its stage, the badge what is next.
   const AGENT = { waiting: "wait", working: "work", done: "fin", wrote: "wrote", asked: "ask" };
   function stateOf(c) {
-    const pend = c.mine !== true && !c.for_agent && !c.approved_by && !c.rejected_by;
+    // Awaiting approval: someone else's comment nothing was asked of the
+    // agent about yet. Read from `agent`, not `for_agent`: the agent's own
+    // reply to an only-published comment sets `agent` alone.
+    const pend = c.mine !== true && !c.agent && !c.approved_by && !c.rejected_by;
     const fill = c.rejected_by ? "rej" : pend ? "pend" : "solid";
     const dec = decisionOn(c.n);
     let badge = "";
@@ -221,7 +224,7 @@
     return n;
   }
   function lastSent() {
-    const times = [...new Set(S.comments.filter((c) => c.for_agent).map((c) => c.created_at))].sort();
+    const times = [...new Set(S.comments.filter((c) => c.agent).map((c) => c.created_at))].sort();
     if (!times.length) return null;
     const at = new Date(times[times.length - 1]);
     const hm = at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
