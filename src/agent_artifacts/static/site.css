@@ -144,11 +144,12 @@ iframe { display: block; border: 0; width: 100%; height: 100%; background: #fff;
 .st { display: block; overflow: hidden; color: var(--muted); font-size: 14px;
   text-overflow: ellipsis; white-space: nowrap; }
 .st.lost { color: var(--error); }
-/* The strip's badge: what the agent is doing, before the line. */
-.strip-text .bdg { position: relative; right: auto; top: auto; display: inline-flex; width: 18px;
-  height: 18px; margin-right: 8px; vertical-align: -4px; box-shadow: none; }
-.strip-text .bdg svg { width: 10px; height: 10px; }
-.strip-text .bdg::after { display: none; }
+/* Before the strip's line: the agent's pin, or the red dot. */
+.strip-text .pin.mini { display: inline-flex; width: 22px; min-width: 22px; height: 22px;
+  margin: 0 8px 0 0; vertical-align: -5px; box-shadow: none; }
+.strip-text .pin.mini > svg { width: 11px; height: 11px; }
+.strip-dot { display: inline-block; width: 10px; height: 10px; margin: 0 10px 0 4px;
+  vertical-align: 1px; border-radius: 50%; background: #ff3b30; }
 /* Under a comment: the person's decision, with a small Undo. */
 .dec { display: flex; align-items: baseline; gap: 6px; margin-top: 4px; color: var(--muted);
   font-size: 13px; }
@@ -251,15 +252,13 @@ iframe { display: block; border: 0; width: 100%; height: 100%; background: #fff;
 .pin.mini { position: relative; flex: none; width: 28px; min-width: 28px; height: 28px;
   margin-top: 1px; transform: none; font-family: inherit; font-size: 13px; cursor: inherit;
   box-shadow: 0 0 0 1.5px #fff, 0 1px 3px rgb(0 0 0 / 0.2); }
-.pin.mini.draft, .pin.mini.pend { border-width: 1.5px; box-shadow: none; }
+.pin.mini.line { border-width: 1.5px; box-shadow: none; }
+.pin.mini > svg { width: 13px; height: 13px; }
 .pin.mini::before { display: none; }
-.pin.mini .bdg { right: -6px; top: -7px; width: 18px; height: 18px; box-shadow: 0 0 0 1.5px var(--sheet-bg); }
-.pin.mini .bdg svg { width: 11px; height: 11px; }
-.pin.mini .bdg.new { right: -3px; top: -3px; width: 11px; height: 11px; }
-.pin.mini .bdg.work::after { inset: -3px; border-width: 1.5px; }
+.pin.mini .bdg { right: -3px; top: -3px; width: 11px; height: 11px; box-shadow: 0 0 0 1.5px var(--sheet-bg); }
 /* The agent in a comment's chat. */
 .ai { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 28px;
-  height: 28px; margin-top: 1px; border-radius: 50%; background: #5e5ce6; }
+  height: 28px; margin-top: 1px; border-radius: 50%; color: #fff; background: #5e5ce6; }
 .ai svg { width: 14px; height: 14px; display: block; }
 /* The layer over an image: the size of the image, pins placed in %,
    clipped so a pin at an edge never widens the page. */

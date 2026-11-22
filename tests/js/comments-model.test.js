@@ -25,14 +25,15 @@ const itemFor = (m, n) => m.itemOf(`c${n}`);
 
 test("a colleague's comment nothing went to the agent about awaits approval", () => {
   const m = model([comment(1)]);
-  assert.deepEqual(m.stateOf(comment(1)), { fill: "pend", badge: "", pend: true });
+  assert.deepEqual(m.stateOf(comment(1)), { tone: "other", fill: "line", label: "B", badge: "", pend: true });
   assert.deepEqual(m.status(itemFor(m, 1))[0], [null, "awaiting approval"]);
 });
 
 test("a colleague's only-published comment the agent answered is not pending", () => {
   // The agent's reply sets `agent` alone; `approved_by` stays empty.
   const m = model([comment(1, { agent: "wrote" })]);
-  assert.deepEqual(m.stateOf(comment(1, { agent: "wrote" })), { fill: "solid", badge: "wrote", pend: false });
+  assert.deepEqual(m.stateOf(comment(1, { agent: "wrote" })),
+    { tone: "agent", fill: "solid", label: "*", badge: "", pend: false });
   assert.deepEqual(m.status(itemFor(m, 1))[0], ["fin", "Done, wrote"]);
 });
 
@@ -40,7 +41,12 @@ test("own, approved and rejected comments do not await approval", () => {
   const m = model([]);
   assert.equal(m.stateOf(comment(1, { mine: true })).pend, false);
   assert.equal(m.stateOf(comment(1, { approved_by: "alice" })).pend, false);
-  assert.deepEqual(m.stateOf(comment(1, { rejected_by: "alice" })), { fill: "rej", badge: "", pend: false });
+  assert.deepEqual(m.stateOf(comment(1, { rejected_by: "alice" })),
+    { tone: "other", fill: "rej", label: "B", badge: "", pend: false });
+  // A name that starts with the star's sign gets no star.
+  assert.equal(m.stateOf(comment(1, { author: "*bob" })).label, "?");
+  // Accepted, a colleague's comment is blue: it is in force here.
+  assert.equal(m.stateOf(comment(1, { approved_by: "alice" })).tone, "own");
   const rejected = model([comment(1, { rejected_by: "alice" })]);
   assert.deepEqual(rejected.status(itemFor(rejected, 1))[0], [null, "rejected"]);
 });
@@ -49,11 +55,11 @@ test("a decision and a reply on one comment: the decision leads, the reply is no
   const m = model([comment(1), comment(2), comment(3)], [
     draft("approve", 1), draft("reply", 1), draft("reply", 2), draft("reject", 3),
   ]);
-  assert.equal(itemFor(m, 1).badge, "ok");
+  assert.deepEqual([itemFor(m, 1).tone, itemFor(m, 1).fill], ["own", "solid"]);
   assert.deepEqual(m.status(itemFor(m, 1))[0], ["mine", "✓ Approve · your reply"]);
-  assert.equal(itemFor(m, 2).badge, "re");
+  assert.deepEqual([itemFor(m, 2).tone, itemFor(m, 2).fill], ["other", "line"]);
   assert.deepEqual(m.status(itemFor(m, 2))[0], ["mine", "↩ Your reply"]);
-  assert.equal(itemFor(m, 3).badge, "no");
+  assert.equal(itemFor(m, 3).fill, "rej");
   assert.deepEqual(m.status(itemFor(m, 3))[0], ["mine", "✕ Reject"]);
   // A decision outranks the comment's own stage in the lead.
   const accepted = model([comment(4, { agent: "done", rejected_by: "x" })], [draft("accept", 4)]);
@@ -80,26 +86,34 @@ test("reviewCount ignores drafts about gone comments and drafts being deleted", 
   assert.equal(m.draftById(deleted.id), deleted); // still there for its Undo
 });
 
-test("badge priority: decision > own reply > unseen colleague reply > agent state", () => {
+test("the agent's pins: its star, outlined until done; decisions in blue; one red dot", () => {
   const replied = { replies: [{ mine: false, agent: false }] };
   const seen = {};
   const m = model([
-    comment(1, { agent: "asked", ...replied }),
-    comment(2, { agent: "asked", ...replied }),
-    comment(3, { agent: "asked", ...replied }),
-    comment(4, { agent: "asked" }),
-  ], [draft("approve", 1), draft("reply", 1), draft("reply", 2)], { seen });
-  assert.deepEqual(m.items().map((i) => i.badge), ["ok", "re", "new", "ask"]);
+    comment(1, { agent: "working" }),
+    comment(2, { agent: "done" }),
+    comment(3, { agent: "asked" }),
+    comment(4, { agent: "done" }),
+    comment(5, { agent: "done" }),
+    comment(6, { mine: true, ...replied }),
+  ], [draft("accept", 4), draft("reply", 5)], { seen });
+  const pin = (n) => { const it = itemFor(m, n); return [it.tone, it.fill, it.label, it.badge]; };
+  assert.deepEqual(pin(1), ["agent", "line", "*", ""]);
+  assert.deepEqual(pin(2), ["agent", "solid", "*", ""]);
+  assert.deepEqual(pin(3), ["agent", "line", "*", "new"]); // it asks
+  assert.deepEqual(pin(4), ["own", "solid", "*", ""]); // accepted here
+  assert.deepEqual(pin(5), ["own", "line", "*", ""]); // sent back with a reply
+  assert.deepEqual(pin(6), ["own", "solid", "B", "new"]); // a colleague replied
   // Seen once, the colleague's reply no longer shows the dot.
-  assert.equal(m.markSeen(itemFor(m, 3).c), true);
-  assert.equal(m.markSeen(itemFor(m, 3).c), false);
-  assert.deepEqual(seen, { 3: 1 });
-  assert.equal(itemFor(m, 3).badge, "ask");
+  assert.equal(m.markSeen(itemFor(m, 6).c), true);
+  assert.equal(m.markSeen(itemFor(m, 6).c), false);
+  assert.deepEqual(seen, { 6: 1 });
+  assert.equal(itemFor(m, 6).badge, "");
 });
 
 test("replies of the agent or one's own do not count as unseen", () => {
   const m = model([comment(1, { agent: "wrote", replies: [{ mine: true }, { agent: true }] })]);
-  assert.equal(itemFor(m, 1).badge, "wrote");
+  assert.equal(itemFor(m, 1).badge, "");
   assert.equal(m.othersReplies(itemFor(m, 1).c), 0);
 });
 
@@ -131,14 +145,14 @@ test("status leads per agent state, and the rest of the line", () => {
   assert.equal(one.status(itemFor(one, 1))[1], "Bob · 1 reply");
 });
 
-test("drafts: listed first with letters, their status says so", () => {
+test("drafts: listed first, marked with the author's letter, their status says so", () => {
   const drafts = Array.from({ length: 27 }, () => draft("comment"));
   const m = model([comment(5)], drafts);
   const all = m.items();
-  assert.deepEqual(all.slice(0, 3).map((i) => i.label), ["a", "b", "c"]);
-  assert.equal(all[26].label, "a2");
-  assert.equal(all[27].label, "5");
-  assert.equal(m.itemOf(`d${drafts[1].id}`).fill, "draft");
+  assert.deepEqual(all.slice(0, 3).map((i) => i.key), drafts.slice(0, 3).map((d) => `d${d.id}`));
+  assert.equal(all[0].label, "?"); // no author yet
+  assert.equal(all[27].label, "B");
+  assert.equal(m.itemOf(`d${drafts[1].id}`).fill, "line");
   assert.deepEqual(m.status(all[0]), [null, "your draft"]);
   assert.deepEqual(m.status(all[0], "on another screen"), [null, "your draft · on another screen"]);
   assert.equal(m.itemOf("c99"), null);

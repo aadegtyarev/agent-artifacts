@@ -7,8 +7,6 @@
 //   seen:    replies of others seen in this browser, per comment number
 //   now:     the clock, for the tests
 const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now } = {}) => {
-  const LETTERS = "abcdefghijklmnopqrstuvwxyz";
-  const letter = (i) => LETTERS[i % 26] + (i >= 26 ? String(Math.floor(i / 26) + 1) : "");
   const liveDrafts = () => state.drafts.filter((d) => !pending.has(d.id));
   const draftById = (id) => state.drafts.find((d) => d.id === id) || null;
 
@@ -37,21 +35,42 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
     return true;
   }
 
-  // A comment's pin: the fill says its stage, the badge what is next.
-  const AGENT = { waiting: "wait", working: "work", done: "fin", wrote: "wrote", asked: "ask" };
+  // A comment's pin. The tone says whose it is: "own" (blue: written or
+  // accepted here), "other" (orange: a colleague's), "agent" (purple: the
+  // agent has it). The fill says whether it is done: "line" not yet,
+  // "solid" done, "rej" rejected. Inside, the author's first letter, or
+  // STAR while it is the agent's work. One badge only: "new", a red dot
+  // for a colleague's unread reply or the agent's question.
+  const STAR = "*";
+  // A name starting with the star's sign does not pass for the agent.
+  const initial = (name) => {
+    const first = ([...String(name || "").trim()][0] || "?").toUpperCase();
+    return first === STAR ? "?" : first;
+  };
   function stateOf(c) {
     // Awaiting approval: someone else's comment nothing was asked of the
     // agent about yet: no `agent` state (the agent's own reply to an
     // only-published comment sets it too).
     const pend = c.mine !== true && !c.agent && !c.approved_by && !c.rejected_by;
-    const fill = c.rejected_by ? "rej" : pend ? "pend" : "solid";
     const dec = decisionOn(c.n);
+    const answered = c.agent === "done" || c.agent === "wrote" || c.agent === "asked";
+    let tone = c.mine === true || c.approved_by ? "own" : "other";
+    let fill = "solid";
+    let label = initial(c.author);
     let badge = "";
-    if (dec) badge = dec.kind === "reject" ? "no" : "ok";
-    else if (repliesOn(c.n).length) badge = "re";
-    else if (othersReplies(c) > (seen[c.n] || 0)) badge = "new";
-    else if (AGENT[c.agent]) badge = AGENT[c.agent];
-    return { fill, badge, pend };
+    // The person's decision in this review shows at once, in blue.
+    if (dec && dec.kind === "reject") fill = "rej";
+    else if (dec && dec.kind === "accept") [tone, label] = ["own", STAR];
+    else if (dec) tone = "own";
+    else if (answered && repliesOn(c.n).length) [tone, fill, label] = ["own", "line", STAR];
+    else if (c.rejected_by) fill = "rej";
+    else if (c.agent) {
+      [tone, label] = ["agent", STAR];
+      if (c.agent !== "done" && c.agent !== "wrote") fill = "line";
+      if (c.agent === "asked") badge = "new";
+    } else if (pend) fill = "line";
+    if (othersReplies(c) > (seen[c.n] || 0)) badge = "new";
+    return { tone, fill, label, badge, pend };
   }
 
   // The person's new drafts, then the published comments. Drafts stay in
@@ -59,13 +78,13 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
   // an app, say) without them disappearing.
   function items() {
     const list = [];
-    commentDrafts().forEach((d, i) => list.push({
-      key: `d${d.id}`, draft: true, own: true, label: letter(i), anchor: d.anchor, text: d.text, d,
-      fill: "draft", badge: "",
+    commentDrafts().forEach((d) => list.push({
+      key: `d${d.id}`, draft: true, tone: "own", label: initial(d.author),
+      anchor: d.anchor, text: d.text, d, fill: "line", badge: "",
     }));
     for (const c of state.comments) {
       const st = stateOf(c);
-      list.push({ key: `c${c.n}`, draft: false, own: c.mine === true, label: String(c.n),
+      list.push({ key: `c${c.n}`, draft: false, tone: st.tone, label: st.label,
         anchor: c.anchor, text: c.text, c, fill: st.fill, badge: st.badge, pend: st.pend });
     }
     return list;
@@ -118,7 +137,7 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
     else if (LEADS[c.agent]) lead = LEADS[c.agent];
     if (dec && mine) lead = ["mine", `${lead[1]} · your reply`];
     const parts = [c.author];
-    if (it.own) parts.push("you");
+    if (it.c.mine) parts.push("you");
     const replies = c.replies.length;
     parts.push(replies ? `${replies} ${replies === 1 ? "reply" : "replies"}` : when(c.created_at));
     if (lost) parts.push(lost);
@@ -142,7 +161,7 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
   const acceptAllShown = () => acceptable().length >= 2;
 
   return {
-    letter, liveDrafts, draftById, isComment, commentDrafts, actsOn, decisionOn, repliesOn,
+    STAR, initial, liveDrafts, draftById, isComment, commentDrafts, actsOn, decisionOn, repliesOn,
     reviewCount, othersReplies, markSeen, stateOf, items, itemOf, agentCounts, lastSent, when, status,
     acceptable, acceptAllShown,
   };

@@ -30,7 +30,7 @@
   document.documentElement.append(host);
 
   let picking = false;
-  // {key, label, anchor, own, draft, lit}; the key "new" is the pin of the
+  // {key, label, anchor, tone, fill, badge, lit}; the key "new" is the pin of the
   // draft being written, its element outlined.
   let pins = [];
   let hovered = null;
@@ -185,8 +185,9 @@
 
   // Badge marks, the same as in the viewer: pages.py puts pin-marks.js
   // before this script.
-  const { BADGES, badge } = pinMarks;
-  const FILLS = ["draft", "pend", "solid", "rej"];
+  const { BADGES, badge, inside } = pinMarks;
+  const FILLS = ["line", "solid", "rej"];
+  const TONES = { own: "own", other: "", agent: "ag" };
 
   // The pin `key` at (x, y): an existing button is moved, and only what
   // changed is set, so a lit pin's pulse does not start over.
@@ -199,15 +200,17 @@
       layer.append(b);
       drawn.set(key, b);
     }
-    // By the selected pin's size (32px), so a pin keeps its side when selected.
-    if (x + 32 > window.innerWidth) classes.push("left");
-    if (y < 32) classes.push("down");
+    // By the selected pin's size (36px), so a pin keeps its side when selected.
+    if (x + 36 > window.innerWidth) classes.push("left");
+    if (y < 36) classes.push("down");
     const className = ["pin", ...classes].filter(Boolean).join(" ");
     if (b.className !== className) b.className = className;
     if (b.dataset.label !== label || b.dataset.badge !== badgeName) {
       b.dataset.label = label;
       b.dataset.badge = badgeName;
-      b.replaceChildren(label);
+      b.replaceChildren(inside(label));
+      // The star is a picture: the button says what it is.
+      b.setAttribute("aria-label", label === "*" ? "Comment with the agent" : label ? `Comment by ${label}` : "The spot of the new draft");
       if (badgeName) b.append(badge(badgeName));
     }
     if (b.style.left !== `${x}px`) b.style.left = `${x}px`;
@@ -232,7 +235,7 @@
         if ((el && el.isConnected) || elsewhere) hidden.push(p.key);
         continue;
       }
-      pinAt(p.key, p.label, p.badge, at.x, at.y, p.own && "own", p.fill !== "solid" && p.fill, p.lit && "lit");
+      pinAt(p.key, p.label, p.badge, at.x, at.y, TONES[p.tone], p.fill !== "solid" && p.fill, p.lit && "lit");
       shown.add(p.key);
       if (p.key === "new") fresh = at.el;
     }
@@ -364,7 +367,8 @@
     } else if (m.type === "pins" && Array.isArray(m.pins) && m.pins.length <= 500) {
       pins = m.pins.filter((p) => p && isKey(p.key) && typeof p.label === "string"
         && length(p.label) <= 3 && isAnchor(p.anchor))
-        .map((p) => ({ key: p.key, label: p.label, anchor: p.anchor, own: p.own === true,
+        .map((p) => ({ key: p.key, label: p.label, anchor: p.anchor,
+          tone: Object.prototype.hasOwnProperty.call(TONES, p.tone) ? p.tone : "other",
           fill: FILLS.includes(p.fill) ? p.fill : "solid",
           badge: Object.prototype.hasOwnProperty.call(BADGES, p.badge) ? p.badge : "", lit: p.lit === true }));
       schedule(true);
