@@ -571,7 +571,11 @@ talk only through `postMessage`:
 
 A pin is placed by its selector; if that matches nothing, by the first
 element whose visible text starts with the anchor's `text`; if neither, it is
-not drawn, and its item says "spot not found" and shows the anchor's text.
+not drawn. When the element is on the page but not shown (another screen of
+an app, a closed tab), the script reports it in `hidden` beside `missing`
+and the item says "on another screen"; otherwise it says "spot not found" and
+shows the anchor's text. The text match of an element that is not shown uses
+its plain text, so a match by text alone can be less sure there.
 Pins are placed again when the page's size or content changes. Showing a pin
 scrolls its point, not just its element, to the middle.
 

@@ -176,7 +176,7 @@
   // closed tab. Not an error, just not here now.
   const away = (it) => lost(it) && !page.off && page.hidden.has(it.key);
   const lostText = (it) => (away(it) ? "on another screen" : "spot not found");
-  const lostClass = (it) => (lost(it) && !page.off && !away(it) ? " lost" : "");
+  const lostClass = (it) => (away(it) ? " away" : lost(it) && !page.off ? " lost" : "");
 
   // Where an item is, in a few words.
   function where(it) {
@@ -391,7 +391,7 @@
         add.append(button("+ About the whole file", () => composeWhole()));
         out.push(add);
       }
-      if (!stored && S.mode) out.push(el("p", "note", "This browser keeps nothing: your drafts last only while this page is open."));
+      if (!stored && (S.mode || drafts)) out.push(el("p", "note", "This browser keeps nothing: your drafts last only while this page is open."));
       // On a computer Finish review is in the strip's line heading the panel.
       return [out, drafts && !desk.matches ? [finishBar(drafts)] : []];
     },
