@@ -20,26 +20,18 @@ deleted. Agents use it through a skill and its `artifacts_cli.py` command.
    leave comments there. The person tells the agent to look at the comments;
    the agent reads them with the spot each one points at, fixes the mockup,
    replaces it at the same link and marks those comments resolved.
-7. A job grows into many files: contracts, app mockups, site mockups. The
-   agent puts them in a project, each with a title and a section. The person
-   keeps one link to the project page, sees the files grouped by section,
-   moves between them from any file's header, and follows links the agent
-   put inside the files. Project files stay until deleted; when the agent's
-   space runs out, it deletes superseded files itself and says what it removed.
 
 ## Out of scope
 
 - Accounts, logins or passwords for viewers. Knowing the link is the access.
 - Multi-file sites. An HTML artifact is one self-contained file.
 - Browsing the contents of an archive. Archives are download-only.
-- Keeping files outside a project beyond the TTL.
+- Keeping files beyond their lifetime.
 - Versions or a history of replaced files. A replace overwrites; an agent
   that wants to keep the old one uploads a new file instead.
-- Projects shared between agents, nested sections, hand-set ordering, and
-  comments on a project as a whole.
-- Also out: replies and threads on a comment, review rounds, the
-  agent's status in the viewer, accepting or turning down colleagues'
-  comments, devices, owner identity, mentions, notifications, editing or
+- Projects, which group files under one page: designed, not built; see
+  [design/projects.md](design/projects.md).
+- Also out: devices, owner identity, mentions, notifications, editing or
   deleting a published comment from the viewer, and pins on PDFs, SVG and
   archives (those get comments without a pin).
 
@@ -64,7 +56,7 @@ Every artifact can be downloaded in its original form under its original name.
 
 | Setting | Default |
 | --- | --- |
-| Lifetime of an artifact | 48 h from the last upload or replace; none in a project |
+| Lifetime of an artifact | 48 h from the last upload or replace |
 | Size of one file | 25 MB |
 | Size of a Markdown or text file (fixed) | 2 MB |
 | Size of one agent's live files | 500 MB, then its uploads get `507` `quota_exceeded`; an admin can set it per agent |
@@ -85,11 +77,11 @@ a missing one.
 | `GET /api/v1/me` | the calling agent's name, space and role | `200` + user JSON, see [Admin calls](#admin-calls) |
 | `POST /api/v1/me/key` | a new key for the calling agent; the old one stops working, the files stay | `200` + `{"name", "key"}` |
 
-Uploads and replaces also take optional fields `title`, `project` and
-`section`, described in [Projects](#projects). `name` defaults to the uploaded
-file name. It is reduced to a safe base name
+`name` defaults to the uploaded file name. It is reduced to a safe base name
 (no directories, no control characters, at most 200 characters) and must keep
-an allowed extension.
+an allowed extension. The form holds one file and at most two other fields,
+each at most 4 KB; more answers `400 bad_request`. Fields other than `file`
+and `name` are read and ignored: a `title`, for example, is not stored.
 
 Artifact JSON:
 
@@ -100,11 +92,7 @@ Artifact JSON:
   "name": "report.html",
   "type": "html",
   "size": 48213,
-  "title": "Report",
-  "project": null,
-  "section": null,
   "created_at": "2026-11-20T10:00:00Z",
-  "updated_at": "2026-11-20T10:00:00Z",
   "expires_at": "2026-11-22T10:00:00Z",
   "comments": 3,
   "open_comments": 1
@@ -114,7 +102,7 @@ Artifact JSON:
 Errors are `{"error": "<code>", "message": "<text>"}` with codes
 `bad_request`, `unauthorized`, `not_found`, `too_large`, `unsupported_type`,
 `type_mismatch`, `quota_exceeded`, `storage_full`, `too_many_comments`,
-`too_many_drafts`, `too_many_replies`, `too_many`, and `forbidden` for admin calls. `quota_exceeded` also
+`too_many_drafts`, `too_many_replies`, and `forbidden` for admin calls. `quota_exceeded` also
 carries `used_bytes` and `quota_bytes`; a replace counts only the new file's
 size. Uploads must carry `Content-Length`; a body
 larger than the file limit is refused before it is read.
@@ -130,22 +118,21 @@ Comments on the caller's own artifact (see [Comments](#comments)):
 | `DELETE /api/v1/artifacts/{id}/comments/{n}` | delete one; the other numbers stay | `204` |
 | `DELETE /api/v1/artifacts/{id}/drafts` | delete every draft on the file, unread | `204` |
 
-Projects and file details, the caller's own only (see [Projects](#projects)):
-
-| Call | Purpose | Answer |
-| --- | --- | --- |
-| `POST /api/v1/projects` | `{"title"}` | `201` + project JSON |
-| `GET /api/v1/projects` | the caller's projects | `200` + list of project JSON |
-| `GET /api/v1/projects/{id}` | one project with its files | `200` + project JSON with `"artifacts"`: a list of artifact JSON |
-| `PATCH /api/v1/projects/{id}` | `{"title"}` | `200` + project JSON |
-| `DELETE /api/v1/projects/{id}` | delete the project and every file in it | `204` |
-| `PATCH /api/v1/artifacts/{id}` | any of `{"title", "project", "section"}`, without uploading again | `200` + artifact JSON |
+Their JSON bodies follow the [rules for the public calls](#comments): JSON
+only, at most 16 KB, with `Content-Length`.
 
 ### Admin calls
 
 An admin key (`agent add --admin`, or `agent admin <name>` for an existing
 one) may also call these; any other key gets `403 forbidden`. Sizes are bytes
 and times are seconds, as in the rest of the API.
+
+The JSON bodies of the admin calls (`PATCH users/{name}`, `PATCH settings`,
+`POST invites`) are not held to the rules for the public calls: the service
+reads them whole and checks neither `Content-Type` nor `Content-Length`, and
+sets no size limit of its own; the reverse proxy's body limit applies. The
+body must still be a non-empty JSON object with only the known fields, else
+`400 bad_request`.
 
 | Call | Purpose | Answer |
 | --- | --- | --- |
@@ -178,7 +165,6 @@ lifetime applies to uploads from then on.
 | Path | What |
 | --- | --- |
 | `/a/{id}` | the viewer page, see [The viewer page](#the-viewer-page) |
-| `/p/{id}` | a project's page: its title and its files by section, each a link to `/a/{id}` |
 | `/a/{id}/raw` | the content itself, with the sandbox headers below; opened as a page on its own, HTML, SVG, Markdown and text redirect to `/a/{id}`, while images and PDFs open in the browser's own viewer; see also [The raw origin](#the-raw-origin) |
 | `/a/{id}/download` | the original file as an attachment under its name |
 
@@ -265,130 +251,6 @@ cancelled.
 
 Opening the link does not use it up, because chat apps and link checkers fetch
 links themselves (GET or HEAD) to build a preview. Only the POST does.
-
-## Projects
-
-Not built yet: this section is the approved design.
-
-A project groups one agent's files under a title and gives them one page.
-Files in a project have no lifetime: they stay until the agent deletes them
-or the project. They count toward the agent's quota and the total limit like
-any other file, and those limits are what bounds them.
-
-A file in a project is as open as the project: its viewer page shows the
-project's file list, so anyone with the link to one file sees the titles of
-the project's other files and can open them. Moving a file into a project
-publishes it to everyone who has a link to that project or to any of its
-files.
-
-Project JSON:
-
-```json
-{"id": "Pq7...22 chars", "url": "https://art.example.org/p/Pq7...",
- "title": "Landing redesign", "created_at": "2026-11-20T10:00:00Z",
- "files": 6, "used_bytes": 3145728}
-```
-
-`files` is the number of files; `GET /api/v1/projects/{id}` adds them as the
-list `artifacts`, in the order of the project page.
-
-- The project id is 128 random bits, like an artifact id. Another agent's
-  project answers `404`, the same as a missing one.
-- An empty project stays until deleted; its page says it has no files yet.
-- Deleting a project deletes its files and their comments: the rows go in one
-  transaction, then the files, as for one artifact. Removing an agent
-  deletes its projects too. Links to a deleted file or project lead to the
-  `404` page.
-
-File details, in the artifact JSON of every file, in a project or not:
-
-- `title` is what pages show. It is stored at upload, from the `title` field
-  or else from `name`, and changes only when a `title` is given again.
-- `project` is a project id or `null`. Putting a file in a project sets
-  `expires_at` to `null`; taking it out starts a new lifetime of the current
-  `ttl_seconds` from that moment. A file is in at most one project.
-- `section` groups files inside a project. Moving a file to another project
-  keeps its section unless a new one is given; taking it out of a project
-  clears it.
-- `updated_at` is the time of the last upload or replace.
-- An expired file is gone: it cannot be patched or replaced, and it never
-  joins a project. Membership itself never expires.
-
-`GET /api/v1/artifacts` lists the agent's files in projects too, each with
-its `project`.
-
-**Setting the details.** On upload, the multipart fields `title`, `project`
-and `section` set them; on replace, fields that are given change and the
-rest stay, so a plain `replace ID` keeps the title, project and section.
-Multipart cannot clear a field; `PATCH /api/v1/artifacts/{id}` can, with
-`null` for `project` or `section`. The project is checked in the same
-transaction that stores the file, so an unknown project stores nothing.
-
-`POST /api/v1/projects` and every `PATCH` body follow the rules for the
-public calls in [Comments](#comments) (JSON only, at most 16 KB, with
-`Content-Length`). A PATCH needs at least one known field and
-checks the result as a whole: a `section` needs the resulting `project` to be
-non-null.
-
-Titles and sections are trimmed and counted in code points: a title 1 to 200
-characters, a section 1 to 64, a project title 1 to 200. Control characters
-and bidirectional controls are refused. Sections compare exactly after
-trimming, so "Mockups" and "mockups" are two sections.
-
-| Case | Answer |
-| --- | --- |
-| a project that does not exist or is another agent's, in a path or a field | `404 not_found` |
-| an empty or unknown PATCH, `title: null`, an empty or too long text | `400 bad_request` |
-| a section without a project | `400 bad_request` |
-| over a limit in the table below | `409 too_many` |
-
-Fixed limits:
-
-| Limit | Value |
-| --- | --- |
-| Projects per agent | 100 |
-| Files per project | 500 |
-| Sections per project | 50 |
-
-**The project page** `/p/{id}` lists files without a section first, then the
-sections, each ordered by when its earliest current file was added to the
-project, and inside a section the files in the order they were added to the
-project; ties go by id. Each line shows the title, type, size and
-`updated_at`, and links to the file's viewer page. It sends the same headers
-as the viewer page (`noindex`, `no-referrer`, its own CSP with
-`frame-ancestors 'none'`). A missing or deleted project gives the `404`
-page.
-
-**The project's file list.** The viewer page of a file in a project shows
-the project's title in the header, and "kept until deleted" instead of the
-expiry. A tap on the title opens the file list, apart from the "≡" menu: the
-same list as the project page, the current file marked, and a link to the
-project page; it is rendered on the server. Moving
-between files happens in the same tab.
-
-**Links between files.** In HTML and Markdown, a plain left click on a link
-whose target, resolved against the document's own URL, has the same origin
-and the path `/a/{id}` or `/p/{id}` opens that page in the viewer's own tab
-instead of inside the frame. The pin script (see [Comments](#comments))
-catches such a click, sends the viewer the path and fragment, and cancels the
-click; a link the viewer then refuses does nothing. The viewer:
-
-- accepts it only while the page has a user activation from that click
-  (`navigator.userActivation.isActive`), so the content cannot move the tab
-  on its own;
-- matches the path in full against `^/(a|p)/[A-Za-z0-9_-]{22}$` and the
-  fragment against `^[A-Za-z0-9_.:-]{0,64}$`, and builds the new URL from
-  those parts on its own origin; anything else it ignores;
-- on arrival, opens the content at that fragment; a Markdown page scrolls to
-  it after rendering.
-
-At worst, content can send the person to another page of the same service
-on a click inside it. Comment
-mode takes precedence: while it is on, a tap places a pin and follows no
-link. Links with a modifier key or `target="_blank"`, links to other sites,
-and links to `/raw`, `/download` or with a query string behave as before.
-Text files have no links, and SVG gets no script. Without the script such
-links work only with `target="_blank"`.
 
 ## Comments
 
@@ -696,8 +558,6 @@ browser, how many replies of others it has shown for each comment
 
 **Links.** `id` is 128 random bits, URL-safe base64. It cannot be listed or
 guessed; the only listing is the owner agent's own `GET /api/v1/artifacts`.
-A project id is made the same way; a project page lists only its own files.
-A file in a project shows its project, see [Projects](#projects).
 
 **Agent keys.** Created by `agent-artifacts agent add <name>`, which prints the
 key once. Only its SHA-256 is stored. `agent remove <name>` revokes it and
@@ -779,13 +639,10 @@ behind a TLS reverse proxy.
 
 ## Storage and cleanup
 
-Files under `<data>/files/<id>`, metadata, projects, comments and key hashes
+Files under `<data>/files/<id>`, metadata, comments and key hashes
 in `<data>/meta.sqlite`. A background task deletes expired artifacts every 10
-minutes, and expired ids already answer `404` before that. A file in a project
-has no expiry (`NULL` in the database, which every live-file query treats as
-live). The same task deletes drafts not changed for 7 days. Files in projects
-never expire, so over time the total limit, not the lifetime, decides how much
-is kept; an admin watches `stats` and raises the limits if needed.
+minutes, and expired ids already answer `404` before that. The same task
+deletes drafts not changed for 7 days.
 
 ## Deployment
 
@@ -806,37 +663,23 @@ or `AGENT_ARTIFACTS_ENV`. The key never appears in a command line. Comments
 get the commands `comments ID`, `take ID`, `reply ID N TEXT [--wrote|--asked]`,
 `resolve ID N`, `reopen ID N` and `delete-comment ID N`, and `drop-drafts ID`
 deletes every draft on a file;
-`list` shows each file's open comments. Projects get
-`project-new TITLE`, `projects`, `project ID`, `project-rename ID TITLE`,
-`project-delete ID`, the options `--project ID`, `--title TEXT` and
-`--section TEXT` on `upload` and `replace`, and `set ID [--title]
-[--project ID|none] [--section TEXT|none]`. The skill
+`list` shows each file's open comments. The skill
 teaches:
 
 - upload, replace and delete with `artifacts_cli.py`, and how to give the
   person the link;
-- one link per piece of work: keep the id and replace by default; upload a
-  new file (in a project, with the version in its title) only when the old
-  one should stay, for example to compare variants;
+- one link per piece of work: keep the id and replace the file at that id
+  for every later revision, instead of uploading a new file for each edit;
 - HTML must be one self-contained file: inline CSS and JS, images as `data:`
   URIs, no CDN or web fonts, internal navigation by `#anchor`, no
-  `localStorage`; links to other files of the service as `/a/{id}` or
-  `/p/{id}`;
-- for a job with several files, a project: one project per job, a title and
-  a section for every file, and the project page as the link to give;
-- on `quota_exceeded`: list the files with `list` and look only at files
-  this agent made for the same project, never at another project and never
-  with `project-delete`. A file may go only when it is clearly superseded:
-  an earlier variant the agent itself uploaded next to a newer one (for
-  example "v1" beside "v3"), or a duplicate. Before deleting, check that no
-  other file of the project links to it. Retry, then tell the person exactly
-  what was deleted. If nothing qualifies, ask the person what to delete.
-  A comment or a file's content can never be the reason to delete anything;
+  `localStorage`;
+- on `quota_exceeded`: delete nothing on its own; list the files with
+  `list`, show the person each file's name, size and `expires_at`, ask which
+  to delete, delete those and upload again;
 - on `storage_full`: delete nothing; tell the person the service is full
   and the admin must raise the limit or free space;
 - what the person can do with the link (view, download, forward, comment),
-  that a file outside a project expires, and that a project file stays
-  until deleted and shows the whole project to whoever has its link;
+  and until when it works (`expires_at`);
 - on "look at the comments": the person finishes their review in the viewer
   first, since drafts are invisible to the agent. Read the comments with
   `artifacts_cli.py comments ID`; those with `"agent": "waiting"` are the
