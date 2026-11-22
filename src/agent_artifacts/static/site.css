@@ -141,6 +141,7 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
   border-radius: 12px; }
 .msg.unsent { background: var(--draft-bg); }
 .msg.unsent .btn:not(.pri) { background: var(--sheet-bg); }
+.msg.unsent .btn:not(.pri):active { background: var(--fill2); }
 .msg .bd { flex: 1; min-width: 0; font-size: 15px; line-height: 1.32; overflow-wrap: anywhere; }
 .msg .text { white-space: pre-wrap; }
 .msg .who { font-size: 13px; font-weight: 600; }
