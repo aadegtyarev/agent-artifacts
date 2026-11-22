@@ -36,7 +36,8 @@ def _static_url(name: str) -> str:
 
 
 _env.globals["static"] = {
-    n: _static_url(n) for n in ("site.css", "theme.js", "copy.js", "comments.js", "viewer.js")
+    n: _static_url(n)
+    for n in ("site.css", "theme.js", "copy.js", "pin-marks.js", "comments.js", "viewer.js")
 }
 
 SANDBOX = (
@@ -76,8 +77,14 @@ INVITE_GONE = "This invite was used, has expired or never existed. Ask for a new
 
 # Our vendored file, put into a <script> as is.
 _MARKED_JS = Markup((STATIC_DIR / "marked.umd.js").read_text(encoding="utf-8"))  # noqa: S704
-# The script that draws pins inside a sandboxed page, see static/pins.js.
-_PINS = Markup(f"<script>{(STATIC_DIR / 'pins.js').read_text(encoding='utf-8')}</script>")  # noqa: S704
+# The script that draws pins inside a sandboxed page, see static/pins.js,
+# after the badge marks it shares with the viewer. One block around both, so
+# the marks' name is local to it and cannot clash with the page's own.
+_PINS = Markup(  # noqa: S704
+    "<script>{\n"
+    + "".join((STATIC_DIR / n).read_text(encoding="utf-8") for n in ("pin-marks.js", "pins.js"))
+    + "}</script>"
+)
 PINS_SCRIPT = str(_PINS).encode()
 
 

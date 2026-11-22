@@ -94,6 +94,8 @@ def test_pages_get_the_pin_script_the_download_stays_the_file(env, filename, dat
     raw = client.get(f"/a/{art['id']}/raw").text.rstrip()
     script = PINS_SCRIPT.decode()
     assert raw.count(script) == 1
+    # The badge marks it shares with the viewer come first, in its block.
+    assert script.startswith("<script>{\n// The badge at a pin's corner")
     assert raw.endswith(script if filename == "a.html" else script + "</body></html>")
     assert client.get(f"/a/{art['id']}/download").content == data
 
@@ -732,10 +734,13 @@ def test_viewer_page_has_comments_on_every_type(env):
         assert 'id="name-dialog" class="scrim" hidden' in page.text, name
         assert 'id="toast" class="toast" role="status"' in page.text, name
         assert re.search(
-            r'<script src="/static/comments\.js\?v=[0-9a-f]{12}"></script>', page.text
+            r'<script src="/static/pin-marks\.js\?v=[0-9a-f]{12}"></script>\n'
+            r'<script src="/static/comments\.js\?v=[0-9a-f]{12}"></script>',
+            page.text,
         ), name
         assert "connect-src 'self'" in page.headers["content-security-policy"], name
     assert client.get("/static/comments.js").status_code == 200
+    assert client.get("/static/pin-marks.js").status_code == 200
     css = re.search(r'href="(/static/site\.css\?v=[0-9a-f]{12})"', page.text)
     assert css and client.get(css.group(1)).status_code == 200
 

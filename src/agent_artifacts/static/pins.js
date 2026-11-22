@@ -206,41 +206,13 @@
     box.style.height = `${r.height + 6}px`;
   }
 
+  // Badge marks, the same as in the viewer: pages.py puts pin-marks.js
+  // before this script.
+  const { BADGES, badge } = pinMarks;
+  const FILLS = ["draft", "pend", "solid", "rej"];
+
   // The pin `key` at (x, y): an existing button is moved, and only what
   // changed is set, so a lit pin's pulse does not start over.
-  // Badge marks, the same as in comments.js.
-  const MARK = {
-    star: "M6 .6C6.45 4 8 5.55 11.4 6 8 6.45 6.45 8 6 11.4 5.55 8 4 6.45.6 6 4 5.55 5.55 4 6 .6z",
-    check: "M2.4 6.3l2.4 2.4L9.6 3.6",
-    ask: "M4 4.3a2 2 0 1 1 2.9 1.8c-.6.3-.9.7-.9 1.3v.4M6 9.6v.2",
-    reply: "M4.8 2.8L2 5.6l2.8 2.8M2.3 5.6h5a2.6 2.6 0 0 1 2.6 2.6v1",
-    cross: "M3 3l6 6M9 3L3 9",
-  };
-  const BADGES = { wait: "star", work: "star", fin: "star", wrote: "ask", ask: "ask", ok: "check", re: "reply", no: "cross", new: "" };
-  const FILLS = ["draft", "pend", "solid", "rej"];
-  function badge(name) {
-    const span = document.createElement("span");
-    span.className = `bdg ${name}`;
-    const mark = BADGES[name];
-    if (!mark) return span;
-    const ns = "http://www.w3.org/2000/svg";
-    const svg = document.createElementNS(ns, "svg");
-    svg.setAttribute("viewBox", "0 0 12 12");
-    const path = document.createElementNS(ns, "path");
-    path.setAttribute("d", MARK[mark]);
-    if (mark === "star") path.setAttribute("fill", "#fff");
-    else {
-      path.setAttribute("fill", "none");
-      path.setAttribute("stroke", "#fff");
-      path.setAttribute("stroke-width", "2");
-      path.setAttribute("stroke-linecap", "round");
-      path.setAttribute("stroke-linejoin", "round");
-    }
-    svg.append(path);
-    span.append(svg);
-    return span;
-  }
-
   function pinAt(key, label, badgeName, x, y, ...classes) {
     let b = drawn.get(key);
     if (!b) {
