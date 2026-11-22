@@ -219,7 +219,7 @@
   // On a phone every view's title line ends with a fold button, at the
   // far right and far from Finish review at the bottom.
   function foldButton() {
-    const b = button("", (e) => { e.stopPropagation(); fold(); }, "chev fold");
+    const b = button("", () => fold(), "chev fold");
     b.append(icon("down"));
     b.setAttribute("aria-label", "Fold the sheet");
     b.title = "Fold";
@@ -851,6 +851,15 @@
 
   // Back to the strip on a phone, to the list on a computer.
   function fold() {
+    // A typed reply would be left without its comment, and the next item
+    // would refuse to open: it is sent or cleared first.
+    const editing = S.edit && draftById(S.edit);
+    const dirty = editing && fields.edit.value !== editing.text;
+    if (fields.reply.value.trim() || dirty) {
+      toast(dirty ? "Save or cancel the edit first" : "Send or clear the reply first");
+      render();
+      return;
+    }
     S.sel = null;
     S.edit = null;
     S.view = "list";

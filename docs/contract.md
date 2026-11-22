@@ -176,12 +176,12 @@ no-referrer`.
 ### The viewer page
 
 The header is one bar: the file name with its size and expiry on a second line
-under it, and two square buttons. The speech bubble switches comment mode (see
-[Comments](#comments)); while it is on, the bubble is blue and pressed. The
-"≡" button opens the menu: a column of square icon buttons with labels, fanned
-out downwards from it over the dimmed page:
+under it, and three square buttons. The speech bubble switches comment mode
+(see [Comments](#comments)); while it is on, the bubble is blue and pressed.
+The next one enters **Full screen**. The "≡" button opens the menu: a column
+of square icon buttons with labels, fanned out downwards from it over the
+dimmed page:
 
-- **Full screen**;
 - **Download**, the same as `/a/{id}/download`;
 - **Copy link** to the viewer page, confirmed by a toast;
 - **Open separately**: the file at [the raw origin](#the-raw-origin) in a
@@ -200,8 +200,8 @@ A tap outside the menu or Escape closes it.
 the Fullscreen API exists (not on an iPhone). A floating "≡" button takes the
 header's place: translucent, dragged anywhere, it snaps to the nearer side
 edge, and this browser keeps its position for every file. It opens the same
-menu, upwards or downwards where there is room, with **Exit full screen** in
-place of **Full screen** and **Comment** added. In comment mode the floating
+menu, upwards or downwards where there is room, with **Exit full screen** and
+**Comment** added. In comment mode the floating
 button has a blue ring inside its edge and a small blue bubble in its corner,
 and **Comment** is a checked item reading **Commenting**; a tap turns the mode
 off. A long press (500 ms, still) on the floating button turns comment mode
@@ -303,6 +303,9 @@ the item at ¼. With one item pulled up to ½ or full, a tap on a row under it,
 on a pin or on ‹ › brings that item to the top at the same height. The selected pin is drawn bigger. Dragging the grip or the
 sheet's title line (its buttons too) snaps to the nearest height; a tap on
 the grip steps ½ and full, a tap on one item's title goes back to the list.
+On a phone each title line ends with a fold button (⌄) at the far right that
+folds the sheet to the strip, away from **Finish review** at the bottom; with a
+reply typed it does not fold and says to send or clear it first.
 **Finish review** opens at ½. Folding a new draft to the strip drops it, with Undo if text was typed. The keyboard pushes the sheet up and
 the pin stays in sight above it. Buttons show only on the selected item:
 **Edit** and **Delete** on the person's own draft or reply; on a published
