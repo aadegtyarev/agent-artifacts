@@ -32,7 +32,7 @@
     : sheet.dataset.pin === "element" && frame ? "element" : null;
   // The script in a page's frame: `ready` once it said so, `off` once it
   // clearly is not coming; `missing`: keys of pins it did not find.
-  const page = { ready: false, off: false, missing: new Set(), picking: false };
+  const page = { ready: false, off: false, missing: new Set(), hidden: new Set(), picking: false };
   const canPin = () => pinType === "point" || (pinType === "element" && page.ready);
 
   const desk = window.matchMedia("(min-width: 900px)");
@@ -152,14 +152,14 @@
   const liveDrafts = () => S.drafts.filter((d) => !pending.has(d.id));
   const draftById = (id) => S.drafts.find((d) => d.id === id) || null;
 
-  // The person's drafts (only in comment mode), then the published comments.
+  // The person's drafts, then the published comments. Drafts stay in sight
+  // with comment mode off, so the page can be used (another screen of an
+  // app, say) without them disappearing.
   function items() {
     const list = [];
-    if (S.mode) {
-      liveDrafts().forEach((d, i) => list.push({
-        key: `d${d.id}`, draft: true, own: true, label: letter(i), anchor: d.anchor, text: d.text, d,
-      }));
-    }
+    liveDrafts().forEach((d, i) => list.push({
+      key: `d${d.id}`, draft: true, own: true, label: letter(i), anchor: d.anchor, text: d.text, d,
+    }));
     for (const c of S.comments) {
       list.push({ key: `c${c.n}`, draft: false, own: c.mine === true, label: String(c.n),
         anchor: c.anchor, text: c.text, c });
@@ -172,6 +172,11 @@
   const pinnable = (anchor) => Boolean(anchor && pinType && anchor.type === pinType);
   const lost = (it) => pinType === "element" && pinnable(it.anchor)
     && ((page.ready && page.missing.has(it.key)) || page.off);
+  // Its element is on the page but not shown: another screen of an app, a
+  // closed tab. Not an error, just not here now.
+  const away = (it) => lost(it) && !page.off && page.hidden.has(it.key);
+  const lostText = (it) => (away(it) ? "on another screen" : "spot not found");
+  const lostClass = (it) => (lost(it) && !page.off && !away(it) ? " lost" : "");
 
   // Where an item is, in a few words.
   function where(it) {
@@ -426,8 +431,8 @@
         bd.append(el("div", "text", it.text));
         const notes = [];
         if (!it.draft && it.c.before_replace) notes.push("written before the file was replaced");
-        if (lost(it)) notes.push(page.off ? `on ${where(it)}` : `spot not found · ${where(it)}`);
-        if (notes.length) bd.append(el("span", `st${lost(it) && !page.off ? " lost" : ""}`, notes.join(" · ")));
+        if (lost(it)) notes.push(page.off ? `on ${where(it)}` : `${lostText(it)} · ${where(it)}`);
+        if (notes.length) bd.append(el("span", `st${lostClass(it)}`, notes.join(" · ")));
         if (it.draft) {
           const acts = el("div", "acts");
           acts.append(button("Edit", () => startEdit(it.d)), button("Delete", () => deleteDraft(it.d)));
@@ -478,11 +483,11 @@
   let finishButton = null;
 
   function status(it) {
-    if (it.draft) return lost(it) ? `your draft · spot not found` : "your draft";
+    if (it.draft) return lost(it) && !page.off ? `your draft · ${lostText(it)}` : "your draft";
     const parts = [it.c.author];
     if (it.own) parts.push("you");
     parts.push(when(it.c.created_at));
-    if (lost(it) && !page.off) parts.push("spot not found");
+    if (lost(it) && !page.off) parts.push(lostText(it));
     return parts.join(" · ");
   }
 
@@ -492,7 +497,7 @@
     r.dataset.key = it.key;
     const tx = el("span", "tx");
     tx.append(el("span", "main", (it.anchor ? "" : "About the whole file: ") + it.text));
-    const st = el("span", `st${lost(it) && !page.off ? " lost" : ""}`, line);
+    const st = el("span", `st${lostClass(it)}`, line);
     tx.append(st);
     r.append(miniPin(it), tx);
     r.addEventListener("click", () => openItem(it.key));
@@ -712,8 +717,12 @@
     } else if (m.type === "placed" && Array.isArray(m.missing) && m.missing.length <= 500
       && m.missing.every(isKey)) {
       const missing = new Set(m.missing.map(fromFrame));
-      const same = missing.size === page.missing.size && [...missing].every((k) => page.missing.has(k));
+      const hidden = new Set((Array.isArray(m.hidden) && m.hidden.length <= 500 ? m.hidden : [])
+        .filter(isKey).map(fromFrame));
+      const same = missing.size === page.missing.size && [...missing].every((k) => page.missing.has(k))
+        && hidden.size === page.hidden.size && [...hidden].every((k) => page.hidden.has(k));
       page.missing = missing;
+      page.hidden = hidden;
       // The list and the item say which spots were not found; a field being
       // typed in is not redrawn for that.
       if (!same && !Object.values(fields).includes(document.activeElement)) render();
@@ -745,6 +754,7 @@
       page.ready = false;
       page.picking = false;
       page.missing = new Set();
+      page.hidden = new Set();
       render();
       tell({ type: "hello" });
       waitForScript(2000);
@@ -1121,10 +1131,7 @@
   let drag = null;
 
   function openList() {
-    const show = () => go("list", "h");
-    // Drafts show only in comment mode.
-    if (!S.mode && liveDrafts().length) setMode(true, show);
-    else show();
+    go("list", "h");
   }
 
   strip.addEventListener("click", (e) => {
@@ -1161,7 +1168,6 @@
       sheet.classList.add("dragging");
       // From the strip the sheet opens on the list as it is pulled.
       if (S.pos === "strip") {
-        if (!S.mode && liveDrafts().length) setMode(true);
         S.pos = "h";
         S.view = "list";
         render();

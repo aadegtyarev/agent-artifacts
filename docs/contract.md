@@ -411,9 +411,11 @@ asks for a name once ("No name" leaves it `anonymous`). While it is on, a tap
 on the content places a draft pin where a pin is possible (a link or a button
 under it does not fire) and opens the sheet with a field and **Add**. Add
 keeps the draft on the server; the mode stays on for the next spot. "+ About
-the whole file" at the end of the list adds a draft without a pin. The
-person's drafts and their pins show only in comment mode. Published comments
-show their pins always.
+the whole file" at the end of the list adds a draft without a pin. Drafts
+and all pins show with comment mode off too, so the page can be used (another
+screen of an app) and the pins come back with their elements. A pin whose
+element is on the page but not shown reads "on another screen"; one whose
+element is gone reads "spot not found".
 
 **The sheet.** On a phone or a window under 900 px wide, comments live in a
 bottom sheet with four heights:
