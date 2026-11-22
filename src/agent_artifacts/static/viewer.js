@@ -14,6 +14,7 @@
   const items = () => [...list.querySelectorAll(".fan-item")].filter((i) => i.getClientRects().length);
   const GAP = 8; // between a button and its menu, and from the window's edges
   const DRAG_PX = 8; // a move shorter than this is a tap
+  const LONG_MS = 500; // held this long, still: comment mode on or off
   const PLACE_KEY = "aa-float-button";
 
   // --- The menu ---------------------------------------------------------------
@@ -250,11 +251,33 @@
     floatButton.setPointerCapture(e.pointerId);
     // A mouse over the content's frame would move inside the frame instead.
     document.body.classList.add("float-pressed");
+    // Held still: comment mode on or off, the button's second action.
+    const held = drag;
+    held.timer = setTimeout(() => {
+      if (drag !== held || held.moved) return;
+      held.long = true;
+      draggedAt = performance.now(); // its click does not open the menu
+      closeFan(false);
+      commentsToggle.click();
+      // The press's own click, on letting go, does not land on what this
+      // opened (the name dialog's backdrop).
+      const swallow = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
+      window.addEventListener("click", swallow, { capture: true, once: true });
+      floatButton.addEventListener("pointerup", () => setTimeout(() => {
+        window.removeEventListener("click", swallow, { capture: true });
+      }, 0), { once: true });
+      if (navigator.vibrate) navigator.vibrate(12);
+      const on = document.body.classList.contains("commenting");
+      if ($("name-dialog")?.hidden !== false) toast(on ? "Commenting · tap a spot to add" : "Commenting off");
+    }, LONG_MS);
   });
+  // A long press is not the browser's menu.
+  floatButton.addEventListener("contextmenu", (e) => e.preventDefault());
   floatButton.addEventListener("pointermove", (e) => {
-    if (!drag || e.pointerId !== drag.id) return;
+    if (!drag || e.pointerId !== drag.id || drag.long) return;
     if (!drag.moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < DRAG_PX) return;
     if (!drag.moved) {
+      clearTimeout(drag.timer);
       drag.moved = true;
       closeFan(false);
       floatButton.classList.add("dragging");
@@ -268,6 +291,7 @@
   });
   function endDrag(e) {
     if (!drag || e.pointerId !== drag.id) return;
+    clearTimeout(drag.timer);
     const moved = drag.moved;
     drag = null;
     document.body.classList.remove("float-pressed");
@@ -286,6 +310,7 @@
   // Never leave the content's frame without pointer events.
   function cancelDrag() {
     if (drag && drag.moved && !floatButton.hidden) applyPlace(); // back where it was
+    if (drag) clearTimeout(drag.timer);
     drag = null;
     floatButton.classList.remove("dragging");
     document.body.classList.remove("float-pressed");

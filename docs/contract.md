@@ -214,8 +214,10 @@ header's place: translucent, dragged anywhere, it snaps to the nearer side
 edge, and this browser keeps its position for every file. It opens the same
 menu, upwards or downwards where there is room, with **Exit full screen** in
 place of **Full screen** and **Comment** added. In comment mode the floating
-button is blue, like the header's bubble, and **Comment** is a checked item
-reading **Commenting**; a tap turns the mode off. When the browser leaves full
+button has a blue ring inside its edge and a small blue bubble in its corner,
+and **Comment** is a checked item reading **Commenting**; a tap turns the mode
+off. A long press (500 ms, still) on the floating button turns comment mode
+on or off, with a short vibration where the device has one and a toast. When the browser leaves full
 screen by itself (Escape, a system gesture), the viewer stays in its own full
 screen until Exit full screen.
 
