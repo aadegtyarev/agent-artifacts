@@ -452,11 +452,16 @@ class Store:
             db.close()
 
     @contextmanager
-    def _conn(self) -> Iterator[sqlite3.Connection]:
+    def _conn(self, *, write: bool = False) -> Iterator[sqlite3.Connection]:
+        """A connection; with ``write``, inside one transaction that holds the
+        write lock from its first statement, so whatever a method checks
+        before it writes still holds when it commits."""
         db = sqlite3.connect(self._db, timeout=10)
         try:
             db.execute("PRAGMA foreign_keys = ON")
             with db:
+                if write:
+                    db.execute("BEGIN IMMEDIATE")
                 yield db
         finally:
             db.close()
@@ -471,7 +476,7 @@ class Store:
 
     def set_settings(self, **values: int) -> None:
         assert set(values) <= set(SETTINGS), values
-        with self._conn() as db:
+        with self._conn(write=True) as db:
             db.executemany(
                 "INSERT INTO settings VALUES (?, ?) "
                 "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -488,7 +493,7 @@ class Store:
     def add_agent(self, name: str, *, admin: bool = False) -> str:
         """Create an agent and return its key; only the hash is kept."""
         key = _new_key()
-        with self._conn() as db:
+        with self._conn(write=True) as db:
             db.execute(
                 "INSERT INTO agents (name, key_hash, admin) VALUES (?, ?, ?)",
                 (name, hash_key(key), int(admin)),
@@ -496,13 +501,13 @@ class Store:
         return key
 
     def set_admin(self, name: str, admin: bool) -> bool:
-        with self._conn() as db:
+        with self._conn(write=True) as db:
             sql = "UPDATE agents SET admin = ? WHERE name = ?"
             return db.execute(sql, (int(admin), name)).rowcount > 0
 
     def set_quota(self, name: str, quota_bytes: int | None) -> bool:
         """Give ``name`` its own quota, or None for the common one."""
-        with self._conn() as db:
+        with self._conn(write=True) as db:
             sql = "UPDATE agents SET quota_bytes = ? WHERE name = ?"
             return db.execute(sql, (quota_bytes, name)).rowcount > 0
 
@@ -530,12 +535,12 @@ class Store:
     def new_key(self, name: str) -> str:
         """Give ``name`` a new key; the old one stops working at once."""
         key = _new_key()
-        with self._conn() as db:
+        with self._conn(write=True) as db:
             db.execute("UPDATE agents SET key_hash = ? WHERE name = ?", (hash_key(key), name))
         return key
 
     def remove_agent(self, name: str) -> bool:
-        with self._conn() as db:
+        with self._conn(write=True) as db:
             ids = [r[0] for r in db.execute("SELECT id FROM artifacts WHERE owner = ?", (name,))]
             gone = db.execute("DELETE FROM agents WHERE name = ?", (name,)).rowcount > 0
         for artifact_id in ids:
@@ -557,8 +562,7 @@ class Store:
         token's hash is kept. Raises NameTaken if the name is in use."""
         token = secrets.token_urlsafe(32)
         invite = Invite(secrets.token_urlsafe(6), name, by, self.clock() + ttl)
-        with self._conn() as db:
-            db.execute("BEGIN IMMEDIATE")
+        with self._conn(write=True) as db:
             db.execute("DELETE FROM invites WHERE expires_at <= ?", (self.clock(),))
             if db.execute("SELECT 1 FROM agents WHERE name = ?", (name,)).fetchone():
                 raise NameTaken
@@ -590,15 +594,14 @@ class Store:
         return Invite(*row) if row else None
 
     def cancel_invite(self, invite_id: str) -> bool:
-        with self._conn() as db:
+        with self._conn(write=True) as db:
             return db.execute("DELETE FROM invites WHERE id = ?", (invite_id,)).rowcount > 0
 
     def claim_invite(self, token: str) -> tuple[str, str] | None:
         """Use up the invite: create its agent and return (name, key). None if
         the token is unknown, used or expired; NameTaken if the name is in use."""
         key = _new_key()
-        with self._conn() as db:
-            db.execute("BEGIN IMMEDIATE")
+        with self._conn(write=True) as db:
             row = db.execute(
                 "DELETE FROM invites WHERE token_hash = ? AND expires_at > ? RETURNING name",
                 (hash_key(token), self.clock()),
@@ -656,10 +659,9 @@ class Store:
             shutil.copyfileobj(src, out)
         now = self.clock()
         try:
-            with self._conn() as db:
+            with self._conn(write=True) as db:
                 # Hold the write lock from the size checks to the insert, so two
                 # uploads cannot both fit into the same free space.
-                db.execute("BEGIN IMMEDIATE")
                 settings = self.settings(db)
                 ttl = settings["ttl_seconds"]
                 quota = self._quota_for(owner, db)
@@ -712,9 +714,7 @@ class Store:
         between shows on the next poll. The owner gets them all and marks them
         read in the same transaction, so it marks exactly what it returns;
         anyone else gets the open ones, each marked as ``key_hash``'s or not."""
-        with self._conn() as db:
-            if owner is not None:
-                db.execute("BEGIN IMMEDIATE")
+        with self._conn(write=owner is not None) as db:
             artifact = self._artifact(db, artifact_id, owner)
             if artifact is None:
                 return None
@@ -732,7 +732,7 @@ class Store:
         self, artifact_id: str, n: int, resolved: bool, *, owner: str
     ) -> Comment | None:
         """Mark a comment resolved or open."""
-        with self._conn() as db:
+        with self._conn(write=True) as db:
             if self._artifact(db, artifact_id, owner) is None:
                 return None
             db.execute(
@@ -743,7 +743,7 @@ class Store:
             return self._comment(db, artifact_id, n)
 
     def delete_comment(self, artifact_id: str, n: int, *, owner: str) -> bool:
-        with self._conn() as db:
+        with self._conn(write=True) as db:
             if self._artifact(db, artifact_id, owner) is None:
                 return False
             sql = "DELETE FROM comments WHERE artifact_id = ? AND n = ?"
@@ -757,8 +757,7 @@ class Store:
     def take(self, artifact_id: str, *, owner: str) -> list[Comment] | None:
         """The owner agent takes every open comment waiting for it: they
         become working. Returns those; None if there is no such artifact."""
-        with self._conn() as db:
-            db.execute("BEGIN IMMEDIATE")
+        with self._conn(write=True) as db:
             if self._artifact(db, artifact_id, owner) is None:
                 return None
             args = {"id": artifact_id, "now": self.clock(), "key": None}
@@ -778,8 +777,7 @@ class Store:
         """The owner agent's reply in comment ``n``'s chat, setting its
         agent state; None if there is no such comment. Raises TooManyReplies."""
         assert state in ANSWERED, state
-        with self._conn() as db:
-            db.execute("BEGIN IMMEDIATE")
+        with self._conn(write=True) as db:
             if self._artifact(db, artifact_id, owner) is None:
                 return None
             args = {"id": artifact_id, "n": n, "now": self.clock(), "state": state}
@@ -834,8 +832,7 @@ class Store:
         earlier one on that comment. Raises TooManyDrafts, NoSuchComment,
         DraftRefused."""
         assert kind in DRAFT_KINDS and (of_n is None) == (kind == "comment"), (kind, of_n)
-        with self._conn() as db:
-            db.execute("BEGIN IMMEDIATE")
+        with self._conn(write=True) as db:
             if self._artifact(db, artifact_id) is None:
                 return None
             args = self._draft_args(artifact_id, key_hash, of=of_n)
@@ -879,7 +876,7 @@ class Store:
     def edit_draft(self, artifact_id: str, key_hash: str, draft_id: str, text: str) -> Draft | None:
         """Change the text of a comment or reply draft; None if there is no
         such draft of ``key_hash``'s, or it is a decision, which has no text."""
-        with self._conn() as db:
+        with self._conn(write=True) as db:
             row = db.execute(
                 f"UPDATE drafts SET text = :text, updated_at = :now WHERE {_OWN_DRAFT} "  # noqa: S608
                 f"AND kind IN ('comment', 'reply') RETURNING {_DRAFT_COLUMNS}",
@@ -888,7 +885,7 @@ class Store:
         return Draft(*row) if row else None
 
     def delete_draft(self, artifact_id: str, key_hash: str, draft_id: str) -> bool:
-        with self._conn() as db:
+        with self._conn(write=True) as db:
             args = self._draft_args(artifact_id, key_hash, draft=draft_id)
             sql = f"DELETE FROM drafts WHERE {_OWN_DRAFT}"  # noqa: S608 (a constant)
             return db.execute(sql, args).rowcount > 0
@@ -896,7 +893,7 @@ class Store:
     def drop_drafts(self, artifact_id: str, *, owner: str) -> bool:
         """Delete every draft on the owner's file, unread; False if there is
         no such artifact of ``owner``'s."""
-        with self._conn() as db:
+        with self._conn(write=True) as db:
             if self._artifact(db, artifact_id, owner) is None:
                 return False
             db.execute("DELETE FROM drafts WHERE artifact_id = ?", (artifact_id,))
@@ -926,8 +923,7 @@ class Store:
         Returns the comments made or touched and still open, by number; None
         if the artifact is gone. Raises NothingToPublish, TooManyComments,
         TooManyReplies."""
-        with self._conn() as db:
-            db.execute("BEGIN IMMEDIATE")
+        with self._conn(write=True) as db:
             artifact = self._artifact(db, artifact_id)
             if artifact is None:
                 return None
@@ -1047,7 +1043,7 @@ class Store:
                 raise TooManyReplies
 
     def delete(self, artifact_id: str, *, owner: str) -> bool:
-        with self._conn() as db:
+        with self._conn(write=True) as db:
             sql = "DELETE FROM artifacts WHERE id = ? AND owner = ?"
             gone = db.execute(sql, (artifact_id, owner)).rowcount > 0
         if gone:
@@ -1055,7 +1051,7 @@ class Store:
         return gone
 
     def purge_expired(self) -> int:
-        with self._conn() as db:
+        with self._conn(write=True) as db:
             expired = db.execute("SELECT id FROM artifacts WHERE expires_at <= ?", (self.clock(),))
             ids = [r[0] for r in expired]
             db.executemany("DELETE FROM artifacts WHERE id = ?", [(i,) for i in ids])
