@@ -54,7 +54,7 @@ def admin_routes(store: Store, public_url: str) -> list[Route]:
                 raise ApiError(400, "bad_request", "an admin cannot remove its own key")
             await run_in_threadpool(store.remove_agent, name)
             return Response(status_code=204)
-        data = await json_body(request, {"quota_bytes"}, {"quota_bytes"})
+        data = await json_body(request, {"quota_bytes"}, {"quota_bytes"}, strict=False)
         quota = data["quota_bytes"]
         if quota is not None:
             quota = _int(quota, "quota_bytes", MIN_BYTES, MAX_BYTES)
@@ -79,7 +79,9 @@ def admin_routes(store: Store, public_url: str) -> list[Route]:
     async def settings(request: Request) -> Response:
         require_admin(store, request)
         if request.method == "PATCH":
-            data = await json_body(request, {"user_quota_bytes", "max_total_bytes", "ttl_seconds"})
+            data = await json_body(
+                request, {"user_quota_bytes", "max_total_bytes", "ttl_seconds"}, strict=False
+            )
             values = {}
             if "user_quota_bytes" in data:
                 values["user_quota_bytes"] = _int(
@@ -107,7 +109,7 @@ def admin_routes(store: Store, public_url: str) -> list[Route]:
         if request.method == "GET":
             found = await run_in_threadpool(store.invites)
             return JSONResponse([_invite_json(i) for i in found])
-        data = await json_body(request, {"name", "ttl_seconds"}, {"name"})
+        data = await json_body(request, {"name", "ttl_seconds"}, {"name"}, strict=False)
         name = data["name"]
         if not isinstance(name, str) or not re.fullmatch(NAME_RE, name):
             raise ApiError(

@@ -777,3 +777,18 @@ def test_markdown_page_stays_about_the_size_of_the_file(env):
 
 def test_sandboxed_forms_submit_nowhere():
     assert "form-action 'none'" in SANDBOX_CSP
+
+
+def test_admin_bodies_skip_the_public_body_checks(env):
+    # Kept as it was: the admin calls take a body without Content-Type or
+    # Content-Length, and over the 16 KB the public calls allow.
+    client, store, _ = env
+    root = auth(store.add_agent("root", admin=True))
+    padded = b'{"ttl_seconds": 86400' + b" " * 17000 + b"}"
+    for method, path, body in (
+        ("PATCH", "/api/v1/admin/settings", padded),
+        ("PATCH", "/api/v1/admin/users/alice", b'{"quota_bytes": null}'),
+        ("POST", "/api/v1/admin/invites", b'{"name": "carol"}'),
+    ):
+        r = client.request(method, path, content=iter([body]), headers=root)
+        assert r.status_code in (200, 201), (path, r.text)
