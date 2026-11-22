@@ -1450,8 +1450,24 @@
   const banner = el("div", "banner");
   banner.hidden = true;
   banner.setAttribute("role", "status");
-  banner.append(el("span", "", "The file was updated"), button("Show", () => location.reload(), "btn pri"));
+  banner.append(el("span", "", "The file was updated"), button("Show", () => showNewFile(), "btn pri"));
   document.body.append(banner);
+  // Only the content is loaded again, not the page: a reload would end full
+  // screen and fold the sheet. The new file's time is taken from the next
+  // answer. An archive has nothing to show in place.
+  function showNewFile() {
+    const content = document.querySelector("main iframe");
+    const img = $("image");
+    if (!content && !img) {
+      location.reload();
+      return;
+    }
+    banner.hidden = true;
+    fileAt = null;
+    if (content) content.src = content.src;
+    else img.src = `${img.src.split("?")[0]}?v=${Date.now()}`;
+    load();
+  }
   // The first answer sets what the page shows; a later different one means
   // the file was replaced.
   function noteFile(at) {
