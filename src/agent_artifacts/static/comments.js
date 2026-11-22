@@ -159,11 +159,14 @@
   const isComment = (d) => !d.kind || d.kind === "comment";
   const commentDrafts = () => liveDrafts().filter(isComment);
   const actsOn = (n) => liveDrafts().filter((d) => !isComment(d) && d.of === n);
+  // A reply or decision about a comment that is gone (closed meanwhile) is
+  // left out; the server drops it when the review is finished.
+  const here = (d) => S.comments.some((c) => c.n === d.of);
   const decisionOn = (n) => actsOn(n).find((d) => d.kind !== "reply") || null;
   const repliesOn = (n) => actsOn(n).filter((d) => d.kind === "reply");
   // What the review holds: new comments, and comments decided or replied to.
   function reviewCount() {
-    const touched = new Set(liveDrafts().filter((d) => !isComment(d)).map((d) => d.of));
+    const touched = new Set(liveDrafts().filter((d) => !isComment(d) && here(d)).map((d) => d.of));
     return commentDrafts().length + touched.size;
   }
 
@@ -524,6 +527,11 @@
       const last = lastSent();
       if (last) out.push(el("p", "cap", `Sent ${last.at}`));
       for (const it of sent) out.push(row(it, status(it)));
+      if (S.mode) {
+        const add = el("div", "addwhole");
+        add.append(button("+ About the whole file", () => composeWhole()));
+        out.push(add);
+      }
       if (others.length) {
         const more = button(`Others · ${others.length} ›`, () => { S.allShown = true; render(); }, "more");
         out.push(more);
@@ -560,7 +568,8 @@
       // as in the list (on a computer it heads the panel).
       const review = reviewCount();
       const footer = [];
-      if (!it.draft && !it.c.rejected_by && !S.edit) footer.push(replyPill(it));
+      const accepting = !it.draft && (decisionOn(it.c.n) || {}).kind === "accept";
+      if (!it.draft && !it.c.rejected_by && !accepting && !S.edit) footer.push(replyPill(it));
       if (review && !S.edit && !desk.matches) footer.push(finishBar(review));
       return desk.matches ? [[...out, ...footer], []] : [out, footer];
     },
@@ -664,6 +673,7 @@
   // person's decision and unsent replies, and what can be done next.
   function thread(it) {
     const c = it.c;
+    markSeen(c);
     const out = [];
     const head = el("div", "msg");
     const bd = el("div", "bd");
@@ -718,12 +728,12 @@
       out.push(m);
     }
     // Buttons only on the selected comment, and only what fits its state.
-    if (!dec && !c.rejected_by && !repliesOn(c.n).length) {
+    if (!dec && !c.rejected_by) {
       const acts = el("div", "acts thread-acts");
       if (it.pend) {
         acts.append(button("✓ Approve", () => decide(c, "approve"), "btn pri"),
           button("✕ Reject", () => decide(c, "reject")));
-      } else if (c.agent === "done" || c.agent === "wrote") {
+      } else if ((c.agent === "done" || c.agent === "wrote") && !repliesOn(c.n).length) {
         acts.append(button("✓ Accept", () => decide(c, "accept"), "btn pri"));
       }
       if (acts.children.length) out.push(acts);
@@ -1073,6 +1083,10 @@
 
   function openItem(key) {
     // An edit with typed changes is not dropped by moving to another item.
+    if (S.sel !== key && fields.reply.value.trim()) {
+      toast("Send or clear the reply first");
+      return;
+    }
     if (S.edit && S.sel !== key) {
       const d = draftById(S.edit);
       if (d && fields.edit.value !== d.text) {
@@ -1256,7 +1270,14 @@
   // --- Decisions and replies on a published comment ----------------------------------
   // A decision replaces the person's earlier one on the comment (the server
   // does the same); Undo deletes it at once.
+  let deciding = false;
   async function decide(c, kind) {
+    if (deciding) return;
+    if (name === null) {
+      askName(() => decide(c, kind));
+      return;
+    }
+    deciding = true;
     try {
       const draft = await call("POST", "/drafts", { author: name || "", kind, of: c.n });
       changed();
@@ -1265,6 +1286,8 @@
       render();
     } catch (e) {
       if (!nameRefused(e)) toast(e.message, { error: true, ms: 8000 });
+    } finally {
+      deciding = false;
     }
   }
 
@@ -1286,12 +1309,19 @@
     const n = replyFor;
     const text = fields.reply.value;
     if (n === null || !text.trim() || replyButton.disabled) return;
+    if (name === null) {
+      askName(() => addReply());
+      return;
+    }
     replyButton.disabled = true;
     try {
       const draft = await call("POST", "/drafts", { author: name || "", kind: "reply", of: n, text });
       changed();
       S.drafts.push(draft);
       fields.reply.value = "";
+      // Replying means "not yet": an acceptance of the same comment goes.
+      const dec = decisionOn(n);
+      if (dec && dec.kind === "accept") await undoDecision(dec);
       render();
     } catch (e) {
       if (!nameRefused(e)) toast(e.message, { error: true, ms: 8000 });
@@ -1421,7 +1451,6 @@
       if (general.trim()) payload.text = general;
       if (S.toAgent) payload.agent = true;
       const sent = S.toAgent;
-      const count = reviewCount() + (general.trim() ? 1 : 0);
       const made = await call("POST", "/review", payload);
       S.toAgent = true;
       changed();
@@ -1439,8 +1468,10 @@
       S.view = "list";
       S.pos = "strip";
       render();
-      const what = `${count} ${count === 1 ? "comment" : "comments"}`;
-      toast(sent ? `Sent ${what} to the agent` : `Published ${what}`);
+      toast(sent ? "Review sent to the agent" : "Review published");
+      // The server's word on what each comment is now (an acceptance it
+      // dropped, say).
+      load();
     } catch (e) {
       if (!nameRefused(e)) toast(e.message, { error: true, ms: 8000 });
       // The drafts on the server may differ now (one gone, say).
@@ -1482,8 +1513,8 @@
   fields.edit.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
-      const it = itemOf(S.sel);
-      if (it && it.draft) saveEdit(it.d);
+      const d = draftById(S.edit);
+      if (d) saveEdit(d);
     }
   });
 
@@ -1646,9 +1677,15 @@
   banner.setAttribute("role", "status");
   banner.append(el("span", "", "The file was updated"), button("Show", () => location.reload(), "btn pri"));
   document.body.append(banner);
+  let pollSeq = 0;
+  let pollStopped = false;
   async function poll() {
-    if (document.visibilityState !== "visible" || sending || S.edit || S.compose) return;
-    const mine = ++generation;
+    if (pollStopped || document.visibilityState !== "visible" || sending || S.edit || S.compose) return;
+    // Not while something is typed: a redraw would take the keyboard away.
+    if (Object.values(fields).includes(document.activeElement)) return;
+    // A poll never cancels a load or a change: it checks they did not land.
+    const mine = generation;
+    const seq = ++pollSeq;
     let response;
     let data;
     try {
@@ -1657,10 +1694,12 @@
     } catch {
       return;
     }
+    if (response.status === 404) pollStopped = true;
     const at = response.headers.get("X-Artifact-Updated");
     if (at && fileAt === null) fileAt = at;
     else if (at && at !== fileAt) banner.hidden = false;
-    if (mine !== generation || !Array.isArray(data)) return;
+    if (mine !== generation || seq !== pollSeq || !Array.isArray(data)) return;
+    if (JSON.stringify(data) === JSON.stringify(S.comments)) return;
     S.comments = data;
     if (S.sel && !items().some((i) => i.key === S.sel)) unselect();
     render();

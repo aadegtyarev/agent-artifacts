@@ -157,7 +157,11 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
 .dec .undo::before { content: ""; position: absolute; inset: -14px -10px; }
 .ref { display: block; margin-top: 3px; color: var(--muted); font-size: 13px; }
 .st b { font-weight: 600; }
-.st b.fin { color: #30b350; } .st b.ask { color: #e08600; } .st b.work { color: #7d7aff; }
+.st b.fin { color: #248a3d; } .st b.ask { color: #b25e00; } .st b.work { color: #5e5ce6; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .st b.fin { color: #30d158; }
+  :root:not([data-theme="light"]) .st b.ask { color: #ff9f0a; } :root:not([data-theme="light"]) .st b.work { color: #7d7aff; } }
+:root[data-theme="dark"] .st b.fin { color: #30d158; } :root[data-theme="dark"] .st b.ask { color: #ff9f0a; }
+:root[data-theme="dark"] .st b.work { color: #7d7aff; }
 .st b.mine { color: var(--accent); }
 .more { display: block; width: 100%; min-height: 44px; margin: 6px 0 0; padding: 0;
   color: var(--accent); background: none; border: 0;
@@ -241,7 +245,7 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
 .pin.draft, .pin.pend { color: var(--c); background: #fff; border: 2px dashed var(--c);
   box-shadow: 0 2px 6px rgb(0 0 0 / 0.2); }
 .pin.pend { border-style: solid; }
-.pin.rej { background: #c7c7cc; }
+.pin.rej { background: #8e8e93; }
 /* The selected pin is bigger, with a halo. */
 .pin.lit { z-index: 2; width: 32px; min-width: 32px; height: 32px; font-size: 15px; box-shadow: 0 0 0 2px #fff, 0 0 0 6px rgb(28 28 30 / 0.18),
   0 2px 6px rgb(0 0 0 / 0.25); }
@@ -446,3 +450,6 @@ textarea { width: 100%; height: 10em; word-break: break-all; color: inherit;
   color: #fff; background: var(--toast-bg); border-radius: 14px; transform: translateX(-50%);
   box-shadow: 0 6px 20px rgb(0 0 0 / 0.25); font-size: 14px; white-space: nowrap; }
 .banner[hidden] { display: none; }
+.banner .btn { position: relative; height: 32px; padding: 0 14px; color: #fff; background: #0a84ff;
+  border: 0; border-radius: 16px; font-weight: 600; }
+.banner .btn::before { content: ""; position: absolute; inset: -6px; }

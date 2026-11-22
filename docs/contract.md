@@ -662,8 +662,9 @@ talk only through `postMessage`:
   with an anchor shows its anchor's text;
 - the viewer turns pin placement on in comment mode and off outside it, and
   sends the pins to draw: a key, a short label (a number or a letter), the
-  anchor and a style (own or other's, draft or published, lit), never texts
-  or names;
+  anchor, whose (own or other's), the fill (draft, awaiting approval, in
+  force, rejected), the badge (the agent's state, the person's unsent
+  decision or an unseen reply) and whether it is lit, never texts or names;
 - the script answers with the anchor of the tapped spot, or with the key of
   a tapped pin. While placing, it takes each click in the capture phase and
   cancels it, so a link or a button under it does not fire.
@@ -686,7 +687,10 @@ checks the shape and limits of what it gets and treats it as untrusted; the
 script runs selectors inside `try`, so a bad one only leaves its pin out. The
 page's own scripts can forge the anchor of the next draft, but not its
 text, which the person types into the viewer outside the sandbox. They can
-see where the person's drafts point, though not their texts.
+see where the person's drafts point and each comment's state and the
+person's unsent decisions, though not texts or names. The viewer keeps, per
+browser, how many replies of others it has shown for each comment
+(`localStorage` key `aa-seen:{id}`), for the red dot.
 
 ## Security
 

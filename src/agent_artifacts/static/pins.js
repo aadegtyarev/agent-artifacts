@@ -33,7 +33,7 @@
     + ".pin.own{--c:#0a84ff}"
     + ".pin.draft,.pin.pend{color:var(--c);background:#fff;border:2px dashed var(--c);box-shadow:0 2px 6px rgb(0 0 0/.2)}"
     + ".pin.pend{border-style:solid}"
-    + ".pin.rej{background:#c7c7cc}"
+    + ".pin.rej{background:#8e8e93}"
     + ".pin.left{transform:translate(-100%,-100%);border-radius:50% 50% 4px 50%}"
     + ".pin.down{transform:none;border-radius:4px 50% 50% 50%}"
     + ".pin.left.down{transform:translateX(-100%);border-radius:50% 4px 50% 50%}"
@@ -416,7 +416,7 @@
         && length(p.label) <= 3 && isAnchor(p.anchor))
         .map((p) => ({ key: p.key, label: p.label, anchor: p.anchor, own: p.own === true,
           fill: FILLS.includes(p.fill) ? p.fill : "solid",
-          badge: Object.hasOwn(BADGES, p.badge) ? p.badge : "", lit: p.lit === true }));
+          badge: Object.prototype.hasOwnProperty.call(BADGES, p.badge) ? p.badge : "", lit: p.lit === true }));
       schedule(true);
     } else if (m.type === "show" && isKey(m.key)) {
       const pin = pins.find((p) => p.key === m.key);
