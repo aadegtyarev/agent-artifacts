@@ -24,8 +24,8 @@
     + ".hover{border:2px dashed #0a84ff;background:rgb(10 132 255/.07)}"
     + ".fresh{border:1.5px dashed #0a84ff;background:rgb(10 132 255/.05)}"
     + ".pin{position:absolute;box-sizing:border-box;margin:0;padding:0;transform:translateY(-100%);"
-    + "display:flex;align-items:center;justify-content:center;width:24px;height:24px;"
-    + "font:600 12px/1 -apple-system,system-ui,Roboto,sans-serif;color:#fff;background:#e8890c;border:0;"
+    + "display:flex;align-items:center;justify-content:center;width:26px;height:26px;"
+    + "font:600 13px/1 -apple-system,system-ui,Roboto,sans-serif;color:#fff;background:#e8890c;border:0;"
     + "border-radius:50% 50% 50% 4px;box-shadow:0 0 0 2px #fff,0 2px 6px rgb(0 0 0/.28);"
     + "pointer-events:auto;cursor:pointer;-webkit-tap-highlight-color:transparent}"
     + ".pin::before{content:'';position:absolute;inset:-10px}"
@@ -35,7 +35,7 @@
     + ".pin.left{transform:translate(-100%,-100%);border-radius:50% 50% 4px 50%}"
     + ".pin.down{transform:none;border-radius:4px 50% 50% 50%}"
     + ".pin.left.down{transform:translateX(-100%);border-radius:50% 4px 50% 50%}"
-    + ".pin.lit{z-index:2;box-shadow:0 0 0 2px #fff,0 0 0 6px rgb(28 28 30/.18),0 2px 6px rgb(0 0 0/.25)}"
+    + ".pin.lit{z-index:2;width:32px;height:32px;font-size:15px;box-shadow:0 0 0 2px #fff,0 0 0 6px rgb(28 28 30/.18),0 2px 6px rgb(0 0 0/.25)}"
     + ".pin.draft.lit{box-shadow:0 0 0 2px #e8890c,0 0 0 6px rgb(28 28 30/.18),0 2px 6px rgb(0 0 0/.25)}"
     + ".pin.draft.own.lit{box-shadow:0 0 0 2px #0a84ff,0 0 0 6px rgb(28 28 30/.18),0 2px 6px rgb(0 0 0/.25)}"
     + "</style><div class='box hover'></div><div class='box fresh'></div><div class='pins'></div>";
@@ -173,8 +173,9 @@
       layer.append(b);
       drawn.set(key, b);
     }
-    if (x + 26 > window.innerWidth) classes.push("left");
-    if (y < 26) classes.push("down");
+    // By the selected pin's size (32px), so a pin keeps its side when selected.
+    if (x + 32 > window.innerWidth) classes.push("left");
+    if (y < 32) classes.push("down");
     const className = ["pin", ...classes].filter(Boolean).join(" ");
     if (b.className !== className) b.className = className;
     if (b.textContent !== label) b.textContent = label;
