@@ -225,8 +225,20 @@ const commentsPins = ({
   // parent too), so the content cannot move the tab on its own; the
   // address is built here, on this origin, from a checked path and
   // fragment. Anything else does nothing.
+  // The activation must come from the frame: a tap or a key in this page
+  // (its buttons, the comment field, the name dialog) gives one too, and a
+  // timer in the content could use it. Input here in the last 5 s, about
+  // as long as an activation lasts, makes the page's request wait for a
+  // click of its own.
+  let ownInput = -Infinity;
+  for (const type of ["pointerdown", "keydown"]) {
+    document.addEventListener(type, () => { ownInput = performance.now(); }, true);
+  }
   function openLink(path, fragment) {
-    if (picking() || !(navigator.userActivation && navigator.userActivation.isActive)) return;
+    // Comment mode wins, even while its name dialog is open.
+    if (picking() || document.body.classList.contains("commenting")) return;
+    if (!(navigator.userActivation && navigator.userActivation.isActive)) return;
+    if (performance.now() - ownInput < 5000) return;
     const to = pageLinks.destination(path, fragment, location.origin);
     if (to) location.assign(to);
   }
