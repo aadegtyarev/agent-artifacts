@@ -405,6 +405,35 @@ body.commenting .fan-item[data-act="comment"] .fan-sq { color: #fff; background:
 .float-button > svg:last-child, .float-button[aria-expanded="true"] .menu-icon { display: none; }
 .float-button[aria-expanded="true"] > svg:last-child { display: block; }
 
+/* The project page: one row per file, a type square, the title, size and
+   time; on the right the comment counters, the red pill of those waiting for
+   this person and the agent's pin with the number it has. */
+.pj { flex: 1; min-height: 0; overflow: auto; background: var(--sheet-bg); padding: 6px 14px 24px; }
+.pj .sec { margin: 16px 0 4px; }
+.pj .empty { padding: 16px 0; }
+.pf { display: flex; gap: 14px; align-items: center; min-height: 60px; margin: 0 -6px;
+  padding: 8px 6px; color: inherit; border-radius: 10px; text-decoration: none;
+  box-shadow: inset 0 -0.5px 0 var(--hair); -webkit-tap-highlight-color: transparent; }
+.pf:active { background: var(--fill); }
+@media (hover: hover) { .pf:hover { background: var(--fill); } }
+.pf:focus-visible { outline: 2px solid var(--send); outline-offset: -2px; }
+.ft { flex: none; display: flex; align-items: center; justify-content: center; width: 40px;
+  height: 40px; color: var(--muted); background: var(--fill); border-radius: 9px;
+  font: 700 11px/1 system-ui, sans-serif; letter-spacing: 0.3px; }
+.pf .tx { flex: 1; min-width: 0; }
+.pf .main { display: block; overflow: hidden; font-size: 16px; line-height: 1.3;
+  text-overflow: ellipsis; white-space: nowrap; }
+.cnts { flex: none; display: flex; gap: 6px; }
+.cnt { display: inline-flex; align-items: center; justify-content: center; gap: 3px;
+  min-width: 24px; height: 24px; padding: 0 7px; color: #fff; background: #ff3b30;
+  border-radius: 12px; font: 600 14px/1 system-ui, sans-serif; }
+.cnt.ag { gap: 6px; padding: 0; color: #5e5ce6; background: none; font-size: 15px; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .cnt.ag { color: #9d9bff; } }
+:root[data-theme="dark"] .cnt.ag { color: #9d9bff; }
+.cnt .pin.mini { position: relative; width: 26px; min-width: 26px; height: 26px; margin: 0;
+  transform: none; }
+.cnt .pin.mini > svg { width: 14px; height: 14px; }
+
 /* Invite pages. */
 .join { max-width: 560px; margin: 0 auto; padding: 24px 16px; }
 .join h1 { font-size: 20px; margin-bottom: 12px; white-space: normal; }

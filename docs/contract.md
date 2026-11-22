@@ -30,8 +30,8 @@ skill and its `artifacts_cli.py` command.
 - Keeping files outside a project beyond their lifetime.
 - Versions or a history of replaced files. A replace overwrites; an agent
   that wants to keep the old one uploads a new file instead.
-- A project's page, its file list in the viewer and links between files:
-  designed, not built; see [design/projects.md](design/projects.md). Also
+- A project's file list in the viewer and links between files: designed,
+  not built; see [design/projects.md](design/projects.md). Also
   projects shared between agents, nested sections, hand-set ordering, and
   comments on a project as a whole.
 - Also out: devices, owner identity, mentions, notifications, editing or
@@ -174,8 +174,7 @@ Project JSON:
 list `artifacts`, in the project's order: files without a section first,
 then the sections, each ordered by when its earliest current file was added
 to the project, and inside a section the files in the order they were added
-to the project; ties go by id. `url` is where the project's page will be
-(not built yet; it answers `404`).
+to the project; ties go by id. `url` is the [project's page](#the-project-page).
 
 - The project id is 128 random bits, like an artifact id. Another agent's
   project answers `404`, the same as a missing one.
@@ -269,6 +268,7 @@ lifetime applies to uploads from then on.
 | `/a/{id}` | the viewer page, see [The viewer page](#the-viewer-page) |
 | `/a/{id}/raw` | the content itself, with the sandbox headers below; opened as a page on its own, HTML, SVG, Markdown and text redirect to `/a/{id}`, while images and PDFs open in the browser's own viewer; see also [The raw origin](#the-raw-origin) |
 | `/a/{id}/download` | the original file as an attachment under its name |
+| `/p/{id}` | a project's page, see [The project page](#the-project-page) |
 
 The comment and draft calls under `/a/{id}` are in [Comments](#comments). A
 missing or expired id gives a `404` page saying so (those calls answer JSON
@@ -319,6 +319,39 @@ page is as tall as the visible area (`100dvh`, with
 keyboard and a text field inside the content stays above it, with or without
 full screen. Outside comment mode the content works as usual; a tap on an
 image does nothing.
+
+### The project page
+
+`/p/{id}` lists the files of a project in the project's order (see
+[Projects](#projects)): files without a section first, then a heading for
+each section and its files. Like a file, a project is open to whoever has
+its link; the page lists only its own files. Each line links to the file's
+viewer page and shows the type, the title, the size and when it was last
+updated ("2 h ago", then the date). An empty project says "No files yet". The
+header has the project's title, the number of files and "kept until
+deleted", **Full screen** and the "≡" menu with **Copy link** and **Theme**,
+as in the viewer (without comment mode). The page sends the same headers as
+the viewer page (`noindex`, `no-referrer`, its own CSP with
+`frame-ancestors 'none'`). A missing or deleted project gives the `404`
+page.
+
+On the right of a line, the file's comment counters: a red pill with the
+number waiting for this person, and the agent's pin with the number the
+agent has. The page's script asks for them once it is loaded, sending this
+browser's author key (see [Comments](#comments)) if it has one; until the
+answer, or if the call fails, there are none.
+
+| Call | Answer |
+| --- | --- |
+| `GET /p/{id}/summary`, optional `X-Author-Key` | `200` + `{"<artifact id>": {"waiting_you": n, "with_agent": m}}` for every file of the project; `404 not_found` for a missing project |
+
+Only open comments count. `with_agent`: the agent's state is `waiting` or
+`working`. `waiting_you`: the agent answered (`done`, `wrote`, `asked`), or
+a comment awaits approval (not this key's, no agent state, neither approved
+nor rejected); less those this key already decided or replied to in a
+draft. Without a key (or with a malformed one) the counts are as for a
+stranger. It is a read: the reverse proxy counts it with viewing, not with
+comment writes. Its answers are JSON with `Cache-Control: no-store`.
 
 ### The raw origin
 

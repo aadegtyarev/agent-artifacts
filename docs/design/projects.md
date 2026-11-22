@@ -4,9 +4,10 @@
 are not built yet. What is shipped is described in [the
 contract](../contract.md): a file's `title`, `project`, `section` and
 `updated_at`, the project calls under `/api/v1/projects`, lifetimes, limits,
-storage and the CLI commands (see [Projects](../contract.md#projects)). Not
-built: the `/p/{id}` page, the project's file list in the viewer and links
-between files. When a part is built, it moves into the contract.
+storage and the CLI commands (see [Projects](../contract.md#projects)), and
+the `/p/{id}` page (see [The project page](../contract.md#the-project-page)).
+Not built: the project's file list in the viewer and links between files.
+When a part is built, it moves into the contract.
 
 ## Scenario
 
@@ -17,14 +18,6 @@ moves between them from any file's header, and follows links the agent
 put inside the files. Project files stay until deleted; when the agent's
 space runs out, it deletes superseded files itself and says what it removed.
 
-## Changes to the contract
-
-- **Viewer pages.**
-
-| Path | What |
-| --- | --- |
-| `/p/{id}` | a project's page: its title and its files by section, each a link to `/a/{id}` |
-
 ## Projects
 
 A file in a project is as open as the project: its viewer page shows the
@@ -33,15 +26,7 @@ the project's other files and can open them. Moving a file into a project
 publishes it to everyone who has a link to that project or to any of its
 files.
 
-- An empty project's page says it has no files yet.
 - Links to a deleted file or project lead to the `404` page.
-
-**The project page** `/p/{id}` lists the files in the project's order (see
-[Projects](../contract.md#projects)). Each line shows the title, type, size
-and `updated_at`, and links to the file's viewer page. It sends the same
-headers as the viewer page (`noindex`, `no-referrer`, its own CSP with
-`frame-ancestors 'none'`). A missing or deleted project gives the `404`
-page.
 
 **The project's file list.** The viewer page of a file in a project shows
 the project's title in the header, and "kept until deleted" instead of the
@@ -84,5 +69,4 @@ project, see [Projects](#projects).
 Once these are built, the skill also teaches:
 
 - links to other files of the service as `/a/{id}` or `/p/{id}`;
-- the project page `/p/{id}` as the link to give for a project;
 - that a project file shows the whole project to whoever has its link.
