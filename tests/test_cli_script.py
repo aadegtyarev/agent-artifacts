@@ -85,6 +85,34 @@ def test_setup_upload_and_new_key(server):
     assert code == 1 and "unauthorized" in err
 
 
+def test_projects(server):
+    url, store, home = server
+    env = {"AGENT_ARTIFACTS_URL": url, "AGENT_ARTIFACTS_KEY": store.add_agent("alice")}
+    page = home / "a.html"
+    page.write_text("<h1>hi</h1>")
+    p = json.loads(cli(home, "project-new", "Landing", env=env)[1])
+    assert p["title"] == "Landing" and p["url"] == f"{url}/p/{p['id']}"
+    out = cli(home, "upload", str(page), "--project", p["id"], "--section", "Mockups", env=env)[1]
+    art = json.loads(out)
+    assert (art["project"], art["section"], art["expires_at"]) == (p["id"], "Mockups", None)
+    out = cli(home, "replace", art["id"], str(page), "--section", "Docs", env=env)[1]
+    assert (json.loads(out)["project"], json.loads(out)["section"]) == (p["id"], "Docs")
+    assert (
+        json.loads(cli(home, "set", art["id"], "--section", "none", env=env)[1])["section"] is None
+    )
+    out = json.loads(cli(home, "set", art["id"], "--project", "none", env=env)[1])
+    assert out["project"] is None and out["expires_at"] is not None
+    cli(home, "set", art["id"], "--project", p["id"], "--title", "Hero", env=env)
+    assert cli(home, "project-rename", p["id"], "Site", env=env)[0] == 0
+    [listed] = json.loads(cli(home, "projects", env=env)[1])
+    assert (listed["title"], listed["files"]) == ("Site", 1)
+    one = json.loads(cli(home, "project", p["id"], env=env)[1])
+    assert [a["title"] for a in one["artifacts"]] == ["Hero"]
+    assert cli(home, "project-delete", p["id"], env=env)[1].strip() == "deleted"
+    code, _, err = cli(home, "project", p["id"], env=env)
+    assert code == 1 and "not_found" in err
+
+
 def test_setup_keeps_a_different_key(server):
     url, store, home = server
     first, second = store.add_agent("admin", admin=True), store.add_agent("pi")
