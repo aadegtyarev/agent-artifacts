@@ -621,15 +621,18 @@ class Store:
 
     def comments(
         self, artifact_id: str, *, owner: str | None = None, key_hash: str | None = None
-    ) -> list[Comment] | None:
-        """The comments of a live artifact, oldest first; None if there is no
-        such artifact (of ``owner``'s). The owner gets them all and marks them
+    ) -> tuple[float, list[Comment]] | None:
+        """When a live artifact was last uploaded and its comments, oldest
+        first; None if there is no such artifact (of ``owner``'s). The time
+        comes from the same lookup, read before the comments, so a replace in
+        between shows on the next poll. The owner gets them all and marks them
         read in the same transaction, so it marks exactly what it returns;
         anyone else gets the open ones, each marked as ``key_hash``'s or not."""
         with self._conn() as db:
             if owner is not None:
                 db.execute("BEGIN IMMEDIATE")
-            if self._artifact(db, artifact_id, owner) is None:
+            artifact = self._artifact(db, artifact_id, owner)
+            if artifact is None:
                 return None
             args = {"id": artifact_id, "now": self.clock(), "key": key_hash}
             if owner is not None:
@@ -638,8 +641,8 @@ class Store:
                     "WHERE artifact_id = :id AND read_at IS NULL",
                     args,
                 )
-                return _load(db, "ORDER BY c.n", args)
-            return _load(db, "AND c.resolved_at IS NULL ORDER BY c.n", args)
+                return artifact.updated_at, _load(db, "ORDER BY c.n", args)
+            return artifact.updated_at, _load(db, "AND c.resolved_at IS NULL ORDER BY c.n", args)
 
     def resolve_comment(
         self, artifact_id: str, n: int, resolved: bool, *, owner: str

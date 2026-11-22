@@ -746,16 +746,19 @@ def test_a_database_from_before_chats_keeps_its_drafts(tmp_path):
             db.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
     store = Store(tmp_path, max_total_bytes=10**6)
     # What was sent to the agent and is still open waits for it.
-    assert [(c.n, c.agent) for c in store.comments(art.id, owner="old")] == [
+    _, found = store.comments(art.id, owner="old")
+    assert [(c.n, c.agent) for c in found] == [
         (1, None),
         (2, "waiting"),
         (3, None),
     ]
     Store(tmp_path, max_total_bytes=10**6)  # only when the column is added
     store.take(art.id, owner="old")
-    assert store.comments(art.id, owner="old")[1].agent == "working"
+    _, found = store.comments(art.id, owner="old")
+    assert found[1].agent == "working"
     Store(tmp_path, max_total_bytes=10**6)
-    assert store.comments(art.id, owner="old")[1].agent == "working"
+    _, found = store.comments(art.id, owner="old")
+    assert found[1].agent == "working"
     [d] = store.drafts(art.id, "h")
     assert (d.kind, d.of_n, d.text) == ("comment", None, "pending")
     store.add_draft(art.id, "k", author="q", text="", anchor=None, kind="approve", of_n=1)
