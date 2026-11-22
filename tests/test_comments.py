@@ -1215,3 +1215,65 @@ def test_replies_go_with_their_comment(env):
     client.delete(f"/api/v1/artifacts/{art['id']}/comments/1", headers=auth(keys["alice"]))
     with store._conn() as db:
         assert db.execute("SELECT COUNT(*) FROM replies").fetchone() == (0,)
+
+
+def test_every_write_holds_the_write_lock_from_its_first_statement(tmp_path, monkeypatch):
+    # A check made before the lock (say, "is this the owner's file?") could be
+    # stale by the time the write commits; so each write method's connection
+    # must start with BEGIN IMMEDIATE, never read first or begin implicitly.
+    store = Store(tmp_path, max_total_bytes=10**6)
+    connect = sqlite3.connect
+    traces: list[list[str]] = []
+
+    def traced(*args, **kwargs):
+        db = connect(*args, **kwargs)
+        traces.append(statements := [])
+        db.set_trace_callback(statements.append)
+        return db
+
+    monkeypatch.setattr(sqlite3, "connect", traced)
+
+    def put(artifact_id=None):
+        src = io.BytesIO(b"x")
+        return store.put(src, owner="a", name="a.txt", kind="txt", size=1, artifact_id=artifact_id)
+
+    calls = {
+        "set_settings": lambda: store.set_settings(ttl_seconds=3600),
+        "add_agent": lambda: store.add_agent("a"),
+        "set_admin": lambda: store.set_admin("a", True),
+        "set_quota": lambda: store.set_quota("a", 10**5),
+        "new_key": lambda: store.new_key("a"),
+        "add_invite": lambda: store.add_invite("b", by="a", ttl=60)[1],
+        "claim_invite": lambda: store.claim_invite(calls_out["add_invite"]),
+        "cancel_invite": lambda: store.cancel_invite("none"),
+        "put": lambda: put().id,
+        "put replace": lambda: put(calls_out["put"]),
+        "add_draft": lambda: store.add_draft(art(), "k", author="q", text="t", anchor=None).id,
+        "edit_draft": lambda: store.edit_draft(art(), "k", calls_out["add_draft"], "u"),
+        "publish": lambda: store.publish(art(), "k", author="q", text="t", for_agent=True),
+        "comments (owner)": lambda: store.comments(art(), owner="a"),
+        "take": lambda: store.take(art(), owner="a"),
+        "agent_reply": lambda: store.agent_reply(art(), 1, "ok", "done", owner="a"),
+        "resolve_comment": lambda: store.resolve_comment(art(), 1, True, owner="a"),
+        "delete_comment": lambda: store.delete_comment(art(), 2, owner="a"),
+        "delete_draft": lambda: store.delete_draft(art(), "k", "none"),
+        "drop_drafts": lambda: store.drop_drafts(art(), owner="a"),
+        "delete": lambda: store.delete(art(), owner="a"),
+        "purge_expired": store.purge_expired,
+        "remove_agent": lambda: store.remove_agent("a"),
+    }
+    calls_out: dict[str, object] = {}
+
+    def art():
+        return calls_out["put"]
+
+    for name, call in calls.items():
+        traces.clear()
+        calls_out[name] = call()
+        writes = [
+            t for t in traces if any(s.split()[0] in ("INSERT", "UPDATE", "DELETE") for s in t)
+        ]
+        assert writes, name
+        for t in writes:
+            assert [s for s in t if not s.startswith("PRAGMA")][0] == "BEGIN IMMEDIATE", (name, t)
+    assert calls_out["publish"] and calls_out["agent_reply"] and calls_out["delete"]
