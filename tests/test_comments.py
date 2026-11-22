@@ -384,6 +384,12 @@ def test_public_list_leaves_resolved_comments_out(env):
         ("a.svg", b"<svg/>", ELEMENT, False),
         ("a.zip", b"PK\x03\x04", ELEMENT, False),
         ("a.zip", b"PK\x03\x04", None, True),
+        ("a.html", b"<p>", ELEMENT | {"screen": "Note", "hash": "#note"}, True),
+        ("a.html", b"<p>", ELEMENT | {"screen": "x" * 81}, False),
+        ("a.html", b"<p>", ELEMENT | {"hash": "note"}, False),
+        ("a.html", b"<p>", ELEMENT | {"hash": "#" + "x" * 200}, False),
+        ("a.html", b"<p>", ELEMENT | {"screen": "two\nlines"}, False),
+        ("a.png", PNG, {"type": "point", "x": 0, "y": 0, "screen": "x"}, False),
     ],
 )
 def test_draft_anchor_follows_the_file_type(env, filename, data, anchor, ok):
@@ -711,3 +717,15 @@ def test_a_counter_added_behind_existing_comments_starts_after_them(tmp_path):
     for art_id, expected in ((ART, 6), ("b" * 22, 1)):
         store.add_draft(art_id, "h", author="x", text="new", anchor=None)
         assert [c.n for c in store.publish(art_id, "h", author="x", text=None)] == [expected]
+
+
+def test_an_element_anchor_keeps_its_screen_and_hash(env):
+    client, _, keys = env
+    art = upload(client, keys["alice"], "a.html", b"<p>")
+    anchor = ELEMENT | {"screen": "Shopping list", "hash": "#note"}
+    r = add_draft(client, art["id"], {"text": "x", "anchor": anchor})
+    assert r.status_code == 201
+    assert r.json()["anchor"] == anchor
+    # Empty ones are dropped, not stored.
+    r = add_draft(client, art["id"], {"text": "y", "anchor": ELEMENT | {"screen": "", "hash": ""}})
+    assert r.json()["anchor"] == ELEMENT

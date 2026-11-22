@@ -140,7 +140,9 @@ before the last replace, so it may be about the old version) and `anchor`:
 (fractions of its width and height), or `{"type": "element", "selector",
 "text", "x", "y", "width"}` on a page: find the spot by the CSS `selector`,
 else by the element's visible `text`; `width` is the window width the person
-saw. Fix the file, `replace` it at the same id, `resolve` what you did (it
+saw. A page anchor may add `screen` (the name of the screen it was on) and
+`hash` (the page's `#hash` then): on a page with several screens they say
+which one. Fix the file, `replace` it at the same id, `resolve` what you did (it
 leaves the viewer), and tell the person what changed and what is still open.
 A published comment cannot be changed from the viewer. Use `drop-drafts` only
 when the person asks, for example when drafts fill a file (`too_many_drafts`).
@@ -186,6 +188,10 @@ inside the file does not exist.
   string `setTimeout`: they are blocked.
 - **Navigation inside the page** with `#anchor` links to element ids: a table of
   contents, back-to-top, tabs that switch on `location.hash`. These work.
+- **A prototype with several screens:** switch screens by `location.hash`
+  (`#list`, `#note`, listening to `hashchange`), and give each screen a
+  `<section>` with a heading or an `aria-label`. Then a comment remembers its
+  screen by name, and selecting it in the viewer opens that screen.
 - **Interactive prototypes work:** scripts, buttons, dialogs, form fields
   handled in JS (a form that really submits goes nowhere). Keep the state in
   JS variables: `localStorage`, `sessionStorage`, cookies and

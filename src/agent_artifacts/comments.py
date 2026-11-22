@@ -27,6 +27,9 @@ from .store import Comment, Draft, NothingToPublish, Store, TooManyComments, Too
 MAX_BODY_BYTES = 16 * 1024
 MAX_AUTHOR, MAX_TEXT = 64, 2000
 MAX_SELECTOR, MAX_ANCHOR_TEXT = 512, 200
+# An element anchor may also say which screen of the page it is on: its
+# name, and the page's #hash when the pin was placed.
+MAX_SCREEN, MAX_HASH = 80, 200
 MAX_WIDTH = 100_000  # pixels; any real window is far below
 # Refused in every field: control characters other than tab and line breaks;
 # bidi controls and Unicode line separators, which can disguise a text; lone
@@ -318,7 +321,12 @@ def _anchor(v: object, pin: str | None) -> str | None:
         "point": {"type", "x", "y"},
         "element": {"type", "selector", "text", "x", "y", "width"},
     }
-    if not isinstance(v, dict) or v.get("type") != pin or set(v) != fields[pin]:
+    optional = {"point": set(), "element": {"screen", "hash"}}
+    if (
+        not isinstance(v, dict)
+        or v.get("type") != pin
+        or not fields[pin] <= set(v) <= fields[pin] | optional[pin]
+    ):
         raise ApiError(
             400, "bad_request", f"anchor must be null or {sorted(fields[pin])} of type {pin!r}"
         )
@@ -336,4 +344,14 @@ def _anchor(v: object, pin: str | None) -> str | None:
             "text": _line(v["text"], "anchor.text", MAX_ANCHOR_TEXT),
             "width": width,
         }
+        if "screen" in v:
+            screen = _line(v["screen"], "anchor.screen", MAX_SCREEN)
+            if screen:
+                anchor["screen"] = screen
+        if "hash" in v:
+            h = _line(v["hash"], "anchor.hash", MAX_HASH)
+            if h and (not h.startswith("#") or len(h) < 2):
+                raise ApiError(400, "bad_request", "anchor.hash must start with #")
+            if h:
+                anchor["hash"] = h
     return json.dumps(anchor)

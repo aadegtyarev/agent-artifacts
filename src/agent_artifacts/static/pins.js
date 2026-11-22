@@ -128,6 +128,23 @@
     return clean(t || el.getAttribute("aria-label") || el.getAttribute("alt") || el.title || "", 200);
   }
 
+  // The screen an element is on, by name: the outermost section, main,
+  // article, dialog or labelled block around it, named by its aria-label,
+  // else its first heading, else its id; else the page's title.
+  const SCREEN = "section,main,article,dialog,[role=dialog],[role=main],[role=region],[aria-label]";
+  function screenOf(el) {
+    let outer = null;
+    for (let x = el; x && x !== document.body; x = x.parentElement) {
+      if (x.matches(SCREEN)) outer = x;
+    }
+    let name = "";
+    if (outer) {
+      const h = outer.querySelector("h1,h2,h3");
+      name = outer.getAttribute("aria-label") || (h && h.textContent) || outer.id || "";
+    }
+    return clean(name || document.title || "", 80);
+  }
+
   // The selector first; if it matches nothing, the first element whose
   // visible text starts with the anchor's text, the innermost such.
   function find(anchor) {
@@ -197,7 +214,10 @@
       if (!at) {
         missing.push(p.key);
         const el = found.get(p.key);
-        if (el && el.isConnected) hidden.push(p.key);
+        // Its element is here but not shown, or it was on another #screen.
+        const elsewhere = typeof p.anchor.hash === "string" && p.anchor.hash.length > 1
+          && location.hash !== p.anchor.hash;
+        if ((el && el.isConnected) || elsewhere) hidden.push(p.key);
         continue;
       }
       pinAt(p.key, p.label, at.x, at.y, p.own && "own", p.draft && "draft", p.lit && "lit");
@@ -254,6 +274,9 @@
       y: fraction(e.clientY - r.top, r.height),
       width: Math.max(1, Math.round(window.innerWidth)),
     };
+    const screen = screenOf(el);
+    if (screen) anchor.screen = screen;
+    if (location.hash.length > 1) anchor.hash = location.hash.slice(0, 200);
     tell({ type: "anchor", anchor });
     schedule();
   }, true);
@@ -313,6 +336,7 @@
     && typeof a.text === "string" && length(a.text) <= 200
     && [a.x, a.y].every((v) => typeof v === "number" && v >= 0 && v <= 1);
   const isKey = (k) => typeof k === "string" && /^[A-Za-z0-9_-]{1,24}$/.test(k);
+  const isHash = (h) => typeof h === "string" && h.length <= 200 && /^#./.test(h);
   window.addEventListener("message", (e) => {
     if (e.source !== viewer) return;
     const m = e.data;
@@ -333,7 +357,17 @@
       schedule(true);
     } else if (m.type === "show" && isKey(m.key)) {
       const pin = pins.find((p) => p.key === m.key);
-      if (pin) reveal(pin.anchor);
+      if (!pin) return;
+      // On another screen with an address: go there first, then show it once
+      // the page has drawn that screen.
+      const el = find(pin.anchor);
+      if (!visible(el) && isHash(pin.anchor.hash) && location.hash !== pin.anchor.hash) {
+        location.hash = pin.anchor.hash;
+        found = new Map();
+        setTimeout(() => { layout(); reveal(pin.anchor); }, 120);
+        return;
+      }
+      reveal(pin.anchor);
     }
   });
   window.addEventListener("scroll", () => schedule(), { capture: true, passive: true });
