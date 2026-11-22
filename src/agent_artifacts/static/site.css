@@ -1,6 +1,5 @@
 :root { color-scheme: light dark; --fg: #1d1d1f; --bg: #fff; --muted: #6e6e73;
-  --line: #d2d2d7; --btn: #f2f2f4; --accent: #0a64d8; --error: #c4281c;
-  --hi: #ffb020; --done: #8e8e93; }
+  --line: #d2d2d7; --btn: #f2f2f4; --accent: #0a64d8; --error: #c4281c; }
 /* The dark theme is a palette of its own, not an inversion: dark grey
    surfaces, raised ones lighter, light text, a lighter blue. It follows the
    system unless the menu's Theme picked light or dark ([data-theme]). */
@@ -20,21 +19,20 @@ h1, .meta { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ell
 h1 { font-size: 14px; }
 .meta { color: var(--muted); font-size: 12px; }
 .actions { display: flex; gap: 12px; padding-right: 4px; }
-a.btn, button { display: flex; align-items: center; justify-content: center; gap: 6px;
+button { display: flex; align-items: center; justify-content: center; gap: 6px;
   min-width: 32px; height: 32px; padding: 0 6px; font: 13px system-ui, sans-serif;
   color: inherit; background: var(--btn); border: 1px solid var(--line);
-  border-radius: 6px; text-decoration: none; cursor: pointer; }
+  border-radius: 6px; cursor: pointer; }
 svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2;
   stroke-linecap: round; stroke-linejoin: round; }
 /* For a moment after a copy, a check mark replaces what the button shows. */
 .check, .done > :not(.check) { display: none; }
 .done .check { display: block; }
-.copy-source { position: absolute; left: -9999px; }
 main { flex: 1; min-width: 0; min-height: 0; }
 iframe { display: block; border: 0; width: 100%; height: 100%; background: #fff; }
 .center { display: flex; align-items: center; justify-content: center;
   height: 100%; padding: 16px; text-align: center; }
-img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
+img { max-width: 100%; max-height: 100%; }
 .center a { display: contents; }
 
 /* Comments. Calm and light: soft fills instead of outlines, hairline
@@ -43,7 +41,7 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
    what this browser wrote, orange everybody else's. */
 :root { --fill: #f2f2f7; --fill2: #e9e9ee; --hair: rgb(60 60 67 / 0.12);
   --pri-bg: #1c1c1e; --pri-fg: #fff; --send: #0a84ff; --own: #0a84ff;
-  --other: #e8890c; --other-text: #b25e00; --sheet-bg: #fff;
+  --other: #e8890c; --sheet-bg: #fff;
   --draft-bg: rgb(10 132 255 / 0.08); --draft-bg2: rgb(10 132 255 / 0.16);
   --raised: #fff; --field: #f2f2f7; --grip: #d1d1d6; --send-off: #c7c7cc;
   --toast-bg: rgb(28 28 30 / 0.92); --fan-label: rgb(28 28 30 / 0.92); --fan-sq: #fff;
@@ -52,7 +50,7 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
   --muted: #a1a1a6; --line: #3a3a3c; --btn: #2c2c2e; --accent: #4c9bff;
   --error: #ff6b5e; --fill: #2c2c2e; --fill2: #3a3a3c;
   --hair: rgb(235 235 245 / 0.16); --pri-bg: #0071e3; --pri-fg: #fff;
-  --other-text: #ffb340; --sheet-bg: #1c1c1e; --raised: #2c2c2e; --field: #3a3a3c;
+  --sheet-bg: #1c1c1e; --raised: #2c2c2e; --field: #3a3a3c;
   --grip: #545458; --send-off: #3a3a3c; --toast-bg: rgb(58 58 60 / 0.96);
   --fan-label: #48484a; --fan-sq: #2c2c2e; --float-open: #3a3a3c;
   --draft-bg: rgb(10 132 255 / 0.16); --draft-bg2: rgb(10 132 255 / 0.26); --seg-on: #636366; } }
@@ -60,7 +58,7 @@ img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
   --muted: #a1a1a6; --line: #3a3a3c; --btn: #2c2c2e; --accent: #4c9bff;
   --error: #ff6b5e; --fill: #2c2c2e; --fill2: #3a3a3c;
   --hair: rgb(235 235 245 / 0.16); --pri-bg: #0071e3; --pri-fg: #fff;
-  --other-text: #ffb340; --sheet-bg: #1c1c1e; --raised: #2c2c2e; --field: #3a3a3c;
+  --sheet-bg: #1c1c1e; --raised: #2c2c2e; --field: #3a3a3c;
   --grip: #545458; --send-off: #3a3a3c; --toast-bg: rgb(58 58 60 / 0.96);
   --fan-label: #48484a; --fan-sq: #2c2c2e; --float-open: #3a3a3c;
   --draft-bg: rgb(10 132 255 / 0.16); --draft-bg2: rgb(10 132 255 / 0.26); --seg-on: #636366; }
@@ -448,12 +446,12 @@ textarea { width: 100%; height: 10em; word-break: break-all; color: inherit;
 .thread-acts { display: flex; gap: 8px; margin: 4px 0 2px 31px; }
 .sbody > .dec { margin: 0 0 4px 31px; }
 .sfoot .pill + .foot2 { margin-top: 10px; }
-/* The file was replaced: offered, not swapped under the finger. */
-.banner { position: fixed; z-index: 30; top: calc(var(--head-h, 52px) + 8px); left: 50%;
+/* The file was replaced: offered, not swapped under the finger. Just below
+   the header; in full screen, near the top. */
+.banner { position: fixed; z-index: 30; top: 60px; left: 50%;
   display: flex; align-items: center; gap: 12px; max-width: calc(100% - 24px); padding: 8px 8px 8px 14px;
   color: #fff; background: var(--toast-bg); border-radius: 14px; transform: translateX(-50%);
   box-shadow: 0 6px 20px rgb(0 0 0 / 0.25); font-size: 14px; white-space: nowrap; }
-.banner[hidden] { display: none; }
 .banner .btn { position: relative; height: 32px; padding: 0 14px; color: #fff; background: #0a84ff;
   border: 0; border-radius: 16px; font-weight: 600; }
 .banner .btn::before { content: ""; position: absolute; inset: -6px; }
