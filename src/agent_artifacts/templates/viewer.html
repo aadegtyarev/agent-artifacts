@@ -19,7 +19,7 @@
   <div id="fan-list" class="fan-list" role="menu" aria-label="Menu">
     <button type="button" role="menuitem" class="fan-item" data-act="full" data-when="normal"><span class="fan-label">Full screen</span><span class="fan-sq">{{ icon.expand() }}</span></button>
     <button type="button" role="menuitem" class="fan-item" data-act="exit" data-when="full"><span class="fan-label">Exit full screen</span><span class="fan-sq">{{ icon.shrink() }}</span></button>
-    <button type="button" role="menuitem" class="fan-item" data-act="comment" data-when="full"><span class="fan-label">Comment</span><span class="fan-sq">{{ icon.bubble() }}</span></button>
+    <button type="button" role="menuitemcheckbox" aria-checked="false" class="fan-item" data-act="comment" data-when="full"><span class="fan-label"><span class="when-off">Comment</span><span class="when-on">Commenting</span></span><span class="fan-sq">{{ icon.bubble() }}</span></button>
     <a role="menuitem" class="fan-item" href="/a/{{ a.id }}/download" data-act="download"><span class="fan-label">Download</span><span class="fan-sq">{{ icon.download() }}</span></a>
     <button type="button" role="menuitem" class="fan-item" data-act="copy" data-url="{{ url }}"><span class="fan-label">Copy link</span><span class="fan-sq">{{ icon.link() }}</span></button>
     {%- if separate %}
