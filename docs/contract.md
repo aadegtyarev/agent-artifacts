@@ -312,11 +312,23 @@ the pin stays in sight above it. Buttons show only on the selected item:
 comment, as a small chat with its replies (the agent's marked as the agent),
 **✓ Approve** and **✕ Reject** while it is someone else's awaiting approval,
 **✓ Accept** when the agent is done (`done` or `wrote`), and a reply field.
-A decision shows as one line under the comment with a small **Undo**. With
+A decision shows as one line under the comment with a small **Undo**.
+With two or more waiting, **✓ Accept all · N** (in the list, the agent's
+list and Finish review's "Not decided yet") accepts every piece of the
+agent's finished work (`done`, `wrote`) and approves every colleague's
+comment awaiting approval, as decision drafts in one call
+(`POST /a/{id}/drafts/batch`): all are made or, if one is refused, none,
+and a toast says so. A comment that already has a decision or a reply draft
+of the person's is skipped; the agent's questions (`asked`) are left to be
+answered. One **Undo** in the toast takes them all back, again in one call.
+Finish review is not sent while the call is on its way. With
 drafts, **Finish review · N** sits at the bottom of an item too. On a computer the same
 views sit in a panel at the right, and the strip's line heads it.
 
-**Finish review** shows the person's new drafts and one row for each comment
+**Finish review** shows first, under "Not decided yet", what waits for the
+person's yes with no decision or reply of theirs: the agent's answers
+(`done`, `wrote`, `asked`) and colleagues' comments awaiting approval. Then
+the person's new drafts and one row for each comment
 decided or replied to, a field for a general comment
 (optional, about the whole file), a choice **Send to agent** (the default) or
 **Only publish** with a line saying what follows, and **Back** / **Finish
@@ -371,6 +383,8 @@ Pins and cards show texts and names as text nodes, never as HTML.
 | `POST /a/{id}/drafts` | a comment `{"author", "text", "anchor"}`, a reply `{"author", "kind": "reply", "of": n, "text"}` or a decision `{"author", "kind": "approve" or "reject" or "accept", "of": n}` | `201` + draft JSON; `409 too_many_drafts` |
 | `PATCH /a/{id}/drafts/{d}` | `{"text"}`, comment and reply drafts | `200` + draft JSON |
 | `DELETE /a/{id}/drafts/{d}` | delete the draft, of any kind | `204` |
+| `POST /a/{id}/drafts/batch` | `{"author", "decisions": [{"kind": "approve" or "reject" or "accept", "of": n}, ...]}`, 1 to 200 decisions, at most one per comment: decision drafts made at once, all or none | `201` + list of draft JSON in that order; `409 too_many_drafts` |
+| `POST /a/{id}/drafts/delete` | `{"ids": [...]}`, 1 to 200 draft ids: delete those that are the key's drafts, ignore the rest | `204` |
 | `POST /a/{id}/review` | `{"author", "text", "agent"}`, `text` optional, `agent` true to send to the agent (default false): publish the key's drafts of every kind and the general comment | `201` + list of the comments made or touched and still open; `400` with no drafts and no text; `409 too_many_comments`, `409 too_many_replies` |
 
 The draft and review calls need `X-Author-Key`; without it, or malformed,
@@ -464,7 +478,13 @@ except that nobody approves or rejects their own comment.
 
 A draft's `of` must be an open (unresolved) comment of the file, else `404
 not_found`. Approving or rejecting one's own comment, and accepting a comment
-whose `agent` is not `done`, `wrote` or `asked`, is `400 bad_request`. A
+whose `agent` is not `done`, `wrote` or `asked`, is `400 bad_request`.
+`drafts/batch` checks each decision by the same rules and each replaces the
+key's earlier one on its comment; if any is refused, or the drafts would
+pass a limit, none is made and the answer is the first refusal.
+`drafts/delete` never touches another key's drafts: an id that is not one of
+the key's live drafts on this file is skipped, so the answer says nothing
+about other people's ids. A
 reply's text follows the rules of a comment's. A reply or a decision whose
 comment was resolved or deleted before the review is finished is dropped
 then, without an error.
@@ -572,7 +592,9 @@ two presses cannot both get a key. The pages send `Cache-Control: no-store`,
 **Comments.** Writing needs no agent key, so it is limited: the sizes and the
 counts above, and a request rate per address in the reverse proxy. The nginx
 example gets its own zone for writes under `/a/{id}/` (POST, PATCH, DELETE
-on `drafts` and `review`), 10 requests a minute with a burst of 5; over it,
+on `drafts`, including `drafts/batch` and `drafts/delete`, and `review`),
+10 requests a minute with a burst of 5, so Accept all and its Undo count as
+one write each; over it,
 nginx answers `429`. Reading stays under the viewer's limit. A limit per
 address cannot stop someone with many addresses from filling an artifact's
 200 comments or its 200 drafts; the owner agent can delete the comments and

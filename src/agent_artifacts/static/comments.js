@@ -169,7 +169,7 @@
   const model = commentsModel(S, { pending, seen });
   const {
     liveDrafts, draftById, isComment, actsOn, decisionOn, repliesOn,
-    reviewCount, items, itemOf, agentCounts, lastSent, when,
+    reviewCount, items, itemOf, agentCounts, lastSent, when, acceptable, acceptAllShown,
   } = model;
   function markSeen(c) {
     if (!model.markSeen(c)) return;
@@ -225,14 +225,16 @@
     b.title = "Fold";
     return b;
   }
-  function titled(text) {
+  function titled(text, extra = null) {
     const ttl = el("h2", "ttl", text);
-    if (desk.matches) {
+    if (desk.matches && !extra) {
       ttl.classList.add("handle");
       return ttl;
     }
     const head = el("div", "head handle");
-    head.append(ttl, foldButton());
+    head.append(ttl);
+    if (extra) head.append(extra);
+    if (!desk.matches) head.append(foldButton());
     return head;
   }
 
@@ -435,8 +437,10 @@
       let title = "No comments yet";
       if (review) title = `Review · ${review}` + (S.comments.length ? ` · ${S.comments.length} published` : "");
       else if (S.comments.length) title = `Comments · ${S.comments.length}`;
-      out.push(titled(title));
-      if (all.some((i) => i.pend)) out.push(el("p", "cap", "Colleagues’ comments wait for your approval."));
+      out.push(titled(title, acceptAllButton()));
+      if (all.some((i) => i.pend && !actsOn(i.c.n).length)) {
+        out.push(el("p", "cap", "Colleagues’ comments wait for your approval."));
+      }
       if (!all.length) {
         out.push(el("p", "empty", S.mode && canPin()
           ? `Tap a spot on the ${pinType === "point" ? "image" : "page"} to leave a comment.`
@@ -461,7 +465,7 @@
       const answered = a.done + a.wrote + a.asked;
       const title = answered ? `Agent answered · ${answered}`
         : a.working ? `Agent is working · ${sent.length}` : `Sent to the agent · ${sent.length}`;
-      const out = [titled(title)];
+      const out = [titled(title, acceptAllButton())];
       const last = lastSent();
       if (last) out.push(el("p", "cap", `Sent ${last.at}`));
       for (const it of sent) out.push(row(it, status(it)));
@@ -530,14 +534,20 @@
       // One row per comment: a new one, or one decided or replied to.
       const touched = items().filter((i) => i.c && actsOn(i.c.n).length);
       const count = drafts.length + touched.length;
-      // The agent's answers not decided yet come first, so none is left
-      // behind; then what this review changes, what is accepted last.
-      const undecided = items().filter((i) => i.c && ["done", "wrote", "asked"].includes(i.c.agent)
+      // What waits for the person's yes and is not decided yet comes first,
+      // so none is left behind: the agent's answers, and colleagues'
+      // comments awaiting approval. Then what this review changes, what is
+      // accepted last.
+      const undecided = items().filter((i) => i.c && (["done", "wrote", "asked"].includes(i.c.agent) || i.pend)
         && !actsOn(i.c.n).length);
       const accepting = (i) => (decisionOn(i.c.n) || {}).kind === "accept";
       const out = [titled(`Finish review · ${count}`)];
       if (undecided.length) {
-        out.push(el("p", "sec", `Not decided yet · ${undecided.length}`));
+        const sec = el("div", "sec-row");
+        sec.append(el("p", "sec", `Not decided yet · ${undecided.length}`));
+        const all = acceptAllButton("link");
+        if (all) sec.append(all);
+        out.push(sec);
         for (const it of undecided) out.push(row(it, status(it)));
         out.push(el("p", "sec", "In this review"));
       }
@@ -1032,6 +1042,69 @@
     }
   }
 
+  // Small enough to share a title line: a pill there, a link by a section.
+  function acceptAllButton(look = "pill") {
+    if (!acceptAllShown()) return null;
+    const n = acceptable().length;
+    const b = button(look === "pill" ? `✓ All · ${n}` : `Accept all · ${n}`, () => acceptAll(),
+      look === "pill" ? "all-pill" : "all-link");
+    b.setAttribute("aria-label", `Accept all ${n} waiting`);
+    return b;
+  }
+  // Each becomes an acceptance draft, as if accepted one by one, in one call:
+  // the server makes all of them or none. One Undo takes them all back.
+  async function acceptAll() {
+    if (deciding || sending) return;
+    if (name === null) {
+      askName(() => acceptAll());
+      return;
+    }
+    const decisions = acceptable().map(([c, kind]) => ({ kind, of: c.n }));
+    if (!decisions.length) return;
+    deciding = true;
+    // A load already on its way would bring the drafts from before.
+    changed();
+    let made;
+    try {
+      made = await call("POST", "/drafts/batch", { author: name || "", decisions });
+    } catch (e) {
+      if (!nameRefused(e)) toast(`Nothing accepted. ${e.message}`, { error: true, ms: 8000 });
+      return;
+    } finally {
+      deciding = false;
+    }
+    changed();
+    S.drafts.push(...made);
+    render();
+    const approved = made.filter((d) => d.kind === "approve").length;
+    const accepted = made.length - approved;
+    toast([accepted && `Accepted ${accepted}`, approved && `approved ${approved}`].filter(Boolean).join(", ")
+      .replace(/^a/, "A"), { undo: () => undoAll(made) });
+  }
+
+  // Deletes the drafts Accept all made, in one call; one already gone (a
+  // review sent meanwhile, say) is skipped by the server.
+  async function undoAll(made) {
+    if (deciding || sending) {
+      toast("Still saving. Try again.", { undo: () => undoAll(made) });
+      return;
+    }
+    const ids = new Set(made.map((d) => d.id));
+    deciding = true;
+    changed();
+    try {
+      await call("POST", "/drafts/delete", { ids: [...ids] });
+    } catch (e) {
+      toast(`Not undone. ${e.message}`, { error: true, ms: 8000 });
+      return;
+    } finally {
+      deciding = false;
+    }
+    changed();
+    S.drafts = S.drafts.filter((x) => !ids.has(x.id));
+    render();
+  }
+
   async function undoDecision(d) {
     try {
       await call("DELETE", `/drafts/${d.id}`);
@@ -1182,6 +1255,11 @@
 
   async function finish(done) {
     if (sending) return;
+    // Not while a decision is on its way: the review would go without it.
+    if (deciding) {
+      toast("Still saving your decisions. Try again.");
+      return;
+    }
     sending = true;
     done.disabled = true;
     try {

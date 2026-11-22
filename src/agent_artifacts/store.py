@@ -838,42 +838,71 @@ class Store:
         with self._conn(write=True) as db:
             if self._artifact(db, artifact_id) is None:
                 return None
-            args = self._draft_args(artifact_id, key_hash, of=of_n)
-            if of_n is not None:
-                about = db.execute(
-                    "SELECT author_key_hash = :key, agent FROM comments "
-                    "WHERE artifact_id = :id AND n = :of AND resolved_at IS NULL",
-                    args,
-                ).fetchone()
-                if about is None:
-                    raise NoSuchComment
-                own, agent = about
-                if kind in ("approve", "reject") and own:
-                    raise DraftRefused(f"you cannot {kind} your own comment")
-                if kind == "accept" and agent not in ANSWERED:
-                    raise DraftRefused("the agent has not answered this comment yet")
-                if kind in DECISIONS:
-                    db.execute(
-                        "DELETE FROM drafts WHERE artifact_id = :id AND author_key_hash = :key "
-                        "AND of_n = :of AND kind IN ('approve', 'reject', 'accept')",
-                        args,
-                    )
-            # Expired drafts make room before they are counted.
-            db.execute("DELETE FROM drafts WHERE artifact_id = :id AND updated_at <= :stale", args)
-            mine, total = db.execute(
-                "SELECT COALESCE(SUM(author_key_hash = :key), 0), COUNT(*) FROM drafts "
-                "WHERE artifact_id = :id",
+            return self._add_draft(db, artifact_id, key_hash, author, text, anchor, kind, of_n)
+
+    def add_decisions(
+        self, artifact_id: str, key_hash: str, *, author: str, decisions: list[tuple[str, int]]
+    ) -> list[Draft] | None:
+        """Decision drafts ``(kind, of_n)`` in one go, each as add_draft makes
+        it: all of them or, if one is refused, none. None if the artifact is
+        gone. Raises what add_draft raises."""
+        assert all(kind in DECISIONS for kind, _ in decisions), decisions
+        with self._conn(write=True) as db:
+            if self._artifact(db, artifact_id) is None:
+                return None
+            # An exception leaves the transaction, which rolls the earlier ones back.
+            return [
+                self._add_draft(db, artifact_id, key_hash, author, "", None, kind, of_n)
+                for kind, of_n in decisions
+            ]
+
+    def _add_draft(
+        self,
+        db: sqlite3.Connection,
+        artifact_id: str,
+        key_hash: str,
+        author: str,
+        text: str,
+        anchor: str | None,
+        kind: str,
+        of_n: int | None,
+    ) -> Draft:
+        args = self._draft_args(artifact_id, key_hash, of=of_n)
+        if of_n is not None:
+            about = db.execute(
+                "SELECT author_key_hash = :key, agent FROM comments "
+                "WHERE artifact_id = :id AND n = :of AND resolved_at IS NULL",
                 args,
             ).fetchone()
-            if mine >= MAX_DRAFTS_PER_KEY or total >= MAX_DRAFTS:
-                raise TooManyDrafts
-            now = args["now"]
-            draft = Draft(secrets.token_urlsafe(8), author, text, anchor, now, now, kind, of_n)
-            db.execute(
-                "INSERT INTO drafts (artifact_id, id, author_key_hash, author, text, anchor, "
-                "created_at, updated_at, kind, of_n) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (artifact_id, draft.id, key_hash, author, text, anchor, now, now, kind, of_n),
-            )
+            if about is None:
+                raise NoSuchComment
+            own, agent = about
+            if kind in ("approve", "reject") and own:
+                raise DraftRefused(f"you cannot {kind} your own comment")
+            if kind == "accept" and agent not in ANSWERED:
+                raise DraftRefused("the agent has not answered this comment yet")
+            if kind in DECISIONS:
+                db.execute(
+                    "DELETE FROM drafts WHERE artifact_id = :id AND author_key_hash = :key "
+                    "AND of_n = :of AND kind IN ('approve', 'reject', 'accept')",
+                    args,
+                )
+        # Expired drafts make room before they are counted.
+        db.execute("DELETE FROM drafts WHERE artifact_id = :id AND updated_at <= :stale", args)
+        mine, total = db.execute(
+            "SELECT COALESCE(SUM(author_key_hash = :key), 0), COUNT(*) FROM drafts "
+            "WHERE artifact_id = :id",
+            args,
+        ).fetchone()
+        if mine >= MAX_DRAFTS_PER_KEY or total >= MAX_DRAFTS:
+            raise TooManyDrafts
+        now = args["now"]
+        draft = Draft(secrets.token_urlsafe(8), author, text, anchor, now, now, kind, of_n)
+        db.execute(
+            "INSERT INTO drafts (artifact_id, id, author_key_hash, author, text, anchor, "
+            "created_at, updated_at, kind, of_n) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (artifact_id, draft.id, key_hash, author, text, anchor, now, now, kind, of_n),
+        )
         return draft
 
     def edit_draft(self, artifact_id: str, key_hash: str, draft_id: str, text: str) -> Draft | None:
@@ -892,6 +921,20 @@ class Store:
             args = self._draft_args(artifact_id, key_hash, draft=draft_id)
             sql = f"DELETE FROM drafts WHERE {_OWN_DRAFT}"  # noqa: S608 (a constant)
             return db.execute(sql, args).rowcount > 0
+
+    def delete_drafts(self, artifact_id: str, key_hash: str, draft_ids: list[str]) -> bool:
+        """Delete those of ``draft_ids`` that are ``key_hash``'s drafts, in one
+        go; the others are left alone. False if there is no such artifact."""
+        with self._conn(write=True) as db:
+            if self._artifact(db, artifact_id) is None:
+                return False
+            args = self._draft_args(artifact_id, key_hash)
+            db.executemany(
+                "DELETE FROM drafts WHERE artifact_id = :id AND author_key_hash = :key "
+                "AND id = :draft",
+                [args | {"draft": d} for d in draft_ids],
+            )
+        return True
 
     def drop_drafts(self, artifact_id: str, *, owner: str) -> bool:
         """Delete every draft on the owner's file, unread; False if there is

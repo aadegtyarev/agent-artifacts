@@ -125,9 +125,26 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
     return [lead, parts.join(" · ")];
   }
 
+  // What waits for the person's yes, with neither a decision nor a reply of
+  // theirs yet, as [comment, kind]: the agent's finished work (done, or done
+  // and wrote) to accept, and colleagues' comments awaiting approval to
+  // approve. The agent's questions are left to be answered one by one.
+  function acceptable() {
+    const out = [];
+    for (const it of items()) {
+      if (!it.c || actsOn(it.c.n).length) continue;
+      if (it.c.agent === "done" || it.c.agent === "wrote") out.push([it.c, "accept"]);
+      else if (it.pend) out.push([it.c, "approve"]);
+    }
+    return out;
+  }
+  // One waiting is accepted on its own row; Accept all shows from two.
+  const acceptAllShown = () => acceptable().length >= 2;
+
   return {
     letter, liveDrafts, draftById, isComment, commentDrafts, actsOn, decisionOn, repliesOn,
     reviewCount, othersReplies, markSeen, stateOf, items, itemOf, agentCounts, lastSent, when, status,
+    acceptable, acceptAllShown,
   };
 };
 

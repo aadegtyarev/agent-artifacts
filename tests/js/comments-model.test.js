@@ -151,3 +151,35 @@ test("lastSent: the latest moment a review reached the agent", () => {
   const hm = new Date(latest).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   assert.deepEqual(m.lastSent(), { at: hm });
 });
+
+test("Accept all picks the agent's finished work to accept and colleagues' pending comments to approve", () => {
+  const m = model([
+    comment(1, { agent: "done" }),
+    comment(2, { agent: "wrote", mine: true }), // the agent's answer on one's own: accepted too
+    comment(3), // a colleague's, awaiting approval
+    comment(4, { agent: "asked" }), // a question is answered one by one
+    comment(5, { agent: "working" }),
+    comment(6, { mine: true }), // one's own is never approved
+    comment(7, { approved_by: "alice" }),
+    comment(8, { rejected_by: "alice" }),
+  ]);
+  assert.deepEqual(m.acceptable().map(([c, kind]) => [c.n, kind]), [[1, "accept"], [2, "accept"], [3, "approve"]]);
+  assert.equal(m.acceptAllShown(), true);
+});
+
+test("Accept all skips a comment with a decision or a reply draft of the person's", () => {
+  const comments = [comment(1, { agent: "done" }), comment(2), comment(3, { agent: "done" }), comment(4)];
+  const m = model(comments, [draft("reject", 1), draft("reply", 2), draft("comment")]);
+  assert.deepEqual(m.acceptable().map(([c, kind]) => [c.n, kind]), [[3, "accept"], [4, "approve"]]);
+  // A draft being deleted no longer counts.
+  const undone = draft("approve", 4);
+  const pending = model(comments, [undone], { pending: new Set([undone.id]) });
+  assert.equal(pending.acceptable().length, 4);
+});
+
+test("Accept all shows from two waiting", () => {
+  assert.equal(model([]).acceptAllShown(), false);
+  assert.equal(model([comment(1, { agent: "done" })]).acceptAllShown(), false);
+  assert.equal(model([comment(1, { agent: "done" }), comment(2)]).acceptAllShown(), true);
+  assert.equal(model([comment(1, { agent: "done" }), comment(2)], [draft("approve", 2)]).acceptAllShown(), false);
+});
