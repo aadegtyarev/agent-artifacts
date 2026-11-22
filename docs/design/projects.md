@@ -1,11 +1,16 @@
 # Projects: design
 
-**Not built.** This is the approved design for projects. None of it is in
-the code yet: the service has no projects, no `/p/{id}` page, no `title`,
-`project` or `section` fields, and the CLI has none of the commands below.
-What is shipped is described in [the contract](../contract.md). The text here
-was moved from the contract as it was, so it still reads as a specification;
+**Mostly not built.** This is the approved design for projects. What is
+shipped is described in [the contract](../contract.md). The text here was
+moved from the contract as it was, so it still reads as a specification;
 when a part is built, it moves back into the contract.
+
+Built so far, and described in the contract: a file's `title` and
+`updated_at`, the `title` field on upload and replace, `PATCH
+/api/v1/artifacts/{id}` with `title` only, the title in the viewer page's
+header, and the CLI's `--title` option and `set ID --title TEXT`. Not built:
+projects themselves, `project` and `section`, the `/p/{id}` page, the
+project's file list and links between files, and the other commands below.
 
 ## Scenario
 
@@ -26,9 +31,8 @@ space runs out, it deletes superseded files itself and says what it removed.
 - **Lifetime.** 48 h from the last upload or replace; none in a project.
   Keeping files outside a project beyond the TTL stays out of scope.
 - **Upload fields.** Uploads and replaces also take optional fields `title`,
-  `project` and `section`, described in [Projects](#projects). Today the
-  upload form takes at most two fields besides the file, so this needs a
-  higher field limit in `web.py`.
+  `project` and `section`, described in [Projects](#projects). The upload
+  form already takes four fields besides the file; `title` is built.
 - **Artifact JSON** gains four fields:
 
 ```json

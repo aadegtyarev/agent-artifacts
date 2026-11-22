@@ -30,8 +30,8 @@ from starlette.staticfiles import StaticFiles
 
 from . import kinds, pages
 from .admin import admin_routes
-from .api import ApiError, error, iso, on_api_error, require_agent, user_json
-from .comments import comment_routes
+from .api import ApiError, error, iso, json_body, on_api_error, require_agent, user_json
+from .comments import comment_routes, one_line
 from .config import Config, normal_host
 from .store import ID_RE, TOKEN_RE, Artifact, NameTaken, QuotaExceeded, StorageFull, Store
 
@@ -52,6 +52,9 @@ class _InviteToken(StringConvertor):
 register_url_convertor("invite_token", _InviteToken())
 # Multipart framing around the file; the file itself is checked exactly later.
 FORM_OVERHEAD_BYTES = 64 * 1024
+# Upload fields besides the file: name and title, then project and section.
+MAX_FORM_FIELDS = 4
+MAX_TITLE = 200
 
 
 def create_app(config: Config, store: Store | None = None) -> Starlette:
@@ -67,9 +70,11 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             "id": a.id,
             "url": f"{config.public_url}/a/{a.id}",
             "name": a.name,
+            "title": a.title,
             "type": a.kind,
             "size": a.size,
             "created_at": iso(a.created_at),
+            "updated_at": iso(a.updated_at),
             "expires_at": iso(a.expires_at),
             "comments": a.comments,
             "open_comments": a.open_comments,
@@ -82,7 +87,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         if int(length) > config.max_file_bytes + FORM_OVERHEAD_BYTES:
             return error(413, "too_large", f"limit is {config.max_file_bytes} bytes")
         try:
-            form = await request.form(max_files=1, max_fields=2, max_part_size=4096)
+            form = await request.form(max_files=1, max_fields=MAX_FORM_FIELDS, max_part_size=4096)
         except Exception:  # starlette raises several types for a malformed body
             return error(400, "bad_request", "expected multipart/form-data")
         try:
@@ -92,6 +97,8 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             size = upload.size or 0
             if size > config.max_file_bytes:
                 return error(413, "too_large", f"limit is {config.max_file_bytes} bytes")
+            title_field = form.get("title")
+            title = None if title_field is None else _title(title_field)
             name_field = form.get("name")
             raw_name = name_field if isinstance(name_field, str) and name_field else upload.filename
             try:
@@ -111,6 +118,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
                     kind=kind.name,
                     size=size,
                     artifact_id=artifact_id,
+                    title=title,
                 )
             except QuotaExceeded as e:
                 return error(
@@ -154,6 +162,13 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         if request.method == "DELETE":
             if await run_in_threadpool(store.delete, artifact_id, owner=agent):
                 return Response(status_code=204)
+        elif request.method == "PATCH":
+            # Only the title so far; the project and section join it later.
+            data = await json_body(request, {"title"})
+            title = _title(data["title"])
+            edited = await run_in_threadpool(store.edit, artifact_id, owner=agent, title=title)
+            if edited is not None:
+                return JSONResponse(as_json(edited))
         elif store.get(artifact_id, owner=agent) is not None:
             return await save(request, agent, artifact_id)
         return error(404, "not_found", "no such artifact")
@@ -257,7 +272,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             Route("/api/v1/me", me),
             Route("/api/v1/me/key", new_key, methods=["POST"]),
             Route("/api/v1/artifacts", collection, methods=["GET", "POST"]),
-            Route("/api/v1/artifacts/{id:artifact_id}", item, methods=["PUT", "DELETE"]),
+            Route("/api/v1/artifacts/{id:artifact_id}", item, methods=["PUT", "PATCH", "DELETE"]),
             Route("/a/{id:artifact_id}", view),
             Route("/a/{id:artifact_id}/raw", raw),
             Route("/a/{id:artifact_id}/download", download),
@@ -275,6 +290,14 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
     )
 
     return app
+
+
+def _title(v: object) -> str:
+    """What pages show for a file: one line of 1 to MAX_TITLE characters."""
+    title = one_line(v, "title", MAX_TITLE)
+    if not title:
+        raise ApiError(400, "bad_request", "title is empty")
+    return title
 
 
 _RAW_PATH = re.compile(rf"/a/({ID_RE})/raw")

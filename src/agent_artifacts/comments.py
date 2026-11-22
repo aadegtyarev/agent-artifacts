@@ -423,7 +423,7 @@ def _string(v: object, field: str, at_most: int) -> str:
     return v
 
 
-def _line(v: object, field: str, at_most: int) -> str:
+def one_line(v: object, field: str, at_most: int) -> str:
     """Like _string, on one line."""
     if isinstance(v, str) and _LINE_BREAKS.search(v):
         raise ApiError(400, "bad_request", f"{field} must be one line")
@@ -431,7 +431,7 @@ def _line(v: object, field: str, at_most: int) -> str:
 
 
 def _author(data: dict) -> str:
-    return _line(data.get("author", ""), "author", MAX_AUTHOR) or "anonymous"
+    return one_line(data.get("author", ""), "author", MAX_AUTHOR) or "anonymous"
 
 
 def _text(v: object) -> str:
@@ -483,16 +483,16 @@ def _anchor(v: object, pin: str | None) -> str | None:
         if isinstance(width, bool) or not isinstance(width, int) or not 0 < width <= MAX_WIDTH:
             raise ApiError(400, "bad_request", "anchor.width must be a whole number of pixels")
         anchor |= {
-            "selector": _line(v["selector"], "anchor.selector", MAX_SELECTOR),
-            "text": _line(v["text"], "anchor.text", MAX_ANCHOR_TEXT),
+            "selector": one_line(v["selector"], "anchor.selector", MAX_SELECTOR),
+            "text": one_line(v["text"], "anchor.text", MAX_ANCHOR_TEXT),
             "width": width,
         }
         if "screen" in v:
-            screen = _line(v["screen"], "anchor.screen", MAX_SCREEN)
+            screen = one_line(v["screen"], "anchor.screen", MAX_SCREEN)
             if screen:
                 anchor["screen"] = screen
         if "hash" in v:
-            h = _line(v["hash"], "anchor.hash", MAX_HASH)
+            h = one_line(v["hash"], "anchor.hash", MAX_HASH)
             # As a browser reports it: "#" and printable ASCII ("#" alone is
             # the page with no hash, its start screen).
             if h and not _HASH_RE.fullmatch(h):

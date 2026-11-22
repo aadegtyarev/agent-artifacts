@@ -199,6 +199,12 @@ def _migrate_to_v2(db: sqlite3.Connection) -> None:
         db.execute(f"ALTER TABLE comments DROP COLUMN {column}")
 
 
+def _migrate_to_v3(db: sqlite3.Connection) -> None:
+    """Artifacts get a title, what pages show; until now that was the name."""
+    db.execute("ALTER TABLE artifacts ADD COLUMN title TEXT")
+    db.execute("UPDATE artifacts SET title = name")
+
+
 def _repair_comment_seq(db: sqlite3.Connection) -> None:
     """A counter behind its comments (added to a database that had comments,
     or comments written by an older version after a rollback) would hand out
@@ -216,6 +222,7 @@ def _repair_comment_seq(db: sqlite3.Connection) -> None:
 _MIGRATIONS: tuple[Callable[[sqlite3.Connection], None], ...] = (
     _migrate_to_v1,
     _migrate_to_v2,
+    _migrate_to_v3,
 )
 
 
@@ -265,6 +272,7 @@ class Artifact:
     comments: int = 0
     open_comments: int = 0
     updated_at: float = 0.0  # the last upload: replaced, else created
+    title: str = ""
 
 
 # An artifact row with its comment counts, for Artifact(*row).
@@ -272,7 +280,9 @@ _ARTIFACT_SQL = (
     "SELECT a.id, a.owner, a.name, a.kind, a.size, a.created_at, a.expires_at, "
     "(SELECT COUNT(*) FROM comments c WHERE c.artifact_id = a.id), "
     "(SELECT COUNT(*) FROM comments c WHERE c.artifact_id = a.id AND c.resolved_at IS NULL), "
-    "COALESCE(a.replaced_at, a.created_at) "
+    "COALESCE(a.replaced_at, a.created_at), "
+    # Rows written by older code after a rollback have no title.
+    "COALESCE(a.title, a.name) "
     "FROM artifacts a"
 )
 
@@ -659,9 +669,12 @@ class Store:
         kind: str,
         size: int,
         artifact_id: str | None = None,
+        title: str | None = None,
     ) -> Artifact | None:
         """Store a new artifact, or replace ``artifact_id`` if ``owner`` owns
-        it. Returns None when there is no such artifact of ``owner``'s."""
+        it. Returns None when there is no such artifact of ``owner``'s.
+        Without a ``title`` a new artifact takes its name, a replaced one keeps
+        its title."""
         new_id = artifact_id or secrets.token_urlsafe(16)
         tmp = self.files / f".{new_id}.{secrets.token_hex(4)}.tmp"
         with open(tmp, "wb") as out:
@@ -690,18 +703,18 @@ class Store:
                     raise StorageFull
                 if artifact_id is None:
                     db.execute(
-                        "INSERT INTO artifacts (id, owner, name, kind, size, created_at, "
-                        "expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                        (new_id, owner, name, kind, size, now, now + ttl),
+                        "INSERT INTO artifacts (id, owner, name, title, kind, size, "
+                        "created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        (new_id, owner, name, title or name, kind, size, now, now + ttl),
                     )
                 else:
                     # Read under the lock, so a comment posted before this
                     # replace always has an earlier created_at.
                     row = db.execute(
-                        "UPDATE artifacts SET name = ?, kind = ?, size = ?, expires_at = ?, "
-                        "replaced_at = ? WHERE id = ? AND owner = ? AND expires_at > ? "
-                        "RETURNING id",
-                        (name, kind, size, now + ttl, self.clock(), new_id, owner, now),
+                        "UPDATE artifacts SET name = ?, title = COALESCE(?, title), kind = ?, "
+                        "size = ?, expires_at = ?, replaced_at = ? "
+                        "WHERE id = ? AND owner = ? AND expires_at > ? RETURNING id",
+                        (name, title, kind, size, now + ttl, self.clock(), new_id, owner, now),
                     ).fetchone()
                     if row is None:
                         return None
@@ -711,6 +724,17 @@ class Store:
         finally:
             tmp.unlink(missing_ok=True)
         return artifact
+
+    def edit(self, artifact_id: str, *, owner: str, title: str) -> Artifact | None:
+        """Change a live artifact's details without uploading it again; None
+        when ``owner`` has no such artifact."""
+        with self._conn(write=True) as db:
+            row = db.execute(
+                "UPDATE artifacts SET title = ? WHERE id = ? AND owner = ? AND expires_at > ? "
+                "RETURNING id",
+                (title, artifact_id, owner, self.clock()),
+            ).fetchone()
+            return self._artifact(db, artifact_id) if row else None
 
     # Comments and drafts; they go with their artifact (ON DELETE CASCADE).
 

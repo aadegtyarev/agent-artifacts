@@ -65,6 +65,15 @@ def test_setup_upload_and_new_key(server):
     art = json.loads(out)
     assert code == 0 and art["name"] == "@etc.html"
     assert json.loads(cli(home, "list")[1])[0]["id"] == art["id"]
+    code, out, _ = cli(home, "upload", str(page), "--title", "Q3 report")
+    titled = json.loads(out)
+    assert code == 0 and (titled["name"], titled["title"]) == ("a;b.html", "Q3 report")
+    titled = json.loads(cli(home, "replace", titled["id"], str(page), "c.html")[1])
+    assert (titled["name"], titled["title"]) == ("c.html", "Q3 report")
+    out = cli(home, "replace", titled["id"], str(page), "--title", "Q4 report")[1]
+    assert json.loads(out)["title"] == "Q4 report"
+    assert json.loads(cli(home, "set", titled["id"], "--title", "Final")[1])["title"] == "Final"
+    assert cli(home, "set", titled["id"])[0] == 2
 
     code, out, _ = cli(home, "new-key")
     assert code == 0 and "saved" in out and key not in env_file.read_text()

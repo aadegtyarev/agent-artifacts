@@ -89,7 +89,10 @@ on the whole file.
 ```bash
 artifacts_cli.py upload report.html                  # a real file; prints the artifact JSON
 artifacts_cli.py upload report.html "Q3 report.html" # optional download name, same extension rules
+artifacts_cli.py upload report.html --title "Q3 sales report"  # what the page header shows
 artifacts_cli.py replace <id> report.html            # same link, new content; the lifetime restarts
+                                                     # (add --title to change the title too)
+artifacts_cli.py set <id> --title "Q3 sales, final"  # a new title, without uploading again
 artifacts_cli.py list                                # your live files, if you lost the id;
                                                      # open_comments says what awaits you
 artifacts_cli.py delete <id>                         # delete now
@@ -99,9 +102,14 @@ artifacts_cli.py me                                  # used_bytes of quota_bytes
 Upload and replace print JSON:
 
 ```json
-{"id": "Vq3…", "url": "https://…/a/Vq3…", "name": "Q3 report.html", "type": "html",
- "size": 48213, "created_at": "…", "expires_at": "…", "comments": 0, "open_comments": 0}
+{"id": "Vq3…", "url": "https://…/a/Vq3…", "name": "Q3 report.html", "title": "Q3 report.html",
+ "type": "html", "size": 48213, "created_at": "…", "updated_at": "…", "expires_at": "…",
+ "comments": 0, "open_comments": 0}
 ```
+
+The title is what people see on the page; without `--title` it is the file
+name. Give a short human title when the file name is not one. A title is
+one line of up to 200 characters.
 
 Give the person `url` and say until when it works (`expires_at`). They can
 view it, download it, forward the link and leave comments on it. On an error
