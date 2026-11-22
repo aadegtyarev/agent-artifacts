@@ -411,9 +411,11 @@ asks for a name once ("No name" leaves it `anonymous`). While it is on, a tap
 on the content places a draft pin where a pin is possible (a link or a button
 under it does not fire) and opens the sheet with a field and **Add**. Add
 keeps the draft on the server; the mode stays on for the next spot. "+ About
-the whole file" at the end of the list adds a draft without a pin. The
-person's drafts and their pins show only in comment mode. Published comments
-show their pins always.
+the whole file" at the end of the list adds a draft without a pin. Drafts
+and all pins show with comment mode off too, so the page can be used (another
+screen of an app) and the pins come back with their elements. A pin whose
+element is on the page but not shown reads "on another screen"; one whose
+element is gone reads "spot not found".
 
 **The sheet.** On a phone or a window under 900 px wide, comments live in a
 bottom sheet with four heights:
@@ -569,7 +571,11 @@ talk only through `postMessage`:
 
 A pin is placed by its selector; if that matches nothing, by the first
 element whose visible text starts with the anchor's `text`; if neither, it is
-not drawn, and its item says "spot not found" and shows the anchor's text.
+not drawn. When the element is on the page but not shown (another screen of
+an app, a closed tab), the script reports it in `hidden` beside `missing`
+and the item says "on another screen"; otherwise it says "spot not found" and
+shows the anchor's text. The text match of an element that is not shown uses
+its plain text, so a match by text alone can be less sure there.
 Pins are placed again when the page's size or content changes. Showing a pin
 scrolls its point, not just its element, to the middle.
 

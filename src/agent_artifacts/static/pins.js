@@ -141,13 +141,14 @@
       el = [...document.body.querySelectorAll("*")].find(starts) || null;
       for (let inner = el; inner; inner = [...inner.children].find(starts)) el = inner;
     }
-    return el && el.getClientRects().length ? el : null;
+    return el;
   }
+  const visible = (el) => Boolean(el && el.getClientRects().length);
 
   function located(anchor, key) {
     if (!found.has(key)) found.set(key, find(anchor));
     const el = found.get(key);
-    if (!el || !el.isConnected) return null;
+    if (!el || !el.isConnected || !visible(el)) return null;
     const r = el.getBoundingClientRect();
     return { el, r, x: r.left + anchor.x * r.width, y: r.top + anchor.y * r.height };
   }
@@ -188,10 +189,17 @@
   function layout() {
     const shown = new Set();
     const missing = [];
+    // Of the missing, those whose element is there but not shown.
+    const hidden = [];
     let fresh = null;
     for (const p of pins) {
       const at = located(p.anchor, p.key);
-      if (!at) { missing.push(p.key); continue; }
+      if (!at) {
+        missing.push(p.key);
+        const el = found.get(p.key);
+        if (el && el.isConnected) hidden.push(p.key);
+        continue;
+      }
       pinAt(p.key, p.label, at.x, at.y, p.own && "own", p.draft && "draft", p.lit && "lit");
       shown.add(p.key);
       if (p.key === "new") fresh = at.el;
@@ -201,10 +209,10 @@
     }
     outline(draftBox, fresh);
     outline(hoverBox, picking && hovered);
-    const report = JSON.stringify(missing);
+    const report = JSON.stringify([missing, hidden]);
     if (report !== reported) {
       reported = report;
-      tell({ type: "placed", missing });
+      tell({ type: "placed", missing, hidden });
     }
   }
 
@@ -282,7 +290,7 @@
   // any scrolling box around it, then in the window.
   function reveal(anchor) {
     const el = find(anchor);
-    if (!el) return;
+    if (!visible(el)) return;
     const point = (box) => {
       const r = el.getBoundingClientRect();
       return { top: r.top + anchor.y * r.height - box.top - box.height / 2,
