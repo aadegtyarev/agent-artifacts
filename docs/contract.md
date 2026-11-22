@@ -418,9 +418,9 @@ bottom sheet with four heights:
 
 | Height | Holds |
 | --- | --- |
-| strip | one line: "Review · N" (the person's drafts) and **Finish review**; with no drafts, the count of comments |
+| strip | one line: "Review · N" (the person's drafts) and **Finish review**; with no drafts, "Comments · N ›", and in comment mode the hint "tap a spot to add" beside it (alone when there are no comments) |
 | ¼ | one item, the sheet as tall as its content and at most half: the field of a new draft, or the selected comment or draft, with ‹ › to its neighbours |
-| ½ | the list (drafts and comments, text and state only) or **Finish review**; an item or a new draft dragged up stays itself |
+| ½ | the list (drafts and comments, text and state only) or **Finish review**; an item dragged up stays first, whole, with the other comments listed under it (a tap on one brings it to the top at the same height); a new draft dragged up stays itself |
 | full | the same as ½, taller |
 
 A drag changes the height only; what the sheet shows stays. A tap changes
