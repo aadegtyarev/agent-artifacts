@@ -1,10 +1,16 @@
 {% extends "base.html" %}
 {% import "icons.html" as icon %}
+{% import "files.html" as files %}
 {% block body %}
 <header>
   <div class="name">
     <h1 title="{{ a.title }}">{{ a.title }}</h1>
+    {%- if in_project %}
+    {#- In a project: its title, which opens the list of its files below. #}
+    <div class="meta pm"><button type="button" id="files-button" class="pmeta" aria-expanded="false" aria-controls="files-drop" title="{{ in_project.title }}"><span class="pt">{{ in_project.title }}</span>{{ icon.chevron() }}</button></div>
+    {%- else %}
     <div class="meta">{{ size }} · {% if expires %}expires {{ expires }}{% else %}kept until deleted{% endif %}</div>
+    {%- endif %}
   </div>
   <div class="actions">
     {#- Comment mode: on, a tap on the content places a draft pin. #}
@@ -20,6 +26,9 @@
   <div id="fan-list" class="fan-list" role="menu" aria-label="Menu">
     <button type="button" role="menuitem" class="fan-item" data-act="exit" data-when="full"><span class="fan-label">Exit full screen</span><span class="fan-sq">{{ icon.shrink() }}</span></button>
     <button type="button" role="menuitemcheckbox" aria-checked="false" class="fan-item" data-act="comment" data-when="full"><span class="fan-label"><span class="when-off">Comment</span><span class="when-on">Commenting</span></span><span class="fan-sq">{{ icon.bubble() }}</span></button>
+    {%- if in_project %}
+    <button type="button" role="menuitem" class="fan-item" data-act="files" data-when="full"><span class="fan-label">Project files</span><span class="fan-sq">{{ icon.files() }}</span></button>
+    {%- endif %}
     <a role="menuitem" class="fan-item" href="/a/{{ a.id }}/download" data-act="download"><span class="fan-label">Download</span><span class="fan-sq">{{ icon.download() }}</span></a>
     <button type="button" role="menuitem" class="fan-item" data-act="copy" data-url="{{ url }}"><span class="fan-label">Copy link</span><span class="fan-sq">{{ icon.link() }}</span></button>
     {%- if separate %}
@@ -32,6 +41,17 @@
 {#- Full screen: this button takes the header's place. Dragged, it snaps
     to the nearer side edge. #}
 <button type="button" id="float-button" class="float-button" hidden aria-haspopup="menu" aria-controls="fan" aria-expanded="false" title="Menu" aria-label="Menu"><span class="float-mode">{{ icon.bubble() }}</span>{{ icon.menu() }}{{ icon.close() }}</button>
+{%- if in_project %}
+{#- The project's files under the header, over a scrim: the project page's
+    list with this file marked. #}
+<div id="files-drop" class="drop" hidden>
+  <div class="drop-scrim"></div>
+  <nav id="files" class="pj drop-list" data-project="{{ in_project.id }}" aria-label="Project files" tabindex="-1">
+  {{- files.rows(rows, a.id) }}
+  <div class="drop-foot"><a href="/p/{{ in_project.id }}">Project page ›</a></div>
+  </nav>
+</div>
+{%- endif %}
 <div class="stage">
 <main>
 {%- if kind.sandboxed %}

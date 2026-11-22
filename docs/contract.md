@@ -30,8 +30,7 @@ skill and its `artifacts_cli.py` command.
 - Keeping files outside a project beyond their lifetime.
 - Versions or a history of replaced files. A replace overwrites; an agent
   that wants to keep the old one uploads a new file instead.
-- A project's file list in the viewer and links between files: designed,
-  not built; see [design/projects.md](design/projects.md). Also
+- Links between files: designed, not built; see [design/projects.md](design/projects.md). Also
   projects shared between agents, nested sections, hand-set ordering, and
   comments on a project as a whole.
 - Also out: devices, owner identity, mentions, notifications, editing or
@@ -277,8 +276,9 @@ no-referrer`.
 
 ### The viewer page
 
-The header is one bar: the file's title with its size and expiry ("kept
-until deleted" in a project) on a second line under it, and three square buttons. The speech bubble switches comment mode
+The header is one bar: the file's title with its size and expiry on a second
+line under it (for a file in a project, the project's title instead, see
+below), and three square buttons. The speech bubble switches comment mode
 (see [Comments](#comments)); while it is on, the bubble is blue and pressed.
 The next one enters **Full screen**. The "≡" button opens the menu: a column
 of square icon buttons with labels, fanned out downwards from it over the
@@ -298,12 +298,27 @@ dimmed page:
 
 A tap outside the menu or Escape closes it.
 
+**The project's file list.** In a file in a project, the header's second line
+is the project's title in blue with a small chevron, cut short when it does
+not fit while the chevron stays; "kept until deleted" is on the project page.
+It is a button (`aria-expanded`, `aria-controls`): a tap drops the project's
+file list down under the header over the dimmed page. It is the project
+page's list, rendered on the server with the page (sections, rows, the
+counters from `GET /p/{id}/summary` added after), with the current file
+marked (`aria-current="page"`) and **Project page ›** at the bottom linking
+to `/p/{id}`. The focus moves into the list, on the current file. A tap on
+the dimmed page, Escape or the title again closes it, and the focus goes back
+to the title. The rows are plain links: the next file opens in the same tab.
+Like the project page, the list is open to whoever has the file's link (see
+[Projects](#projects)). A file outside a project has none of this.
+
 **Full screen** hides the header and asks the browser for full screen where
 the Fullscreen API exists (not on an iPhone). A floating "≡" button takes the
 header's place: translucent, dragged anywhere, it snaps to the nearer side
 edge, and this browser keeps its position for every file. It opens the same
 menu, upwards or downwards where there is room, with **Exit full screen** and
-**Comment** added. In comment mode the floating
+**Comment** added, and for a file in a project **Project files**, which opens
+the project's file list at the top of the screen. In comment mode the floating
 button has a blue ring inside its edge and a small blue bubble in its corner,
 and **Comment** is a checked item reading **Commenting**; a tap turns the mode
 off. A long press (500 ms, still) on the floating button turns comment mode

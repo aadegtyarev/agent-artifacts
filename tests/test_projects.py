@@ -121,7 +121,9 @@ def test_a_project_file_never_expires_until_taken_out(env):
     assert [c.n for c in store.publish(art["id"], "h", author="p", text=None)] == [1]
     for path in ("", "/raw", "/download", "/comments"):
         assert client.get(f"/a/{art['id']}{path}").status_code == 200, path
-    assert "kept until deleted" in client.get(f"/a/{art['id']}").text
+    # The header names the project instead of an expiry.
+    page = client.get(f"/a/{art['id']}").text
+    assert 'id="files-button"' in page and "expires" not in page
     assert store.agent_info("alice").files == 2
     # Taken out: a new lifetime of the current ttl from then.
     store.set_settings(ttl_seconds=3600)
@@ -373,3 +375,59 @@ def test_the_summary_counts_what_waits_for_this_person(env):
     assert (got[a]["waiting_you"], got[b]["waiting_you"]) == (0, 1)
     assert summary(MARIA)[a]["waiting_you"] == 1
     assert elsewhere not in got
+
+
+def test_a_project_files_header_lists_the_project(env):
+    client, store, keys = env
+    p = new_project(client, keys["alice"], "Landing <b>").json()["id"]
+    ids = {}
+    for title, section in (
+        ("Brief <i>", None),
+        ("Contract", "Contracts"),
+        ("Main", "App <mockups>"),
+    ):
+        later(store, 1)
+        fields = {"title": title, "project": p} | ({"section": section} if section else {})
+        ids[title] = upload(client, keys["alice"], "a.md", b"# x", **fields).json()["id"]
+    # Another project of the same agent and a loose file stay out of the list.
+    other = new_project(client, keys["alice"], "Other").json()["id"]
+    upload(client, keys["alice"], "b.md", b"# y", title="Elsewhere", project=other)
+    upload(client, keys["alice"], "c.md", b"# z", title="Loose")
+    # Public by the file's link: no key asked.
+    r = client.get(f"/a/{ids['Contract']}")
+    assert r.status_code == 200 and "connect-src 'self'" in r.headers["content-security-policy"]
+    page = r.text
+    header = page[page.index("<header>") : page.index("</header>")]
+    # The second line: the project's title as the list's button, no expiry.
+    assert 'aria-controls="files-drop"' in header and 'aria-expanded="false"' in header
+    assert ">Landing &lt;b&gt;</span>" in header and "<b>" not in page and "<i>" not in page
+    assert "expires" not in header and "kept until deleted" not in header
+    drop = page[page.index('id="files-drop"') : page.index('<div class="stage">')]
+    order = [
+        drop.index(x)
+        for x in (
+            f'href="/a/{ids["Brief <i>"]}"',
+            "Contracts</h2>",
+            f'href="/a/{ids["Contract"]}"',
+            "App &lt;mockups&gt;</h2>",
+            f'href="/a/{ids["Main"]}"',
+            f'href="/p/{p}"',
+        )
+    ]
+    assert order == sorted(order)
+    assert drop.count('class="pf"') == 3 and "Brief &lt;i&gt;" in drop
+    assert "Elsewhere" not in page and "Loose" not in page
+    # Only this file is marked.
+    assert drop.count('aria-current="page"') == 1
+    assert f'data-id="{ids["Contract"]}" aria-current="page"' in drop
+    # Full screen's menu offers the list; the counters' script is there.
+    assert 'data-act="files"' in page and "/static/project.js" in page
+
+
+def test_a_file_outside_a_project_has_no_list(env):
+    client, _, keys = env
+    art = upload(client, keys["bob"], "a.md", b"# x", title="Solo").json()["id"]
+    page = client.get(f"/a/{art}").text
+    assert "files-button" not in page and "files-drop" not in page
+    assert 'data-act="files"' not in page and "project.js" not in page
+    assert "expires " in page

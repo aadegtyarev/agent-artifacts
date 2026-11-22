@@ -253,7 +253,14 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         kind = kinds.get(a.kind)
         # "Open separately": the file at the raw origin, if there is one.
         separate = f"{config.raw_url}/a/{a.id}/raw" if config.raw_url and kind.viewable else None
-        return pages.viewer_page(a, f"{config.public_url}/a/{a.id}", separate)
+        # A file in a project lists the project's files in its header: as
+        # open as the project, whose page anyone with the link may see.
+        project = None
+        if a.project:
+            project = await run_in_threadpool(store.public_project, a.project)
+        return pages.viewer_page(
+            a, f"{config.public_url}/a/{a.id}", separate, project, store.clock()
+        )
 
     async def project_view(request: Request) -> Response:
         # Public by its link, like a file: no owner asked.

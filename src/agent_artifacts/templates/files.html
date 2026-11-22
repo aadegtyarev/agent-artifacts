@@ -1,0 +1,13 @@
+{#- A project's files in its order, a heading before each section: on the
+    project page and in the header of a file in the project. Titles go in
+    as text only. The script adds the comment counters to the rows (data-id). #}
+{% macro rows(rows, current=None) %}
+{%- for row in rows %}
+  {%- if row.heading %}
+  <h2 class="sec">{{ row.heading }}</h2>
+  {%- endif %}
+  <a class="pf" href="/a/{{ row.a.id }}" data-id="{{ row.a.id }}"{% if row.a.id == current %} aria-current="page"{% endif %}><span class="ft">{{ row.type }}</span><span class="tx"><span class="main">{{ row.a.title }}</span><span class="st">{{ row.detail }}</span></span></a>
+{%- else %}
+  <p class="empty">No files yet</p>
+{%- endfor %}
+{%- endmacro %}
