@@ -444,9 +444,10 @@
       kept.focus({ preventScroll: true });
       kept.setSelectionRange(...caret);
     }
-    // At ¼ a comment's chat shows its end: the message being answered sits
-    // right above the reply field.
-    if (open && S.view === "item" && S.pos === "q") body.scrollTop = body.scrollHeight;
+    // A field being typed in hides what would sit under the finger (the
+    // item's Finish review, the choice of where to send).
+    const typing = document.activeElement === fields.reply || document.activeElement === fields.general;
+    foot.classList.toggle("typing", typing);
     drawPins();
     syncPicking();
     dockToast();
@@ -1122,7 +1123,15 @@
     const keep = S.view === "item" && (S.pos === "h" || S.pos === "f");
     go("item", keep ? S.pos : "q");
     if (keep) body.scrollTop = 0;
+    else toChatEnd();
     revealSoon(key);
+  }
+
+  // At ¼ a comment's chat shows its end: the message being answered sits
+  // right above the reply field.
+  function toChatEnd() {
+    const it = itemOf(S.sel);
+    if (!desk.matches && S.view === "item" && S.pos === "q" && it && !it.draft) body.scrollTop = body.scrollHeight;
   }
 
   function step(by) {
@@ -1338,6 +1347,7 @@
       const dec = decisionOn(n);
       if (dec && dec.kind === "accept") await undoDecision(dec);
       render();
+      toChatEnd();
     } catch (e) {
       if (!nameRefused(e)) toast(e.message, { error: true, ms: 8000 });
     } finally {
@@ -1505,11 +1515,16 @@
   fields.edit.addEventListener("input", () => grow(fields.edit));
   // While a reply is typed, Finish review steps aside: no tap meant for the
   // send arrow lands on it.
-  fields.reply.addEventListener("focus", () => {
-    foot.classList.add("typing");
-    if (S.pos === "q") body.scrollTop = body.scrollHeight;
-  });
-  fields.reply.addEventListener("blur", () => foot.classList.remove("typing"));
+  for (const f of [fields.reply, fields.general]) {
+    f.addEventListener("focus", () => {
+      foot.classList.add("typing");
+      if (f === fields.reply) toChatEnd();
+    });
+    f.addEventListener("blur", () => foot.classList.remove("typing"));
+  }
+  // The send arrow keeps the focus in the field: nothing moves under the
+  // finger, and the keyboard stays up.
+  replyButton.addEventListener("mousedown", (e) => e.preventDefault());
   fields.reply.addEventListener("input", () => {
     grow(fields.reply);
     replyButton.disabled = !fields.reply.value.trim();
@@ -1677,7 +1692,10 @@
       fitPins();
       dockToast();
       if (S.compose && S.compose.anchor) reveal("new");
-      else if (S.view === "item" && S.sel) reveal(S.sel);
+      else if (S.view === "item" && S.sel) {
+        reveal(S.sel);
+        if (document.activeElement === fields.reply) toChatEnd();
+      }
     });
   });
   desk.addEventListener("change", () => {
