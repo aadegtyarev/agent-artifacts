@@ -16,28 +16,36 @@
   host.style.cssText = "all:initial;position:fixed;left:0;top:0;width:100%;height:100%;"
     + "z-index:2147483647;pointer-events:none;overflow:hidden";
   const root = host.attachShadow({ mode: "closed" });
-  // The same pins as on an image in the viewer (site.css): blue for what
-  // this browser wrote, orange for others; solid with a number when
-  // published; a draft is filled too, with a white dashed ring and a letter.
+  // The same pins as on an image in the viewer (site.css). Colour: whose
+  // (blue this browser, orange others). Fill: the stage (dashed hollow a
+  // draft, an outline awaiting approval, solid in force, grey rejected).
+  // One badge at the corner: the agent's state or the person's decision.
   root.innerHTML = "<style>"
     + ".box{position:absolute;display:none;box-sizing:border-box;border-radius:4px;pointer-events:none}"
     + ".hover{border:2px dashed #0a84ff;background:rgb(10 132 255/.07)}"
     + ".fresh{border:1.5px dashed #0a84ff;background:rgb(10 132 255/.05)}"
-    + ".pin{position:absolute;box-sizing:border-box;margin:0;padding:0;transform:translateY(-100%);"
+    + ".pin{--c:#e8890c;position:absolute;box-sizing:border-box;margin:0;padding:0;transform:translateY(-100%);"
     + "display:flex;align-items:center;justify-content:center;width:26px;height:26px;"
-    + "font:600 13px/1 -apple-system,system-ui,Roboto,sans-serif;color:#fff;background:#e8890c;border:0;"
+    + "font:600 13px/1 -apple-system,system-ui,Roboto,sans-serif;color:#fff;background:var(--c);border:0;"
     + "border-radius:50% 50% 50% 4px;box-shadow:0 0 0 2px #fff,0 2px 6px rgb(0 0 0/.28);"
     + "pointer-events:auto;cursor:pointer;-webkit-tap-highlight-color:transparent}"
     + ".pin::before{content:'';position:absolute;inset:-10px}"
-    + ".pin.own{background:#0a84ff}"
-    + ".pin.draft{border:1.5px dashed #fff;box-shadow:0 0 0 2px #e8890c,0 2px 6px rgb(0 0 0/.3)}"
-    + ".pin.draft.own{box-shadow:0 0 0 2px #0a84ff,0 2px 6px rgb(0 0 0/.3)}"
+    + ".pin.own{--c:#0a84ff}"
+    + ".pin.draft,.pin.pend{color:var(--c);background:#fff;border:2px dashed var(--c);box-shadow:0 2px 6px rgb(0 0 0/.2)}"
+    + ".pin.pend{border-style:solid}"
+    + ".pin.rej{background:#c7c7cc}"
     + ".pin.left{transform:translate(-100%,-100%);border-radius:50% 50% 4px 50%}"
     + ".pin.down{transform:none;border-radius:4px 50% 50% 50%}"
     + ".pin.left.down{transform:translateX(-100%);border-radius:50% 4px 50% 50%}"
     + ".pin.lit{z-index:2;width:32px;height:32px;font-size:15px;box-shadow:0 0 0 2px #fff,0 0 0 6px rgb(28 28 30/.18),0 2px 6px rgb(0 0 0/.25)}"
-    + ".pin.draft.lit{box-shadow:0 0 0 2px #e8890c,0 0 0 6px rgb(28 28 30/.18),0 2px 6px rgb(0 0 0/.25)}"
-    + ".pin.draft.own.lit{box-shadow:0 0 0 2px #0a84ff,0 0 0 6px rgb(28 28 30/.18),0 2px 6px rgb(0 0 0/.25)}"
+    + ".pin.draft.lit,.pin.pend.lit{box-shadow:0 0 0 6px rgb(28 28 30/.18),0 2px 6px rgb(0 0 0/.25)}"
+    + ".bdg{position:absolute;right:-10px;top:-10px;width:20px;height:20px;border-radius:50%;"
+    + "box-shadow:0 0 0 2px #fff;display:flex;align-items:center;justify-content:center;pointer-events:none}"
+    + ".bdg svg{width:12px;height:12px;display:block}"
+    + ".bdg.wait{background:#8e8e93}.bdg.work{background:#5e5ce6}.bdg.done,.bdg.wrote{background:#34c759}"
+    + ".bdg.ask{background:#ff9f0a}.bdg.ok,.bdg.re{background:#0a84ff}.bdg.no{background:#636366}"
+    + ".bdg.work::after{content:'';position:absolute;inset:-5px;border-radius:50%;border:2px solid rgb(94 92 230/.4)}"
+    + ".bdg.new{right:-4px;top:-4px;width:12px;height:12px;background:#ff3b30}"
     + "</style><div class='box hover'></div><div class='box fresh'></div><div class='pins'></div>";
   const hoverBox = root.querySelector(".hover");
   const draftBox = root.querySelector(".fresh");
@@ -199,7 +207,40 @@
 
   // The pin `key` at (x, y): an existing button is moved, and only what
   // changed is set, so a lit pin's pulse does not start over.
-  function pinAt(key, label, x, y, ...classes) {
+  // Badge marks, the same as in comments.js.
+  const MARK = {
+    star: "M6 .6C6.45 4 8 5.55 11.4 6 8 6.45 6.45 8 6 11.4 5.55 8 4 6.45.6 6 4 5.55 5.55 4 6 .6z",
+    check: "M2.4 6.3l2.4 2.4L9.6 3.6",
+    ask: "M4 4.3a2 2 0 1 1 2.9 1.8c-.6.3-.9.7-.9 1.3v.4M6 9.6v.2",
+    reply: "M4.8 2.8L2 5.6l2.8 2.8M2.3 5.6h5a2.6 2.6 0 0 1 2.6 2.6v1",
+    cross: "M3 3l6 6M9 3L3 9",
+  };
+  const BADGES = { wait: "star", work: "star", done: "star", wrote: "ask", ask: "ask", ok: "check", re: "reply", no: "cross", new: "" };
+  const FILLS = ["draft", "pend", "solid", "rej"];
+  function badge(name) {
+    const span = document.createElement("span");
+    span.className = `bdg ${name}`;
+    const mark = BADGES[name];
+    if (!mark) return span;
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", "0 0 12 12");
+    const path = document.createElementNS(ns, "path");
+    path.setAttribute("d", MARK[mark]);
+    if (mark === "star") path.setAttribute("fill", "#fff");
+    else {
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke", "#fff");
+      path.setAttribute("stroke-width", "2");
+      path.setAttribute("stroke-linecap", "round");
+      path.setAttribute("stroke-linejoin", "round");
+    }
+    svg.append(path);
+    span.append(svg);
+    return span;
+  }
+
+  function pinAt(key, label, badgeName, x, y, ...classes) {
     let b = drawn.get(key);
     if (!b) {
       b = document.createElement("button");
@@ -213,7 +254,12 @@
     if (y < 32) classes.push("down");
     const className = ["pin", ...classes].filter(Boolean).join(" ");
     if (b.className !== className) b.className = className;
-    if (b.textContent !== label) b.textContent = label;
+    if (b.dataset.label !== label || b.dataset.badge !== badgeName) {
+      b.dataset.label = label;
+      b.dataset.badge = badgeName;
+      b.replaceChildren(label);
+      if (badgeName) b.append(badge(badgeName));
+    }
     if (b.style.left !== `${x}px`) b.style.left = `${x}px`;
     if (b.style.top !== `${y}px`) b.style.top = `${y}px`;
   }
@@ -236,7 +282,7 @@
         if ((el && el.isConnected) || elsewhere) hidden.push(p.key);
         continue;
       }
-      pinAt(p.key, p.label, at.x, at.y, p.own && "own", p.draft && "draft", p.lit && "lit");
+      pinAt(p.key, p.label, p.badge, at.x, at.y, p.own && "own", p.fill !== "solid" && p.fill, p.lit && "lit");
       shown.add(p.key);
       if (p.key === "new") fresh = at.el;
     }
@@ -369,7 +415,8 @@
       pins = m.pins.filter((p) => p && isKey(p.key) && typeof p.label === "string"
         && length(p.label) <= 3 && isAnchor(p.anchor))
         .map((p) => ({ key: p.key, label: p.label, anchor: p.anchor, own: p.own === true,
-          draft: p.draft === true, lit: p.lit === true }));
+          fill: FILLS.includes(p.fill) ? p.fill : "solid",
+          badge: Object.hasOwn(BADGES, p.badge) ? p.badge : "", lit: p.lit === true }));
       schedule(true);
     } else if (m.type === "show" && isKey(m.key)) {
       const pin = pins.find((p) => p.key === m.key);

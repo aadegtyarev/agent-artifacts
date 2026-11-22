@@ -154,21 +154,76 @@
   const liveDrafts = () => S.drafts.filter((d) => !pending.has(d.id));
   const draftById = (id) => S.drafts.find((d) => d.id === id) || null;
 
-  // The person's drafts, then the published comments. Drafts stay in sight
-  // with comment mode off, so the page can be used (another screen of an
-  // app, say) without them disappearing.
+  // Drafts are of kinds: a new comment, or a reply, an approval, a
+  // rejection or an acceptance about published comment `of`.
+  const isComment = (d) => !d.kind || d.kind === "comment";
+  const commentDrafts = () => liveDrafts().filter(isComment);
+  const actsOn = (n) => liveDrafts().filter((d) => !isComment(d) && d.of === n);
+  const decisionOn = (n) => actsOn(n).find((d) => d.kind !== "reply") || null;
+  const repliesOn = (n) => actsOn(n).filter((d) => d.kind === "reply");
+  // What the review holds: new comments, and comments decided or replied to.
+  function reviewCount() {
+    const touched = new Set(liveDrafts().filter((d) => !isComment(d)).map((d) => d.of));
+    return commentDrafts().length + touched.size;
+  }
+
+  // Replies of others seen in this browser, per comment, for the red dot.
+  const seenKey = `aa-seen:${artifact}`;
+  let seen = {};
+  try { seen = JSON.parse(localStorage.getItem(seenKey) || "{}") || {}; } catch { /* none */ }
+  const othersReplies = (c) => (c.replies || []).filter((r) => !r.mine && !r.agent).length;
+  function markSeen(c) {
+    if (othersReplies(c) === (seen[c.n] || 0)) return;
+    seen[c.n] = othersReplies(c);
+    try { localStorage.setItem(seenKey, JSON.stringify(seen)); } catch { /* kept for the page */ }
+  }
+
+  // A comment's pin: the fill says its stage, the badge what is next.
+  const AGENT = { waiting: "wait", working: "work", done: "done", wrote: "wrote", asked: "ask" };
+  function stateOf(c) {
+    const pend = c.mine !== true && !c.for_agent && !c.approved_by && !c.rejected_by;
+    const fill = c.rejected_by ? "rej" : pend ? "pend" : "solid";
+    const dec = decisionOn(c.n);
+    let badge = "";
+    if (dec) badge = dec.kind === "reject" ? "no" : "ok";
+    else if (repliesOn(c.n).length) badge = "re";
+    else if (othersReplies(c) > (seen[c.n] || 0)) badge = "new";
+    else if (AGENT[c.agent]) badge = AGENT[c.agent];
+    return { fill, badge, pend };
+  }
+
+  // The person's new drafts, then the published comments. Drafts stay in
+  // sight with comment mode off, so the page can be used (another screen of
+  // an app, say) without them disappearing.
   function items() {
     const list = [];
-    liveDrafts().forEach((d, i) => list.push({
+    commentDrafts().forEach((d, i) => list.push({
       key: `d${d.id}`, draft: true, own: true, label: letter(i), anchor: d.anchor, text: d.text, d,
+      fill: "draft", badge: "",
     }));
     for (const c of S.comments) {
+      const st = stateOf(c);
       list.push({ key: `c${c.n}`, draft: false, own: c.mine === true, label: String(c.n),
-        anchor: c.anchor, text: c.text, c });
+        anchor: c.anchor, text: c.text, c, fill: st.fill, badge: st.badge, pend: st.pend });
     }
     return list;
   }
   const itemOf = (key) => items().find((i) => i.key === key) || null;
+
+  // The agent's comments by state, and the latest review sent to it. A
+  // review publishes at one moment, so the moments number the reviews.
+  function agentCounts() {
+    const n = { waiting: 0, working: 0, done: 0, wrote: 0, asked: 0 };
+    for (const c of S.comments) if (c.agent in n) n[c.agent] += 1;
+    return n;
+  }
+  function lastSent() {
+    const times = [...new Set(S.comments.filter((c) => c.for_agent).map((c) => c.created_at))].sort();
+    if (!times.length) return null;
+    const at = new Date(times[times.length - 1]);
+    const hm = at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+    return { n: times.length, at: Date.now() - at.getTime() < 86400000 ? hm : `${when(at.toISOString())}, ${hm}` };
+  }
 
   // An item's pin is drawn when its anchor fits this content.
   const pinnable = (anchor) => Boolean(anchor && pinType && anchor.type === pinType);
@@ -231,9 +286,43 @@
     return svg;
   }
 
+  // The badge at a pin's corner (pins.js draws the same in the page).
+  const MARK = {
+    star: "M6 .6C6.45 4 8 5.55 11.4 6 8 6.45 6.45 8 6 11.4 5.55 8 4 6.45.6 6 4 5.55 5.55 4 6 .6z",
+    check: "M2.4 6.3l2.4 2.4L9.6 3.6",
+    ask: "M4 4.3a2 2 0 1 1 2.9 1.8c-.6.3-.9.7-.9 1.3v.4M6 9.6v.2",
+    reply: "M4.8 2.8L2 5.6l2.8 2.8M2.3 5.6h5a2.6 2.6 0 0 1 2.6 2.6v1",
+    cross: "M3 3l6 6M9 3L3 9",
+  };
+  const BADGES = { wait: "star", work: "star", done: "star", wrote: "ask", ask: "ask", ok: "check", re: "reply", no: "cross", new: "" };
+  function mark(name) {
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", "0 0 12 12");
+    svg.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS(ns, "path");
+    path.setAttribute("d", MARK[name]);
+    if (name === "star") path.setAttribute("fill", "#fff");
+    else {
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke", "#fff");
+      path.setAttribute("stroke-width", "2");
+      path.setAttribute("stroke-linecap", "round");
+      path.setAttribute("stroke-linejoin", "round");
+    }
+    svg.append(path);
+    return svg;
+  }
+  function badgeEl(name) {
+    const span = el("span", `bdg ${name}`);
+    if (BADGES[name]) span.append(mark(BADGES[name]));
+    return span;
+  }
+
   function miniPin(it) {
-    const pin = el("span", `pin mini${it.own ? " own" : ""}${it.draft ? " draft" : ""}`,
+    const pin = el("span", `pin mini${it.own ? " own" : ""}${it.fill !== "solid" ? ` ${it.fill}` : ""}`,
       it.anchor ? it.label : "≡");
+    if (it.badge) pin.append(badgeEl(it.badge));
     pin.setAttribute("aria-hidden", "true");
     return pin;
   }
@@ -258,7 +347,14 @@
     compose: field("Comment", "Comment"),
     edit: field("Comment", "Edit the draft"),
     general: field("General comment", "General comment, optional"),
+    reply: field("Reply…", "Reply"),
   };
+  // The comment the reply field writes to.
+  let replyFor = null;
+  const replyButton = button("", () => addReply(), "send");
+  replyButton.append(icon("send"));
+  replyButton.setAttribute("aria-label", "Reply");
+  replyButton.title = "Reply";
   const sendButton = button("", () => addDraft(), "send");
   sendButton.append(icon("send"));
   sendButton.setAttribute("aria-label", "Add");
@@ -339,6 +435,8 @@
     // On a phone the strip alone shows nothing else.
     const open = desk.matches || S.pos !== "strip";
     if (S.view === "compose" && !S.compose) S.view = "list";
+    // Folded, the list starts again from what went to the agent.
+    if (!desk.matches && S.pos === "strip") S.allShown = false;
     const [content, footer] = open ? views[S.view]() : [[], []];
     body.replaceChildren(...content);
     foot.replaceChildren(...footer);
@@ -356,33 +454,53 @@
   }
 
   function renderStrip() {
-    strip.replaceChildren(stripText);
-    const drafts = liveDrafts().length;
+    const review = reviewCount();
+    const a = agentCounts();
+    const answered = a.done + a.wrote + a.asked;
+    const busy = a.waiting + a.working;
+    const more = desk.matches ? "" : " ›";
+    const many = (n) => `${n} ${n === 1 ? "comment" : "comments"}`;
     let line;
-    if (drafts) line = `Review · ${drafts}`;
-    else if (S.comments.length) line = `Comments · ${S.comments.length}${desk.matches ? "" : " ›"}`;
+    let badge = "";
+    if (review) line = `Review · ${review}`;
+    else if (answered && busy) {
+      line = `${busy} with the agent · ${answered} to check${more}`;
+      badge = a.done || a.wrote ? "done" : "ask";
+    } else if (answered) {
+      line = `Agent answered ${answered} · take a look${more}`;
+      badge = a.done || a.wrote ? "done" : "ask";
+    } else if (a.working) {
+      line = `Agent is working · ${many(a.working)}${more}`;
+      badge = "work";
+    } else if (a.waiting) {
+      line = `With the agent · ${many(a.waiting)}${more}`;
+      badge = "wait";
+    } else if (S.comments.length) line = `Comments · ${S.comments.length}${more}`;
     else if (S.mode && canPin()) line = `Tap a spot on the ${pinType === "point" ? "image" : "page"} to comment`;
     else line = "No comments yet";
-    stripText.textContent = line;
+    stripText.replaceChildren(...(badge ? [badgeEl(badge)] : []), line);
+    strip.replaceChildren(stripText);
     // In comment mode, with comments to list, the hint goes to the right.
-    if (!drafts && S.comments.length && S.mode && canPin()) {
+    if (!review && !badge && S.comments.length && S.mode && canPin()) {
       strip.append(el("span", "strip-hint", "tap a spot to add"));
     }
-    if (drafts && S.view !== "finish") {
+    if (review && S.view !== "finish") {
       strip.append(button("Finish review", (e) => { e.stopPropagation(); openFinish(); }, "btn pri"));
     }
   }
 
   const views = {
     list() {
+      const review = reviewCount();
+      if (!review && S.comments.some((c) => c.agent) && !S.allShown) return views.agent();
       const all = items();
       const drafts = all.filter((i) => i.draft).length;
       const out = [];
       let title = "No comments yet";
-      if (drafts) title = `Review · ${drafts} ${drafts === 1 ? "draft" : "drafts"}`
-        + (S.comments.length ? ` · ${S.comments.length} published` : "");
+      if (review) title = `Review · ${review}` + (S.comments.length ? ` · ${S.comments.length} published` : "");
       else if (S.comments.length) title = `Comments · ${S.comments.length}`;
       out.push(el("h2", "ttl handle", title));
+      if (all.some((i) => i.pend)) out.push(el("p", "cap", "Colleagues’ comments wait for your approval."));
       if (!all.length) {
         out.push(el("p", "empty", S.mode && canPin()
           ? `Tap a spot on the ${pinType === "point" ? "image" : "page"} to leave a comment.`
@@ -396,7 +514,26 @@
       }
       if (!stored && (S.mode || drafts)) out.push(el("p", "note", "This browser keeps nothing: your drafts last only while this page is open."));
       // On a computer Finish review is in the strip's line heading the panel.
-      return [out, drafts && !desk.matches ? [finishBar(drafts)] : []];
+      return [out, review && !desk.matches ? [finishBar(review)] : []];
+    },
+
+    // What is with the agent, alone; the rest behind one line.
+    agent() {
+      const sent = items().filter((i) => i.c && i.c.agent);
+      const others = items().filter((i) => !(i.c && i.c.agent));
+      const a = agentCounts();
+      const answered = a.done + a.wrote + a.asked;
+      const title = answered ? `Agent answered · ${answered}`
+        : a.working ? `Agent is working · ${sent.length}` : `Sent to the agent · ${sent.length}`;
+      const out = [el("h2", "ttl handle", title)];
+      const last = lastSent();
+      if (last) out.push(el("p", "cap", `Review ${last.n} · sent ${last.at}`));
+      for (const it of sent) out.push(row(it, status(it)));
+      if (others.length) {
+        const more = button(`Others · ${others.length} ›`, () => { S.allShown = true; render(); }, "more");
+        out.push(more);
+      }
+      return [out, []];
     },
 
     item() {
@@ -417,40 +554,20 @@
       next.setAttribute("aria-label", "Next");
       nav.append(prev, next);
 
-      const msg = el("div", `msg${it.draft ? " unsent" : ""}`);
-      const bd = el("div", "bd");
-      const who = el("span", "who", it.draft ? "Your draft" : it.c.author);
-      const time = el("span", "when", when(it.draft ? it.d.updated_at : it.c.created_at));
-      who.append(time);
-      bd.append(who);
-      if (it.draft && S.edit === it.d.id) {
-        const acts = el("div", "acts");
-        acts.append(button("Save", () => saveEdit(it.d), "btn pri"), button("Cancel", () => {
-          S.edit = null;
-          render();
-        }));
-        bd.append(fields.edit, acts);
-      } else {
-        bd.append(el("div", "text", it.text));
-        const notes = [];
-        if (!it.draft && it.c.before_replace) notes.push("written before the file was replaced");
-        if (lost(it)) notes.push(page.off ? `on ${where(it)}` : `${lostText(it)} · ${where(it)}`);
-        if (notes.length) bd.append(el("span", `st${lostClass(it)}`, notes.join(" · ")));
-        if (it.draft) {
-          const acts = el("div", "acts");
-          acts.append(button("Edit", () => startEdit(it.d)), button("Delete", () => deleteDraft(it.d)));
-          bd.append(acts);
-        }
-      }
-      msg.append(miniPin(it), bd);
-      const out = [nav, msg];
+      const out = [nav, ...(it.draft ? [draftMsg(it)] : thread(it))];
       // Pulled up to half or full on a phone: the others under it.
       if (!desk.matches && (S.pos === "h" || S.pos === "f")) {
         const others = all.filter((o) => o.key !== it.key);
         if (others.length) out.push(el("p", "sec", "Others"));
         for (const o of others) out.push(row(o, status(o)));
       }
-      return [out, []];
+      // The strip is hidden while the sheet is open: Finish review is here,
+      // as in the list (on a computer it heads the panel).
+      const review = reviewCount();
+      const footer = [];
+      if (!it.draft && !it.c.rejected_by && !S.edit) footer.push(replyPill(it));
+      if (review && !S.edit && !desk.matches) footer.push(finishBar(review));
+      return desk.matches ? [[...out, ...footer], []] : [out, footer];
     },
 
     compose() {
@@ -467,16 +584,20 @@
 
     finish() {
       const drafts = items().filter((i) => i.draft);
-      const out = [el("h2", "ttl handle", `Finish review · ${drafts.length}`)];
-      if (!drafts.length) out.push(el("p", "empty", "No drafts: you can publish a general comment only."));
+      // One row per comment: a new one, or one decided or replied to.
+      const touched = items().filter((i) => i.c && actsOn(i.c.n).length);
+      const count = drafts.length + touched.length;
+      const out = [el("h2", "ttl handle", `Finish review · ${count}`)];
+      if (!count) out.push(el("p", "empty", "No drafts: you can publish a general comment only."));
       for (const it of drafts) out.push(row(it, where(it)));
+      for (const it of touched) out.push(row(it, status(it)));
       const general = el("div", "general");
       general.append(fields.general);
       out.push(general, toWhom());
       const bar = el("div", "foot2");
       const done = button("Finish review", () => finish(done), "btn pri big");
       finishButton = done;
-      done.disabled = sending || (!drafts.length && !fields.general.value.trim());
+      done.disabled = sending || (!count && !fields.general.value.trim());
       bar.append(button("Back", () => go("list", "h")), done);
       return [out, [bar]];
     },
@@ -516,13 +637,139 @@
     return box;
   }
 
+  // A new comment's draft, alone in the item view.
+  function draftMsg(it) {
+    const msg = el("div", "msg unsent");
+    const bd = el("div", "bd");
+    const who = el("span", "who", "Your draft");
+    who.append(el("span", "when", when(it.d.updated_at)));
+    bd.append(who);
+    if (S.edit === it.d.id) bd.append(...editor(it.d));
+    else {
+      bd.append(el("div", "text", it.text));
+      if (lost(it)) bd.append(el("span", `st${lostClass(it)}`, page.off ? `on ${where(it)}` : `${lostText(it)} · ${where(it)}`));
+      const acts = el("div", "acts");
+      acts.append(button("Edit", () => startEdit(it.d)), button("Delete", () => deleteDraft(it.d)));
+      bd.append(acts);
+    }
+    msg.append(miniPin(it), bd);
+    return msg;
+  }
+
+  function editor(d) {
+    const acts = el("div", "acts");
+    acts.append(button("Save", () => saveEdit(d), "btn pri"), button("Cancel", () => {
+      S.edit = null;
+      render();
+    }));
+    return [fields.edit, acts];
+  }
+
+  // A published comment as a small chat: the comment, its replies, the
+  // person's decision and unsent replies, and what can be done next.
+  function thread(it) {
+    const c = it.c;
+    const out = [];
+    const head = el("div", "msg");
+    const bd = el("div", "bd");
+    const who = el("span", "who", c.author);
+    who.append(el("span", "when", when(c.created_at)));
+    bd.append(who, el("div", "text", c.text));
+    const notes = [];
+    if (c.before_replace) notes.push("written before the file was replaced");
+    if (lost(it)) notes.push(page.off ? `on ${where(it)}` : `${lostText(it)} · ${where(it)}`);
+    if (notes.length) bd.append(el("span", `st${lostClass(it)}`, notes.join(" · ")));
+    if (c.approved_by) bd.append(el("span", "ref", `✓ Approved by ${c.approved_by}`));
+    else if (c.rejected_by) bd.append(el("span", "ref", `✕ Rejected by ${c.rejected_by}`));
+    else if (it.pend) bd.append(el("span", "ref", "Awaiting approval · not sent to the agent"));
+    head.append(miniPin(it), bd);
+    out.push(head);
+    for (const r of c.replies || []) {
+      const m = el("div", "msg");
+      const rb = el("div", "bd");
+      const rw = el("span", "who", r.agent ? "Agent" : r.mine ? "You" : r.author);
+      rw.append(el("span", "when", when(r.created_at)));
+      rb.append(rw, el("div", "text", r.text));
+      const av = r.agent ? el("span", "ai") : el("span", `av${r.mine ? " own" : ""}`, [...(r.author || "?")][0].toUpperCase());
+      if (r.agent) av.append(mark("star"));
+      m.append(av, rb);
+      out.push(m);
+    }
+    const dec = decisionOn(c.n);
+    if (dec) {
+      const line = el("div", "dec");
+      const said = { approve: ["✓ Approved", "goes with your review"], reject: ["✕ Rejected", "goes with your review"],
+        accept: ["✓ Accepted", "closes with your review"] }[dec.kind];
+      line.append(el("b", dec.kind === "reject" ? "no" : "", said[0]), el("span", "", said[1]),
+        button("Undo", () => undoDecision(dec), "undo"));
+      out.push(line);
+    }
+    for (const d of repliesOn(c.n)) {
+      const m = el("div", "msg unsent");
+      const rb = el("div", "bd");
+      const rw = el("span", "who", "Your reply");
+      rw.append(el("span", "when", when(d.updated_at)));
+      rb.append(rw);
+      if (S.edit === d.id) rb.append(...editor(d));
+      else {
+        rb.append(el("div", "text", d.text));
+        const acts = el("div", "acts");
+        acts.append(button("Edit", () => startEdit(d)), button("Delete", () => deleteDraft(d)));
+        rb.append(acts);
+      }
+      const av = el("span", "av own", "↩");
+      m.append(av, rb);
+      out.push(m);
+    }
+    // Buttons only on the selected comment, and only what fits its state.
+    if (!dec && !c.rejected_by) {
+      const acts = el("div", "acts thread-acts");
+      if (it.pend) {
+        acts.append(button("✓ Approve", () => decide(c, "approve"), "btn pri"),
+          button("✕ Reject", () => decide(c, "reject")));
+      } else if (c.agent === "done" || c.agent === "wrote") {
+        acts.append(button("✓ Accept", () => decide(c, "accept"), "btn pri"));
+      }
+      if (acts.children.length) out.push(acts);
+    }
+    return out;
+  }
+
+  function replyPill(it) {
+    const c = it.c;
+    fields.reply.placeholder = c.agent ? "Reply to the agent…" : c.mine ? "Add a reply…" : `Reply to ${c.author}…`;
+    fields.reply.setAttribute("aria-label", fields.reply.placeholder.replace("…", ""));
+    replyFor = c.n;
+    const pill = el("div", "pill");
+    pill.append(fields.reply, replyButton);
+    replyButton.disabled = !fields.reply.value.trim();
+    return pill;
+  }
+
+  // A row's second line: what is next first (coloured), then whose, how
+  // many replies or when.
+  const LEADS = {
+    waiting: [null, "with the agent"], working: ["work", "Agent is working"],
+    done: ["done", "Done · check it"], wrote: ["done", "Done, wrote"], asked: ["ask", "Asks you"],
+  };
   function status(it) {
-    if (it.draft) return lost(it) && !page.off ? `your draft · ${lostText(it)}` : "your draft";
-    const parts = [it.c.author];
+    if (it.draft) return [null, lost(it) && !page.off ? `your draft · ${lostText(it)}` : "your draft"];
+    const c = it.c;
+    const dec = decisionOn(c.n);
+    const mine = repliesOn(c.n).length;
+    let lead = null;
+    if (dec) lead = ["mine", { approve: "✓ Approve", reject: "✕ Reject", accept: "✓ Accept" }[dec.kind]];
+    else if (mine) lead = ["mine", "↩ Your reply"];
+    else if (c.rejected_by) lead = [null, "rejected"];
+    else if (it.pend) lead = [null, "awaiting approval"];
+    else if (LEADS[c.agent]) lead = LEADS[c.agent];
+    if (dec && mine) lead = ["mine", `${lead[1]} · your reply`];
+    const parts = [c.author];
     if (it.own) parts.push("you");
-    parts.push(when(it.c.created_at));
+    const replies = (c.replies || []).length;
+    parts.push(replies ? `${replies} ${replies === 1 ? "reply" : "replies"}` : when(c.created_at));
     if (lost(it) && !page.off) parts.push(lostText(it));
-    return parts.join(" · ");
+    return [lead, parts.join(" · ")];
   }
 
   function row(it, line) {
@@ -531,7 +778,10 @@
     r.dataset.key = it.key;
     const tx = el("span", "tx");
     tx.append(el("span", "main", (it.anchor ? "" : "About the whole file: ") + it.text));
-    const st = el("span", `st${lostClass(it)}`, line);
+    const st = el("span", `st${lostClass(it)}`);
+    const [lead, rest] = Array.isArray(line) ? line : [null, line];
+    if (lead) st.append(lead[0] ? el("b", lead[0], lead[1]) : lead[1], " · ");
+    st.append(rest);
     tx.append(st);
     r.append(miniPin(it), tx);
     r.addEventListener("click", () => openItem(it.key));
@@ -547,12 +797,12 @@
   // --- Pins ----------------------------------------------------------------------
   function pinList() {
     const shown = items().filter((it) => pinnable(it.anchor)).map((it) => ({
-      key: it.key, label: it.label, anchor: it.anchor, own: it.own, draft: it.draft,
+      key: it.key, label: it.label, anchor: it.anchor, own: it.own, fill: it.fill, badge: it.badge,
       lit: S.sel === it.key && (S.view === "item"
         || (S.view === "list" && (desk.matches || S.pos !== "strip"))),
     }));
     if (S.compose && pinnable(S.compose.anchor)) {
-      shown.push({ key: "new", label: "", anchor: S.compose.anchor, own: true, draft: true, lit: true });
+      shown.push({ key: "new", label: "", anchor: S.compose.anchor, own: true, fill: "draft", badge: "", lit: true });
     }
     return shown;
   }
@@ -573,7 +823,7 @@
       frameKeys = new Map();
       let n = 0;
       const pins = pinList().map((pin) => {
-        if (!pin.draft || pin.key === "new") return pin;
+        if (!pin.key.startsWith("d")) return pin;
         const key = `d${n++}`;
         frameKeys.set(key, pin.key);
         return { ...pin, key };
@@ -583,14 +833,15 @@
     }
     if (pinType !== "point") return;
     const drawn = pinList().map((p) => {
-      const pin = el("button", `pin${p.own ? " own" : ""}${p.draft ? " draft" : ""}${p.lit ? " lit" : ""}`, p.label);
+      const pin = el("button", `pin${p.own ? " own" : ""}${p.fill !== "solid" ? ` ${p.fill}` : ""}${p.lit ? " lit" : ""}`, p.label);
+      if (p.badge) pin.append(badgeEl(p.badge));
       pin.type = "button";
       pin.dataset.key = p.key;
       // Percentages of the layer, which is the size of the image.
       pin.style.left = `${p.anchor.x * 100}%`;
       pin.style.top = `${p.anchor.y * 100}%`;
       pin.setAttribute("aria-label", p.key === "new" ? "The spot of the new draft"
-        : `${p.draft ? "Draft" : "Comment"} ${p.label}`);
+        : `${p.fill === "draft" ? "Draft" : "Comment"} ${p.label}`);
       return pin;
     });
     pinLayer.replaceChildren(...drawn);
@@ -827,15 +1078,20 @@
   function openItem(key) {
     // An edit with typed changes is not dropped by moving to another item.
     if (S.edit && S.sel !== key) {
-      const it = itemOf(S.sel);
-      if (it && it.draft && fields.edit.value !== it.d.text) {
+      const d = draftById(S.edit);
+      if (d && fields.edit.value !== d.text) {
         toast("Save or cancel the edit first");
         return;
       }
     }
     if (S.compose) dropCompose(false);
-    if (S.sel !== key) S.edit = null;
+    if (S.sel !== key) {
+      S.edit = null;
+      fields.reply.value = "";
+    }
     S.sel = key;
+    const opened = itemOf(key);
+    if (opened && opened.c) markSeen(opened.c);
     // One comment: the sheet fits it. Pulled up with the others under it,
     // it keeps its height and the chosen one comes to the top.
     const keep = S.view === "item" && (S.pos === "h" || S.pos === "f");
@@ -1001,6 +1257,53 @@
     }
   }
 
+  // --- Decisions and replies on a published comment ----------------------------------
+  // A decision replaces the person's earlier one on the comment (the server
+  // does the same); Undo deletes it at once.
+  async function decide(c, kind) {
+    try {
+      const draft = await call("POST", "/drafts", { author: name || "", kind, of: c.n });
+      changed();
+      S.drafts = S.drafts.filter((d) => isComment(d) || d.of !== c.n || d.kind === "reply");
+      S.drafts.push(draft);
+      render();
+    } catch (e) {
+      if (!nameRefused(e)) toast(e.message, { error: true, ms: 8000 });
+    }
+  }
+
+  async function undoDecision(d) {
+    try {
+      await call("DELETE", `/drafts/${d.id}`);
+    } catch (e) {
+      if (e.status !== 404) {
+        toast(e.message, { error: true, ms: 8000 });
+        return;
+      }
+    }
+    changed();
+    S.drafts = S.drafts.filter((x) => x.id !== d.id);
+    render();
+  }
+
+  async function addReply() {
+    const n = replyFor;
+    const text = fields.reply.value;
+    if (n === null || !text.trim() || replyButton.disabled) return;
+    replyButton.disabled = true;
+    try {
+      const draft = await call("POST", "/drafts", { author: name || "", kind: "reply", of: n, text });
+      changed();
+      S.drafts.push(draft);
+      fields.reply.value = "";
+      render();
+    } catch (e) {
+      if (!nameRefused(e)) toast(e.message, { error: true, ms: 8000 });
+    } finally {
+      replyButton.disabled = !fields.reply.value.trim();
+    }
+  }
+
   // --- Editing and deleting a draft -------------------------------------------------
   function startEdit(d) {
     S.edit = d.id;
@@ -1122,10 +1425,16 @@
       if (general.trim()) payload.text = general;
       if (S.toAgent) payload.agent = true;
       const sent = S.toAgent;
+      const count = reviewCount() + (general.trim() ? 1 : 0);
       const made = await call("POST", "/review", payload);
       S.toAgent = true;
       changed();
-      S.comments = [...S.comments, ...made];
+      // The comments it made or touched take their new state; accepted ones
+      // are closed and leave.
+      const byN = new Map(made.map((c) => [c.n, c]));
+      const accepted = new Set(liveDrafts().filter((d) => d.kind === "accept").map((d) => d.of));
+      S.comments = [...S.comments.filter((c) => !accepted.has(c.n)).map((c) => byN.get(c.n) || c),
+        ...made.filter((c) => !S.comments.some((o) => o.n === c.n))];
       S.drafts = [];
       fields.general.value = "";
       S.mode = false;
@@ -1134,7 +1443,7 @@
       S.view = "list";
       S.pos = "strip";
       render();
-      const what = `${made.length} ${made.length === 1 ? "comment" : "comments"}`;
+      const what = `${count} ${count === 1 ? "comment" : "comments"}`;
       toast(sent ? `Sent ${what} to the agent` : `Published ${what}`);
     } catch (e) {
       if (!nameRefused(e)) toast(e.message, { error: true, ms: 8000 });
@@ -1142,7 +1451,7 @@
       load();
     } finally {
       sending = false;
-      if (done.isConnected) done.disabled = !liveDrafts().length && !fields.general.value.trim();
+      if (done.isConnected) done.disabled = !reviewCount() && !fields.general.value.trim();
     }
   }
 
@@ -1152,10 +1461,20 @@
     sendButton.disabled = !fields.compose.value.trim();
   });
   fields.edit.addEventListener("input", () => grow(fields.edit));
+  fields.reply.addEventListener("input", () => {
+    grow(fields.reply);
+    replyButton.disabled = !fields.reply.value.trim();
+  });
+  fields.reply.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+      e.preventDefault();
+      addReply();
+    }
+  });
   fields.general.addEventListener("input", () => {
     grow(fields.general);
     const done = finishButton;
-    if (done && done.isConnected) done.disabled = sending || (!liveDrafts().length && !fields.general.value.trim());
+    if (done && done.isConnected) done.disabled = sending || (!reviewCount() && !fields.general.value.trim());
   });
   // Enter adds the draft; Shift+Enter is a new line.
   fields.compose.addEventListener("keydown", (e) => {
@@ -1321,6 +1640,38 @@
     if (document.visibilityState === "visible") load();
   });
 
+  // --- Live: the agent's progress and a replaced file ---------------------------
+  // The comments are fetched again every few seconds while the page is in
+  // sight, so the badges move without a reload. A replaced file is not
+  // swapped under the person's finger: a banner offers to show it.
+  let fileAt = null;
+  const banner = el("div", "banner");
+  banner.hidden = true;
+  banner.setAttribute("role", "status");
+  banner.append(el("span", "", "The file was updated"), button("Show", () => location.reload(), "btn pri"));
+  document.body.append(banner);
+  async function poll() {
+    if (document.visibilityState !== "visible" || sending || S.edit || S.compose) return;
+    const mine = ++generation;
+    let response;
+    let data;
+    try {
+      response = await fetch(`/a/${artifact}/comments`, { headers: { ...asAuthor }, cache: "no-store" });
+      data = response.ok ? await response.json() : null;
+    } catch {
+      return;
+    }
+    const at = response.headers.get("X-Artifact-Updated");
+    if (at && fileAt === null) fileAt = at;
+    else if (at && at !== fileAt) banner.hidden = false;
+    if (mine !== generation || !Array.isArray(data)) return;
+    S.comments = data;
+    if (S.sel && !items().some((i) => i.key === S.sel)) unselect();
+    render();
+  }
+  setInterval(poll, 8000);
+
   render();
   load();
+  poll();
 })();
