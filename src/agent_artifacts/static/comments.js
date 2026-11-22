@@ -83,6 +83,8 @@
     edit: null,
     // Finish review sends to the agent, or only publishes
     toAgent: true,
+    // the list shows all comments, not only what went to the agent
+    allShown: false,
     comments: [],
     // drafts: the server's, with `gone` while a Delete waits for its Undo
     drafts: [],
@@ -169,7 +171,7 @@
 
   // Drafts are of kinds: a new comment, or a reply, an approval, a
   // rejection or an acceptance about published comment `of`.
-  const isComment = (d) => !d.kind || d.kind === "comment";
+  const isComment = (d) => d.kind === "comment";
   const commentDrafts = () => liveDrafts().filter(isComment);
   const actsOn = (n) => liveDrafts().filter((d) => !isComment(d) && d.of === n);
   // A reply or decision about a comment that is gone (closed meanwhile) is
@@ -187,7 +189,7 @@
   const seenKey = `aa-seen:${artifact}`;
   let seen = {};
   try { seen = JSON.parse(localStorage.getItem(seenKey) || "{}") || {}; } catch { /* none */ }
-  const othersReplies = (c) => (c.replies || []).filter((r) => !r.mine && !r.agent).length;
+  const othersReplies = (c) => c.replies.filter((r) => !r.mine && !r.agent).length;
   function markSeen(c) {
     if (othersReplies(c) === (seen[c.n] || 0)) return;
     seen[c.n] = othersReplies(c);
@@ -722,7 +724,7 @@
     else if (it.pend) bd.append(el("span", "ref", "Awaiting approval · not sent to the agent"));
     head.append(miniPin(it), bd);
     out.push(head);
-    for (const r of c.replies || []) {
+    for (const r of c.replies) {
       const m = el("div", "msg");
       const rb = el("div", "bd");
       const rw = el("span", "who", r.agent ? "Agent" : r.mine ? "You" : r.author);
@@ -804,7 +806,7 @@
     if (dec && mine) lead = ["mine", `${lead[1]} · your reply`];
     const parts = [c.author];
     if (it.own) parts.push("you");
-    const replies = (c.replies || []).length;
+    const replies = c.replies.length;
     parts.push(replies ? `${replies} ${replies === 1 ? "reply" : "replies"}` : when(c.created_at));
     if (lost(it) && !page.off) parts.push(lostText(it));
     return [lead, parts.join(" · ")];
