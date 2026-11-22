@@ -214,7 +214,28 @@
     send: "M12 19V5M6 11l6-6 6 6",
     left: "M15 5l-7 7 7 7",
     right: "M9 5l7 7-7 7",
+    down: "M5 9l7 7 7-7",
   };
+  // On a phone every view's title line ends with a fold button, at the
+  // far right and far from Finish review at the bottom.
+  function foldButton() {
+    const b = button("", () => fold(), "chev fold");
+    b.append(icon("down"));
+    b.setAttribute("aria-label", "Fold the sheet");
+    b.title = "Fold";
+    return b;
+  }
+  function titled(text) {
+    const ttl = el("h2", "ttl", text);
+    if (desk.matches) {
+      ttl.classList.add("handle");
+      return ttl;
+    }
+    const head = el("div", "head handle");
+    head.append(ttl, foldButton());
+    return head;
+  }
+
   function icon(name) {
     const ns = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(ns, "svg");
@@ -414,7 +435,7 @@
       let title = "No comments yet";
       if (review) title = `Review · ${review}` + (S.comments.length ? ` · ${S.comments.length} published` : "");
       else if (S.comments.length) title = `Comments · ${S.comments.length}`;
-      out.push(el("h2", "ttl handle", title));
+      out.push(titled(title));
       if (all.some((i) => i.pend)) out.push(el("p", "cap", "Colleagues’ comments wait for your approval."));
       if (!all.length) {
         out.push(el("p", "empty", S.mode && canPin()
@@ -440,7 +461,7 @@
       const answered = a.done + a.wrote + a.asked;
       const title = answered ? `Agent answered · ${answered}`
         : a.working ? `Agent is working · ${sent.length}` : `Sent to the agent · ${sent.length}`;
-      const out = [el("h2", "ttl handle", title)];
+      const out = [titled(title)];
       const last = lastSent();
       if (last) out.push(el("p", "cap", `Sent ${last.at}`));
       for (const it of sent) out.push(row(it, status(it)));
@@ -473,6 +494,7 @@
       next.append(icon("right"));
       next.setAttribute("aria-label", "Next");
       nav.append(prev, next);
+      if (!desk.matches) nav.append(foldButton());
 
       const out = [nav, ...(it.draft ? [draftMsg(it)] : thread(it))];
       // Pulled up to half or full on a phone: the others under it.
@@ -513,7 +535,7 @@
       const undecided = items().filter((i) => i.c && ["done", "wrote", "asked"].includes(i.c.agent)
         && !actsOn(i.c.n).length);
       const accepting = (i) => (decisionOn(i.c.n) || {}).kind === "accept";
-      const out = [el("h2", "ttl handle", `Finish review · ${count}`)];
+      const out = [titled(`Finish review · ${count}`)];
       if (undecided.length) {
         out.push(el("p", "sec", `Not decided yet · ${undecided.length}`));
         for (const it of undecided) out.push(row(it, status(it)));
@@ -829,6 +851,15 @@
 
   // Back to the strip on a phone, to the list on a computer.
   function fold() {
+    // A typed reply would be left without its comment, and the next item
+    // would refuse to open: it is sent or cleared first.
+    const editing = S.edit && draftById(S.edit);
+    const dirty = editing && fields.edit.value !== editing.text;
+    if (fields.reply.value.trim() || dirty) {
+      toast(dirty ? "Save or cancel the edit first" : "Send or clear the reply first");
+      render();
+      return;
+    }
     S.sel = null;
     S.edit = null;
     S.view = "list";

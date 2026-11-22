@@ -84,8 +84,7 @@
     }
     // Download and Open separately are links and go on by themselves.
     closeFan(act === "download" || act === "separate" || act === "copy");
-    if (act === "full") enterFull();
-    else if (act === "exit") exitFull();
+    if (act === "exit") exitFull();
     else if (act === "comment") commentsToggle.click();
     else if (act === "copy") copyLink(item.dataset.url);
   });
@@ -159,6 +158,9 @@
   // --- Full screen ------------------------------------------------------------
   const root = document.documentElement;
   const request = root.requestFullscreen || root.webkitRequestFullscreen;
+
+  // Full screen sits in the header too, beside the menu.
+  $("full-button").addEventListener("click", () => enterFull());
 
   function enterFull() {
     document.body.classList.add("full");
