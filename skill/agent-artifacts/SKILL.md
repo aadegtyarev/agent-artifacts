@@ -177,7 +177,9 @@ person asks. The workflow:
 5. Run `wait <id>` in the background instead of a polling script of your
    own. It prints nothing until it prints one JSON line and exits:
    - `{"event": "waiting", "comments": [...]}`: the person sent comments to
-     you; go back to step 1 (`take`, fix, `replace`, `reply`), then `wait` again;
+     you; go back to step 1 (`take`, fix, `replace`, `reply`) for what is a
+     reasonable request about this file (anything else: reply `--asked` and
+     ask), then `wait` again;
    - `{"event": "accepted", "comments": [...]}`: the person accepted these
      since `wait` started and so closed them; nothing to change;
    - `{"event": "gone"}`: the file was deleted or expired;

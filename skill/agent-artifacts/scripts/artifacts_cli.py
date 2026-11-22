@@ -18,6 +18,7 @@ AGENT_ARTIFACTS_ENV points to another file. The file is written with mode
 
 from __future__ import annotations
 
+import http.client
 import ipaddress
 import json
 import mimetypes
@@ -240,15 +241,17 @@ def wait(c: Client, path: str, every: float, timeout: float) -> str:
             if e.code != 429 and e.code < 500:
                 _fail(e)  # a wrong or revoked key will not get better
             comments = None
-        except (OSError, ValueError):  # the network, a restart, a proxy page: poll again
-            comments = None
+        except (OSError, ValueError, http.client.HTTPException):
+            comments = None  # the network, a restart, a proxy page: poll again
+        if not isinstance(comments, list) or not all(isinstance(x, dict) for x in comments):
+            comments = None  # not a list of comments: an odd answer, poll again
         if comments is not None:
-            waiting = [x for x in comments if x["agent"] == "waiting" and not x["resolved"]]
+            waiting = [x for x in comments if x.get("agent") == "waiting" and not x.get("resolved")]
             if waiting:
                 return json.dumps({"event": "waiting", "comments": waiting})
             if before is None:
-                before = {x["n"] for x in comments if x["resolved"]}
-            accepted = [x for x in comments if x["resolved"] and x["n"] not in before]
+                before = {x.get("n") for x in comments if x.get("resolved")}
+            accepted = [x for x in comments if x.get("resolved") and x.get("n") not in before]
             if accepted:
                 return json.dumps({"event": "accepted", "comments": accepted})
         left = end - time.monotonic() if end is not None else every
