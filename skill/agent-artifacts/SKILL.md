@@ -79,35 +79,45 @@ the person.
 
 What works with people reviewing on a phone:
 
-1. **Wireframes of the flow first** — for a new product, a new screen and a
+1. **A design system and a tone-of-voice reference before any screen.**
+   For a new interface write both first: colours, type sizes, spacing,
+   components and their states; and how the interface speaks — words for
+   actions and states, length, form of address, what is never said. For an
+   existing interface describe what it already is in the same two files,
+   then design the change against them. Keep them where they outlive the
+   mockups: in the person's repository (`docs/design-system.md`,
+   `docs/tone-of-voice.md`), or with no repository as Markdown files in
+   the job's project here. Every later mockup follows them; a decision
+   that changes the look or the words goes into them too.
+2. **Wireframes of the flow first** — for a new product, a new screen and a
    redesign alike. Numbered steps from the person's first action to the
    result, one schematic screen per step: grey blocks for content, real
    labels on controls, arrows between steps, a line under each saying what
    happens. Agree on the flow before any look.
-2. **Then an interactive mockup**, by the HTML rules below: clickable
+3. **Then an interactive mockup**, by the HTML rules below: clickable
    states, realistic sample data, phone first. With an existing product, in
    its own look — its styles, its components, screenshots of its real
    screens around the new part — not a fresh design: what was agreed before
    stays as it was, and only the new part is new. Small changes to a
    running product: screenshots of the real app with the change are enough.
-3. **One page per round**: wireframes and screenshots as images in one HTML
+4. **One page per round**: wireframes and screenshots as images in one HTML
    page (inline `data:` URIs; an interactive mockup is its own HTML file,
    replaced each round), phone width first, both themes when colours matter, a
    one-line caption per frame saying what the person sees (JPEG keeps the
    page small; the limit is 25 MB). Under the frames,
    the decisions you made yourself and the open questions as numbered
    options.
-4. **Show how it looks, not its history.** No "was / now", counts of what
+5. **Show how it looks, not its history.** No "was / now", counts of what
    was removed or change notes on the page; say what changed in your replies
    to the comments.
-5. **Check every frame at full size before sending**: same states everywhere
+6. **Check every frame at full size before sending**: same states everywhere
    it appears, no cut text, no gaps, nothing wider than the screen, nothing
-   secret.
-6. **Discuss in the file.** Ask the person to comment right on the mockup,
+   secret — and the page itself in both light and dark colour schemes.
+7. **Discuss in the file.** Ask the person to comment right on the mockup,
    run `wait <id>`, and for each round: `take`, change, `replace` the same
    id, `reply` to each comment saying what you did. An accepted comment
    (`"event": "accepted"`) is their yes.
-7. Nothing goes live before the person's explicit yes on the mockup.
+8. Nothing goes live before the person's explicit yes on the mockup.
 
 ## Comments
 
