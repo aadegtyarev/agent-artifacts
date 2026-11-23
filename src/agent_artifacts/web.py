@@ -180,7 +180,16 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         info = await run_in_threadpool(store.agent_info, require_agent(store, request))
         if info is None:  # removed since the key was checked
             raise ApiError(401, "unauthorized", "missing or unknown agent key")
-        return JSONResponse(user_json(info, store.settings()["user_quota_bytes"]))
+        settings = store.settings()
+        body = user_json(info, settings["user_quota_bytes"])
+        # What uploads are held to now, from the values the checks use.
+        body["limits"] = {
+            "ttl_seconds": settings["ttl_seconds"],
+            "max_file_bytes": config.max_file_bytes,
+            "max_text_bytes": kinds.MAX_TEXT_BYTES,
+            "types": kinds.extensions(),
+        }
+        return JSONResponse(body)
 
     async def new_key(request: Request) -> Response:
         agent = require_agent(store, request)

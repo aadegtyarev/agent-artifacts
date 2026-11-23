@@ -64,8 +64,9 @@ Windows. Below, `run` means `uv run` if uv is installed, otherwise `python3`
    run <skills folder>/agent-artifacts/scripts/artifacts_cli.py me
    ```
 
-   It prints the person's name, used space and quota, for example
-   `{"name":"petrov","admin":false,"used_bytes":0,"files":0,"quota_bytes":524288000,"own_quota":false,"last_upload_at":null}`.
+   It prints the person's name, used space and quota, and the service's
+   limits, for example
+   `{"name":"petrov","admin":false,"used_bytes":0,"files":0,"quota_bytes":524288000,"own_quota":false,"last_upload_at":null,"limits":{"ttl_seconds":172800,"max_file_bytes":26214400,"max_text_bytes":2097152,"types":[".html",".htm",".md",…]}}`.
 
 5. Delete the temporary clone and tell the person it is ready. Suggest a
    first try: "make a small HTML page and give me a link". Some harnesses load
