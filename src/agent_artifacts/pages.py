@@ -4,13 +4,17 @@ in static/, served from /static."""
 
 from __future__ import annotations
 
+import codecs
 import hashlib
 import json
+import os
+from collections.abc import Iterable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import BinaryIO
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
-from markupsafe import Markup
+from markupsafe import Markup, escape
 from starlette.responses import HTMLResponse
 
 from . import kinds
@@ -215,38 +219,88 @@ def not_found() -> HTMLResponse:
     return message(404, "This link has expired or never existed.")
 
 
-def html_page(path: Path, title: str) -> bytes:
+# How much of a file a page reads at a time: pages go out in pieces, so a
+# big file viewed many times at once never sits whole in memory.
+CHUNK_BYTES = 64 * 1024
+# Where the file's text goes in a rendered template, split there. No title can
+# hold it (no control characters), and the split is at the last one, after
+# which only our own markup follows.
+_HOLE = "\x00file\x00"
+
+Page = tuple[Iterator[bytes], int | None]
+
+
+def html_page(path: Path, title: str) -> Page:
     """An HTML artifact for /raw inside the sandbox: the file with the pin
     script appended; the download stays the file as it is. (The title is the
-    page's own; the argument is there to match the other builders.)"""
-    return path.read_bytes() + PINS_SCRIPT
+    page's own; the argument is there to match the other builders.) The pieces
+    and the length, known here; FileNotFoundError at once if it is gone."""
+    f = path.open("rb")
+    length = os.fstat(f.fileno()).st_size + len(PINS_SCRIPT)
+    return _around(_chunks(f), "", PINS_SCRIPT.decode()), length
 
 
-def text_page(path: Path, title: str) -> str:
-    """A text artifact, for /raw inside the sandbox."""
-    text = path.read_bytes().decode("utf-8", "replace")
-    return _env.get_template("text.html").render(title=title, text=text, pins=_PINS)
+def text_page(path: Path, title: str) -> Page:
+    """A text artifact, for /raw inside the sandbox; no length, the escaping
+    changes it."""
+    f = path.open("rb")
+    page = _env.get_template("text.html").render(
+        title=title,
+        text=Markup(_HOLE),  # noqa: S704 (our own marker)
+        pins=_PINS,
+    )
+    head, _, tail = page.rpartition(_HOLE)
+    return _around((str(escape(t)) for t in _text(f)), head, tail), None
 
 
-def markdown_page(path: Path, title: str) -> str:
+def markdown_page(path: Path, title: str) -> Page:
     """A Markdown artifact and its renderer, for /raw inside the sandbox."""
-    # Non-ASCII kept as is, so the page is about the size of the file (escaped,
-    # Cyrillic would grow sixfold on every view). "<" escaped so the text
-    # cannot close the <script> it sits in; the two line separators for
-    # older JavaScript engines.
-    source = (
-        json.dumps(path.read_bytes().decode("utf-8", "replace"), ensure_ascii=False)
+    f = path.open("rb")
+    page = _env.get_template("markdown.html").render(
+        title=title,
+        marked=_MARKED_JS,
+        source=Markup(f'"{_HOLE}"'),  # noqa: S704 (our own marker)
+        links=Markup(_LINKS_JS),  # noqa: S704 (our own file)
+        pins=_PINS,
+    )
+    head, _, tail = page.rpartition(_HOLE)
+    return _around((_js_string(t) for t in _text(f)), head, tail), None
+
+
+def _js_string(text: str) -> str:
+    """A piece of the Markdown as the inside of a JS string literal; escaped
+    character by character, so the pieces join into the whole. Non-ASCII kept
+    as is, so the page is about the size of the file (escaped, Cyrillic would
+    grow sixfold on every view). "<" escaped so the text cannot close the
+    <script> it sits in; the two line separators for older JavaScript engines."""
+    return (
+        json.dumps(text, ensure_ascii=False)[1:-1]
         .replace("<", "\\u003c")
         .replace("\u2028", "\\u2028")
         .replace("\u2029", "\\u2029")
     )
-    return _env.get_template("markdown.html").render(
-        title=title,
-        marked=_MARKED_JS,
-        source=Markup(source),  # noqa: S704 (JSON with "<" escaped, see above)
-        links=Markup(_LINKS_JS),  # noqa: S704 (our own file)
-        pins=_PINS,
-    )
+
+
+def _chunks(f: BinaryIO) -> Iterator[bytes]:
+    with f:
+        while chunk := f.read(CHUNK_BYTES):
+            yield chunk
+
+
+def _text(f: BinaryIO) -> Iterator[str]:
+    """The file as UTF-8 text in pieces, a bad byte as U+FFFD, the same as
+    decoding it whole; a character split between chunks is joined."""
+    decoder = codecs.getincrementaldecoder("utf-8")("replace")
+    for chunk in _chunks(f):
+        yield decoder.decode(chunk)
+    yield decoder.decode(b"", final=True)
+
+
+def _around(body: Iterable[bytes | str], head: str, tail: str) -> Iterator[bytes]:
+    yield head.encode()
+    for piece in body:
+        yield piece if isinstance(piece, bytes) else piece.encode()
+    yield tail.encode()
 
 
 def size(n: int) -> str:

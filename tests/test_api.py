@@ -1,3 +1,4 @@
+import html
 import io
 import json
 import os
@@ -8,6 +9,7 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
+from agent_artifacts import pages
 from agent_artifacts.config import Config, check_public_url, check_raw_url
 from agent_artifacts.kinds import KindError, clean_name, detect
 from agent_artifacts.pages import PINS_SCRIPT, SANDBOX_CSP, STATIC_DIR
@@ -852,6 +854,31 @@ def test_markdown_page_stays_about_the_size_of_the_file(env):
     assert json.loads(source) == text
     assert "</script>" not in source and "\u2028" not in source
     assert len(source.encode()) < len(text.encode()) * 1.2
+
+
+def test_pages_are_sent_in_pieces_never_whole(env, tmp_path, monkeypatch):
+    client, _, keys = env
+    small = upload(client, keys["alice"], "a.html", b"<p>small</p>").json()
+    r = client.get(f"/a/{small['id']}/raw")
+    assert r.content == b"<p>small</p>" + PINS_SCRIPT
+    assert r.headers["content-length"] == str(len(r.content))
+    # A file many pieces long: read a piece at a time, the pieces joining
+    # into the same bytes, the length known before the first.
+    monkeypatch.setattr(pages, "CHUNK_BYTES", 100)
+    big = tmp_path / "big.html"
+    big.write_bytes(b"<p>" + b"x" * 1000 + b"</p>")
+    body, length = pages.html_page(big, "big.html")
+    pieces = list(body)
+    assert all(len(p) <= 100 for p in pieces[:-1]) and len(pieces) > 10
+    assert b"".join(pieces) == big.read_bytes() + PINS_SCRIPT
+    assert length == len(b"".join(pieces))
+    # Text split mid-character and a bad byte read the same as decoded whole.
+    big.write_bytes(("Привет <&>\u2028" * 50).encode() + b"\xff")
+    text = big.read_bytes().decode("utf-8", "replace")
+    page = b"".join(pages.markdown_page(big, "a.md")[0]).decode()
+    assert json.loads(page.split("const SOURCE = ")[1].split(";\n")[0]) == text
+    page = b"".join(pages.text_page(big, "a.txt")[0]).decode()
+    assert html.unescape(page.split("<pre>")[1].split("</pre>")[0]) == text
 
 
 def test_sandboxed_forms_submit_nowhere():
