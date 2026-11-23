@@ -5,7 +5,9 @@ admin API in admin.py, comments in comments.py."""
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
+import math
 import re
 import unicodedata
 from collections.abc import AsyncIterator
@@ -250,6 +252,34 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
                 return JSONResponse(project_json(p) | {"artifacts": [as_json(a) for a in files]})
         return error(404, "not_found", "no such project")
 
+    async def project_news(request: Request) -> Response:
+        # One request per poll of `wait` on a whole project.
+        agent = require_agent(store, request)
+        since = request.query_params.get("since")
+        if since is not None:
+            try:
+                since = float(since)
+            except ValueError:
+                since = math.nan
+            if not math.isfinite(since):
+                raise ApiError(400, "bad_request", "since must be a number of seconds")
+        found = await run_in_threadpool(
+            functools.partial(
+                store.agent_summary, request.path_params["id"], owner=agent, since=since
+            )
+        )
+        if found is None:
+            return error(404, "not_found", "no such project")
+        now, files = found
+        return JSONResponse(
+            {
+                "now": now,
+                "files": [
+                    {"id": i, "title": t, "waiting": w, "accepted": a} for i, t, w, a in files
+                ],
+            }
+        )
+
     def on_disk(a: Artifact) -> bool:
         if store.path(a.id).exists():
             return True
@@ -378,6 +408,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             Route("/api/v1/projects", projects, methods=["GET", "POST"]),
             # A project id is made like an artifact id.
             Route("/api/v1/projects/{id:artifact_id}", project, methods=["GET", "PATCH", "DELETE"]),
+            Route("/api/v1/projects/{id:artifact_id}/summary", project_news),
             Route("/a/{id:artifact_id}", view),
             Route("/a/{id:artifact_id}/raw", raw),
             Route("/a/{id:artifact_id}/download", download),

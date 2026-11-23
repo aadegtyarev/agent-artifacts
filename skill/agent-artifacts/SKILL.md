@@ -180,6 +180,7 @@ project page lists them by section with what waits for the person; each
 file's header lists the others. `replace` keeps project, section and title;
 `set <id> --project none` takes a file out (it expires again). A file in a
 project shows the whole project to whoever has its link.
+`wait <pid>` waits for news on any file of the project and names the files.
 
 ## When the space runs out
 

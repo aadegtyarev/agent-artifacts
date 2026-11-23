@@ -76,7 +76,10 @@ USAGE = """usage: artifacts_cli.py <command> [args]
                             comments accepted since the start {"event":
                             "accepted", "comments"}, the file gone {"event":
                             "gone"}, or after --timeout (6 hours by default,
-                            0 for none) {"event": "timeout"}
+                            0 for none) {"event": "timeout"}; ID a project:
+                            the same for any file in it, files added later
+                            too, naming them {"event", "project", "files":
+                            [{"id", "title", "waiting" or "accepted": N}]}
   resolve ID N              mark comment N done
   reopen ID N               mark comment N open again
   delete-comment ID N       delete comment N; the other numbers stay
@@ -139,6 +142,17 @@ def _id(value: str, kind: str = "a") -> str:
             f" or give the link .../{kind}/ID"
         )
     return bare
+
+
+def _wait_target(value: str) -> tuple[str, str | None]:
+    """The id ``wait`` watches and its kind: "p" or "a" from a link, None
+    for a bare id."""
+    if urllib.parse.urlsplit(value).scheme not in ("http", "https"):
+        return _id(value), None
+    try:
+        return _id(value, "p"), "p"
+    except Usage:
+        return _id(value), "a"
 
 
 def env_file() -> Path:
@@ -275,39 +289,88 @@ def _fail(e: urllib.error.HTTPError) -> NoReturn:
     sys.exit(1)
 
 
-def wait(c: Client, path: str, every: float, timeout: float) -> str:
-    """Poll a file's comments until there is something for the agent and
-    say what: comments waiting for it, comments the person accepted since the
-    start, the file gone, or the time up. Silent meanwhile, so it can run in
-    the background."""
+def _watch(c: Client, path, every: float, timeout: float, check) -> dict:  # noqa: ANN001
+    """Poll ``path()`` until ``check`` finds news in an answer and return
+    it; {"event": "gone"} on a 404, {"event": "timeout"} when the time is
+    up. ``check`` raises ValueError on an odd answer: polled again. Silent
+    meanwhile, so it can run in the background."""
     end = time.monotonic() + timeout if timeout else None
-    before = None  # the comments resolved at the first poll do not count
     while True:
         try:
-            comments = json.loads(c.send("GET", path))
+            if event := check(json.loads(c.send("GET", path()))):
+                return event
         except urllib.error.HTTPError as e:
             if e.code == 404:
-                return json.dumps({"event": "gone"})
+                return {"event": "gone"}
             if e.code != 429 and e.code < 500:
                 _fail(e)  # a wrong or revoked key will not get better
-            comments = None
         except (OSError, ValueError, http.client.HTTPException):
-            comments = None  # the network, a restart, a proxy page: poll again
-        if not isinstance(comments, list) or not all(isinstance(x, dict) for x in comments):
-            comments = None  # not a list of comments: an odd answer, poll again
-        if comments is not None:
-            waiting = [x for x in comments if x.get("agent") == "waiting" and not x.get("resolved")]
-            if waiting:
-                return json.dumps({"event": "waiting", "comments": waiting})
-            if before is None:
-                before = {x.get("n") for x in comments if x.get("resolved")}
-            accepted = [x for x in comments if x.get("resolved") and x.get("n") not in before]
-            if accepted:
-                return json.dumps({"event": "accepted", "comments": accepted})
+            pass  # the network, a restart, a proxy page, an odd answer: poll again
         left = end - time.monotonic() if end is not None else every
         if left <= 0:
-            return json.dumps({"event": "timeout"})
+            return {"event": "timeout"}
         time.sleep(min(every, left))
+
+
+def wait(c: Client, artifact_id: str, every: float, timeout: float) -> dict:
+    """News on one file: comments waiting for the agent, comments resolved
+    since the first poll, the file gone, or the time up."""
+    before = None  # the comments resolved at the first poll do not count
+
+    def check(comments: object) -> dict | None:
+        nonlocal before
+        if not isinstance(comments, list) or not all(isinstance(x, dict) for x in comments):
+            raise ValueError("not a list of comments")
+        waiting = [x for x in comments if x.get("agent") == "waiting" and not x.get("resolved")]
+        if waiting:
+            return {"event": "waiting", "comments": waiting}
+        if before is None:
+            before = {x.get("n") for x in comments if x.get("resolved")}
+        accepted = [x for x in comments if x.get("resolved") and x.get("n") not in before]
+        return {"event": "accepted", "comments": accepted} if accepted else None
+
+    path = f"/api/v1/artifacts/{artifact_id}/comments"
+    return _watch(c, lambda: path, every, timeout, check)
+
+
+def wait_project(
+    c: Client, project_id: str, every: float, timeout: float, *, maybe_file: bool
+) -> dict | None:
+    """The same for every file of a project, files added later too, in one
+    request per poll: the files with comments waiting for the agent, or
+    with comments resolved since the first poll (by the server's clock), the
+    project gone, or the time up. None if ``maybe_file`` and the first
+    answer is a 404: no such project, so the id may be a file's."""
+    since = None
+    seen = False
+
+    def check(summary: object) -> dict | None:
+        nonlocal since, seen
+        files = summary.get("files") if isinstance(summary, dict) else None
+        if not isinstance(files, list) or not all(isinstance(f, dict) for f in files):
+            raise ValueError("not a project summary")
+        seen = True
+        if since is None:
+            now = summary.get("now")
+            if not isinstance(now, (int, float)) or isinstance(now, bool):
+                raise ValueError("no time in the summary")
+            since = float(now)
+        for event in ("waiting", "accepted"):
+            news = [
+                {"id": f.get("id"), "title": f.get("title"), event: f[event]}
+                for f in files
+                if isinstance(f.get(event), int) and f[event] > 0
+            ]
+            if news:
+                return {"event": event, "project": project_id, "files": news}
+        return None
+
+    def path() -> str:
+        query = "" if since is None else f"?since={since!r}"
+        return f"/api/v1/projects/{project_id}/summary{query}"
+
+    event = _watch(c, path, every, timeout, check)
+    return None if maybe_file and not seen and event["event"] == "gone" else event
 
 
 def _is_local(host: str | None) -> bool:
@@ -471,7 +534,13 @@ def run(argv: list[str]) -> str | None:
             limit = float(limit if limit is not None else 6 * HOUR)
             if not (every >= 5 and limit >= 0):  # NaN too
                 raise Usage("wait: --every 5 or more seconds, --timeout 0 (no limit) or more")
-            return wait(c, f"{api}/{_id(args[0])}/comments", every, limit)
+            # A link says which; a bare id is a project's if the server
+            # knows such a project of ours, else a file's.
+            target, kind = _wait_target(args[0])
+            event = None
+            if kind != "a":
+                event = wait_project(c, target, every, limit, maybe_file=kind is None)
+            return json.dumps(event or wait(c, target, every, limit))
         case "resolve" | "reopen":
             need(2, "ID N")
             return c.json(

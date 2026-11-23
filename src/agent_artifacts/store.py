@@ -1008,6 +1008,32 @@ class Store:
             ).fetchall()
         return {r[0]: {"waiting_you": r[1], "drafts": r[2]} for r in rows}
 
+    def agent_summary(
+        self, project_id: str, *, owner: str, since: float | None
+    ) -> tuple[float, list[tuple[str, str, int, int]]] | None:
+        """For the owner agent's ``wait`` on a whole project, in one query:
+        the time now and, per live file of ``owner``'s project in the order
+        added, its id, title, open comments waiting for the agent and
+        comments resolved after ``since`` (none without it); None if there
+        is no such project of ``owner``'s."""
+        now = self.clock()
+        since = now if since is None else since
+        args = {"p": project_id, "owner": owner, "now": now, "since": since}
+        with self._conn() as db:
+            sql = "SELECT 1 FROM projects WHERE id = :p AND owner = :owner"
+            if db.execute(sql, args).fetchone() is None:
+                return None
+            rows = db.execute(
+                "SELECT a.id, COALESCE(a.title, a.name), "
+                "COALESCE(SUM(c.agent = 'waiting' AND c.resolved_at IS NULL), 0), "
+                "COALESCE(SUM(c.resolved_at > :since), 0) "
+                "FROM artifacts a LEFT JOIN comments c ON c.artifact_id = a.id "
+                "WHERE a.project = :p AND (a.expires_at IS NULL OR a.expires_at > :now) "
+                "GROUP BY a.id ORDER BY a.added_at, a.id",
+                args,
+            ).fetchall()
+        return now, [tuple(r) for r in rows]
+
     def rename_project(self, project_id: str, *, owner: str, title: str) -> Project | None:
         with self._conn(write=True) as db:
             db.execute(

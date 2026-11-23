@@ -624,3 +624,54 @@ def test_the_menu_holds_what_the_header_does_not(tmp_path):
         }
         assert "Saved in this browser." in settings
         assert "/static/menu-dialogs.js" in page
+
+
+def test_the_agents_project_summary(env):
+    client, store, keys = env
+    p = new_project(client, keys["alice"]).json()["id"]
+    a = upload(client, keys["alice"], "a.md", b"# a", project=p, title="Hero").json()["id"]
+    b = upload(client, keys["alice"], "b.md", b"# b", project=p).json()["id"]
+
+    def publish(art, n, agent):
+        for i in range(n):
+            client.post(f"/a/{art}/drafts", headers={"X-Author-Key": ME}, json={"text": f"c{i}"})
+        client.post(
+            f"/a/{art}/review", headers={"X-Author-Key": ME}, json={"author": "x", "agent": agent}
+        )
+
+    def summary(since=None, key=keys["alice"]):
+        query = "" if since is None else f"?since={since}"
+        return client.get(f"/api/v1/projects/{p}/summary{query}", headers=auth(key))
+
+    publish(a, 2, True)  # waiting for the agent
+    publish(b, 1, False)  # nothing asked of it
+    client.patch(
+        f"/api/v1/artifacts/{b}/comments/1", headers=auth(keys["alice"]), json={"resolved": True}
+    )
+    got = summary().json()
+    since = got["now"]
+    assert got["files"] == [
+        {"id": a, "title": "Hero", "waiting": 2, "accepted": 0},
+        {"id": b, "title": "b.md", "waiting": 0, "accepted": 0},
+    ]
+    # Resolved before `since` does not count; after it does.
+    assert [f["accepted"] for f in summary(since).json()["files"]] == [0, 0]
+    later(store, 1)
+    client.post(f"/api/v1/artifacts/{a}/take", headers=auth(keys["alice"]))
+    client.patch(
+        f"/api/v1/artifacts/{a}/comments/2", headers=auth(keys["alice"]), json={"resolved": True}
+    )
+    # A file added later is in it; a deleted one is not.
+    c = upload(client, keys["alice"], "c.md", b"# c", project=p).json()["id"]
+    publish(c, 1, True)
+    client.delete(f"/api/v1/artifacts/{b}", headers=auth(keys["alice"]))
+    assert summary(since).json()["files"] == [
+        {"id": a, "title": "Hero", "waiting": 0, "accepted": 1},
+        {"id": c, "title": "c.md", "waiting": 1, "accepted": 0},
+    ]
+    # The owner's only; a bad `since` is refused.
+    assert summary(key=keys["bob"]).status_code == 404
+    assert client.get(f"/api/v1/projects/{p}/summary").status_code == 401
+    assert summary("nan").status_code == 400
+    client.delete(f"/api/v1/projects/{p}", headers=auth(keys["alice"]))
+    assert summary().status_code == 404
