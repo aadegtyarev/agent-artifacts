@@ -491,11 +491,13 @@ nothing. The viewer:
 
 At worst, content can send the person to another page of the same service
 on a click inside it. Comment mode takes precedence: while it is on, a tap
-places a pin and follows no link. Links with a modifier key, a `target`
-other than `_self` (`target="_blank"` included), or `download`, a click the
-page's own script already cancelled, links to other sites, and links to
-`/raw`, `/download` or with a query string behave as before. The Markdown
-page opens links to other sites in a new tab, but leaves these in its own.
+places a pin and follows no link; outside it, while a comment's pin is lit,
+the first tap only lets go of the comment. Links with a modifier key, a
+`target` other than `_self` (`target="_blank"` included), or `download`, a
+click the page's own script already cancelled, links to other sites, and
+links to `/raw`, `/download` or with a query string behave as before. The
+Markdown page opens links to other sites in a new tab, but leaves these in
+its own.
 Text files have no links, and SVG gets no script. Opened on its own (at the
 raw origin), a page has no viewer: its script does nothing, and such links
 lead to the raw origin's 404.
@@ -588,11 +590,19 @@ the grip steps ½ and full, a tap on one item's title goes back to the list.
 On a phone each title line ends with a fold button (⌄) at the far right that
 folds the sheet to the strip, away from **Finish review** at the bottom; with a
 reply typed it does not fold and says to send or clear it first.
-Outside comment mode a tap on an empty spot of the file (a page, or an image
-and the space around it; not a drag or a long press) does the same while a
-comment is selected: its pin is no longer lit, on a phone the sheet folds to
-the strip and on a computer the panel shows the list. With nothing selected,
-or with a reply typed or an edit changed, it does nothing.
+Outside comment mode, while a comment's pin is lit on the page, the first tap
+anywhere on the file but a pin (a page, its links, buttons and fields too, or
+an image and the space around it; not a drag, a scroll or a long press, which
+work as ever) only does the same: the page does not get its click (no link
+opens, no button fires; on a touch screen no field takes the focus), the pin
+is no longer lit,
+on a phone the sheet folds to the strip and on a computer the panel shows the
+list. Taps after it reach the page as usual. The page still sees the touch
+begin, so a control that reacts to that alone (a slider's thumb) may move. A
+selected comment without a lit pin on the page lets go on a tap on an empty
+spot of the file only. With a reply typed or an edit changed the comment
+stays and taps reach the page; a tap on an empty spot does nothing. With
+nothing selected, a tap is the page's as always.
 **Finish review** opens at ½. Folding a new draft to the strip drops it, with Undo if text was typed. The keyboard pushes the sheet up and
 the pin stays in sight above it. Buttons show only on the selected item:
 **Edit** and **Delete** on the person's own draft or reply; on a published
@@ -850,7 +860,14 @@ talk only through `postMessage`:
   cancels it, so a link or a button under it does not fire;
 - outside placing, it asks the viewer to open a link to another file or
   project, see [Links between files](#links-between-files);
-- outside placing, it reports a plain tap on an empty spot of the page
+- outside placing, while a pin it was sent is lit and drawn, and the viewer
+  did not send `hold: false` (it does while a typed reply or a changed edit
+  would keep the comment), it holds back a left press off its pins that
+  lifts as a tap: its down events (pointerdown, touchstart, a mouse's
+  mousedown) reach the page, the rest of it and its click do not (nor, on
+  a touch screen, a control's focus), and it reports `blank`. A press that moves over 10 px, is
+  held or turns into a scroll, a pinch or a keyboard click stays the
+  page's. Otherwise, it reports a plain tap on an empty spot of the page
   (`blank`): not one that moved or was held, not a double click, one with a
   modifier key or one begun over selected text, not on a pin, and not on
   anything the page may act on (a link, a control, a canvas, an element

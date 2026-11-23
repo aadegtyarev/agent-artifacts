@@ -9,14 +9,17 @@
 //   onSpot(anchor): a spot was chosen for a new draft (in comment mode)
 //   onEscape(): Escape was pressed in the page while picking
 //   onBlank(): outside comment mode, a plain tap on the content away from
-//     pins and from anything the page acts on
+//     pins and from anything the page acts on, or with a pin lit any tap
+//     off the pins, which the page then does not get
+//   hold(): whether a page holds back that tap now (not while a typed
+//     reply would keep the comment)
 //   onChange(spotsOnly): what is known of the page changed; with
 //     `spotsOnly`, only which spots were not found or are hidden
 // It returns `page`, what is known of the frame's script, and the calls the
 // sheet makes when it redraws or moves.
 const commentsPins = ({
   pinType, image, imageBox, imageLink, pinLayer, frame,
-  pins, picking, onPin, onSpot, onEscape, onBlank, onChange,
+  pins, picking, onPin, onSpot, onEscape, onBlank, onChange, hold,
 }) => {
   const { badge: badgeEl, inside, STAR } = pinMarks;
   const TONES = { own: " own", other: "", agent: " ag" };
@@ -49,7 +52,7 @@ const commentsPins = ({
       // by shape too, and the dot's colour.
       const look = document.documentElement.classList;
       tell({ type: "pins", pins: shown, big: look.contains("pins-big"), shaped: look.contains("pins-shaped"),
-        dot: document.documentElement.dataset.dot || "red" });
+        dot: document.documentElement.dataset.dot || "red", hold: hold() });
       return;
     }
     if (pinType !== "point") return;
