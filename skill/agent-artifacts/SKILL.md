@@ -132,16 +132,15 @@ What works with people reviewing on a phone:
    in the same commit or pull request as the code; your reply to their
    comment says what changed in the design files. Run `design_check.py`
    before saying it is done and fix what it reports. Whoever reviews the
-   change checks that `docs/design/` matches it. In a repository without
-   it in its tests, offer once to add it there (a test that runs it, or a
-   CI step) so it holds after you are gone; add it only on their yes.
+   change checks that `docs/design/` matches it. In a repository where
+   no test or CI step runs `design_check.py`, offer once per repository to
+   add one so it holds after you are gone; add it only on their yes.
 9. Nothing goes live before the person's explicit yes on the mockup.
 
-Not every file is an interface. For reports, presentations and other
-documents a design system is optional: when you share the first one of a
-kind, offer once, in a line, to keep its look and words as a small
-`docs/design/` (colours, type, tone) so the next ones match; drop it if
-they don't want it.
+Reports, presentations and other documents are not interfaces: no design
+system by default. With the first one of a kind, offer once, in a line, to
+keep its look and words in a small `docs/design/` (colours, type, tone) so
+the next ones match; drop it if they decline.
 
 Beyond screens: when you design a process, a workflow or
 an architecture with the person, keep the agreed result in their project
