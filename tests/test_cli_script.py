@@ -297,6 +297,52 @@ def test_wait_accepted_counts_only_new(server, monkeypatch):
     assert polls == [7, 7]
 
 
+def test_wait_on_a_project(server, monkeypatch):
+    url, store, home = server
+    key = store.add_agent("alice")
+    env = {"AGENT_ARTIFACTS_URL": url, "AGENT_ARTIFACTS_KEY": key}
+    page = home / "a.html"
+    page.write_text("<p>hi</p>")
+    p = json.loads(cli(home, "project-new", "Site", env=env)[1])
+    a = json.loads(cli(home, "upload", str(page), "--project", p["id"], env=env)[1])["id"]
+    store.add_draft(a, "h", author="p", text="old", anchor=None)
+    store.publish(a, "h", author="p", text=None)
+    added = []
+
+    def sleep(seconds):  # between polls: a new file gets a comment for the agent
+        if not added:
+            out = cli(home, "upload", str(page), "--project", p["id"], "--title", "New", env=env)
+            added.append(json.loads(out[1])["id"])
+            store.add_draft(added[0], "h", author="p", text="fix", anchor=None)
+            store.publish(added[0], "h", author="p", text=None, for_agent=True)
+
+    mod = _load_cli(monkeypatch, url, key, sleep)
+    # A bare id: the server knows it as a project.
+    assert json.loads(mod.run(["wait", p["id"]])) == {
+        "event": "waiting",
+        "project": p["id"],
+        "files": [{"id": added[0], "title": "New", "waiting": 1}],
+    }
+    store.take(added[0], owner="alice")
+
+    def accept(seconds):
+        store.resolve_comment(a, 1, True, owner="alice")
+
+    mod = _load_cli(monkeypatch, url, key, accept)
+    assert json.loads(mod.run(["wait", p["url"]])) == {
+        "event": "accepted",
+        "project": p["id"],
+        "files": [{"id": a, "title": "a.html", "accepted": 1}],
+    }
+    # Nothing new: the comment accepted before the start does not count.
+    assert json.loads(cli(home, "wait", p["url"], "--timeout", "1", env=env)[1]) == {
+        "event": "timeout"
+    }
+    cli(home, "project-delete", p["id"], env=env)
+    for target in (p["url"], p["id"]):
+        assert json.loads(cli(home, "wait", target, env=env)[1]) == {"event": "gone"}
+
+
 def test_wait_retries_a_failed_poll_and_stops_on_auth(tmp_path, monkeypatch):
     from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -306,7 +352,8 @@ def test_wait_retries_a_failed_poll_and_stops_on_auth(tmp_path, monkeypatch):
 
     class Flaky(BaseHTTPRequestHandler):
         def do_GET(self):  # noqa: N802
-            code, body = answers.pop(0)
+            # A bare id is tried as a project first: not one here.
+            code, body = (404, "{}") if "/projects/" in self.path else answers.pop(0)
             self.send_response(code)
             self.end_headers()
             self.wfile.write(body.encode())

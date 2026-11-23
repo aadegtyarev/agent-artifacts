@@ -172,6 +172,7 @@ limits are what bounds them.
 | `GET /api/v1/projects/{id}` | one project with its files | `200` + project JSON with `"artifacts"`: a list of artifact JSON |
 | `PATCH /api/v1/projects/{id}` | `{"title"}` | `200` + project JSON |
 | `DELETE /api/v1/projects/{id}` | delete the project and every file in it | `204` |
+| `GET /api/v1/projects/{id}/summary[?since=T]` | what is new for the agent on any file, in one request | `200` + `{"now", "files": [{"id", "title", "waiting", "accepted"}]}` |
 
 Project JSON:
 
@@ -180,6 +181,12 @@ Project JSON:
  "title": "Landing redesign", "created_at": "2026-11-20T10:00:00Z",
  "files": 6, "used_bytes": 3145728}
 ```
+
+The summary lists every file of the project in the order added: `waiting`
+counts its open comments with `agent` `waiting`, `accepted` those resolved
+after `since` (none without it; not a number: `400`). `now` is the
+server's time in seconds; the CLI passes the first answer's `now` as
+`since` on every later poll.
 
 `files` is the number of files; `GET /api/v1/projects/{id}` adds them as the
 list `artifacts`, in the project's order: files without a section first,
@@ -1020,7 +1027,12 @@ silently, and exits 0 with one JSON line on the first of: comments waiting
 for the agent and not resolved (`{"event": "waiting", "comments"}`), comments
 resolved since its first poll (`{"event": "accepted", "comments"}`), a 404
 (`{"event": "gone"}`) or the timeout, 6 hours by default and 0 for none
-(`{"event": "timeout"}`). A network error, 429 or 5xx is retried at the next
+(`{"event": "timeout"}`). On a project (a `/p/` link, or a bare id the
+project summary knows; else a file) it polls `GET
+/api/v1/projects/{id}/summary` instead, files added later included, and
+names the files: `{"event": "waiting" or "accepted", "project", "files":
+[{"id", "title", "waiting" or "accepted": N}]}`, or `gone` for the project.
+A network error, 429 or 5xx is retried at the next
 poll; any other error exits 1 as in every command;
 `list` shows each file's open comments. The skill
 teaches:
