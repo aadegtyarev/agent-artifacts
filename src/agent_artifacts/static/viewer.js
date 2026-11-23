@@ -1,8 +1,9 @@
 // The viewer's own controls: the menu of the header's ≡ (a column of square
 // buttons fanned out over the dimmed page) and full screen, where a floating
 // ≡ takes the header's place. The floating button can be dragged anywhere;
-// it snaps to the nearer side edge and this browser keeps its place. The
-// browser's history is never touched: Back belongs to the content. The
+// it snaps to the nearer side edge and this browser keeps its place. A
+// double tap on it leaves full screen; a tip beside it says so on the first
+// few entries (float-tip.js). The browser's history is never touched: Back belongs to the content. The
 // project page uses it too, without comment mode.
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -17,11 +18,13 @@
   const DRAG_PX = 8; // a move shorter than this is a tap
   const LONG_MS = 500; // held this long, still: comment mode on or off
   const PLACE_KEY = "aa-float-button";
+  const tip = $("float-tip");
 
   // --- The menu ---------------------------------------------------------------
   let opener = null;
 
   function openFan(from) {
+    closeTip();
     opener = from;
     fan.hidden = false;
     from.setAttribute("aria-expanded", "true");
@@ -138,6 +141,7 @@
     floatButton.hidden = false;
     applyPlace();
     floatButton.focus({ preventScroll: true });
+    showTip();
     // Not there on an iPhone: the viewer's own full screen is all it gets.
     if (request) {
       try {
@@ -151,6 +155,8 @@
   // keeps the viewer's: only Exit full screen ends it.
   function exitFull() {
     cancelDrag();
+    closeTip();
+    lastTap = null;
     document.body.classList.remove("full");
     floatButton.hidden = true;
     const current = document.fullscreenElement || document.webkitFullscreenElement;
@@ -205,6 +211,7 @@
     floatButton.style.top = `${Math.min(Math.max(GAP, top), bottom)}px`;
     floatButton.style.left = side === "left" ? `${GAP}px` : "auto";
     floatButton.style.right = side === "right" ? `${right}px` : "auto";
+    placeTip();
   }
   document.addEventListener("aa:sheet", () => { if (!floatButton.hidden && !drag) applyPlace(); });
 
@@ -216,8 +223,44 @@
 
   let drag = null;
   let draggedAt = -Infinity;
+  // The last tap on the button, released: {at, x, y}. A press soon after and
+  // close to it is the second tap of a double tap, which leaves full screen.
+  let lastTap = null;
+  const isDouble = (e) => floatTip.isDoubleTap(lastTap,
+    { at: performance.now(), x: e.clientX, y: e.clientY });
+  let doubled = false; // the second press is still down
+  function doubleTap() {
+    lastTap = null;
+    closeFan(false);
+    exitFull();
+    // Its click, on letting go, lands on nothing (see swallowUntil), and a
+    // mouse let go over the content's frame lets go in this page.
+    doubled = true;
+    swallowUntil = Infinity;
+    document.body.classList.add("float-pressed");
+  }
+  function releaseDouble() {
+    if (!doubled) return;
+    doubled = false;
+    document.body.classList.remove("float-pressed");
+    releaseSoon();
+  }
+  window.addEventListener("pointerup", releaseDouble, true);
+  window.addEventListener("pointercancel", releaseDouble, true);
+  // The first tap opened the menu, so the second may land on the menu or
+  // its scrim beside the button: a double tap too, and the item under the
+  // finger does nothing.
+  window.addEventListener("pointerdown", (e) => {
+    if (floatButton.hidden || floatButton.contains(e.target) || !isDouble(e)) return;
+    e.stopPropagation();
+    doubleTap();
+  }, true);
   floatButton.addEventListener("pointerdown", (e) => {
     if (e.button !== 0) return;
+    if (isDouble(e)) {
+      doubleTap();
+      return;
+    }
     const box = floatButton.getBoundingClientRect();
     drag = { id: e.pointerId, x: e.clientX, y: e.clientY, dx: e.clientX - box.left,
       dy: e.clientY - box.top, moved: false };
@@ -273,12 +316,15 @@
     floatButton.style.left = `${x}px`;
     floatButton.style.right = "auto";
     floatButton.style.top = `${y}px`;
+    placeTip();
   });
   function endDrag(e) {
     if (!drag || e.pointerId !== drag.id) return;
     clearTimeout(drag.timer);
     if (drag.long) releaseSoon();
     const moved = drag.moved;
+    lastTap = moved || drag.long || e.type !== "pointerup" ? null
+      : { at: performance.now(), x: e.clientX, y: e.clientY };
     drag = null;
     document.body.classList.remove("float-pressed");
     if (!moved) return;
@@ -302,7 +348,10 @@
     floatButton.classList.remove("dragging");
     document.body.classList.remove("float-pressed");
   }
-  window.addEventListener("blur", cancelDrag);
+  window.addEventListener("blur", () => {
+    cancelDrag();
+    releaseDouble();
+  });
   // A drag ends in a click on some browsers; that one does not open the menu.
   floatButton.addEventListener("click", () => {
     if (performance.now() - draggedAt < 400) return;
@@ -310,4 +359,41 @@
     else closeFan();
   });
   window.addEventListener("resize", () => { if (!floatButton.hidden) applyPlace(); });
+
+  // --- The tip ----------------------------------------------------------------
+  // Shown beside the button on entering full screen, until it has been shown
+  // three times or Hide was pressed; OK only closes it. Opening the menu and
+  // leaving full screen close it too.
+  function showTip() {
+    if (!tip) return;
+    let raw = null;
+    try { raw = localStorage.getItem(floatTip.KEY); } catch { /* no storage: shown each time */ }
+    const state = floatTip.read(raw);
+    if (!floatTip.due(state)) return;
+    try { localStorage.setItem(floatTip.KEY, floatTip.counted(state)); } catch { /* not kept */ }
+    tip.hidden = false;
+    placeTip();
+  }
+  function closeTip() {
+    if (!tip || tip.hidden) return;
+    const inside = tip.contains(document.activeElement);
+    tip.hidden = true;
+    if (inside && !floatButton.hidden) floatButton.focus({ preventScroll: true });
+  }
+  function placeTip() {
+    if (!tip || tip.hidden) return;
+    const box = floatButton.getBoundingClientRect();
+    const side = box.left + box.width / 2 < window.innerWidth / 2 ? "left" : "right";
+    const at = floatTip.place(box, { width: tip.offsetWidth, height: tip.offsetHeight },
+      { width: window.innerWidth, height: window.innerHeight }, side, GAP);
+    tip.style.left = `${at.left}px`;
+    tip.style.top = `${at.top}px`;
+  }
+  if (tip) {
+    $("float-tip-ok").addEventListener("click", closeTip);
+    $("float-tip-hide").addEventListener("click", () => {
+      try { localStorage.setItem(floatTip.KEY, floatTip.hidden()); } catch { /* this page only */ }
+      closeTip();
+    });
+  }
 })();
