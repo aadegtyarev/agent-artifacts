@@ -905,3 +905,6 @@ def test_the_frame_takes_the_pin_look_only_when_strictly_true():
     pins = (static / "pins.js").read_text()
     assert 'toggle("pins-big", m.big === true)' in pins
     assert 'toggle("pins-shaped", m.shaped === true)' in pins
+    # The dot's colour: only a name from the list, as a colour the frame
+    # writes itself (tests/js/pin-marks.test.js checks the list).
+    assert 'layer.style.setProperty("--dot", dotColour(m.dot))' in pins

@@ -82,7 +82,7 @@ def comment_routes(store: Store) -> list[Route]:
         return _updated(_answer([_json(c) for c in comments]), updated_at)
 
     async def project_summary(request: Request) -> Response:
-        # For the project page's counters; under /p, so the proxy does not
+        # For the project page's dots; under /p, so the proxy does not
         # count it as a write. Without a key: as for a stranger.
         key = _author_key(request, required=False)
         found = await run_in_threadpool(store.project_summary, request.path_params["id"], key)

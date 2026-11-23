@@ -189,7 +189,7 @@
 
   // Badge marks, the same as in the viewer: pages.py puts pin-marks.js
   // before this script.
-  const { BADGES, badge, inside } = pinMarks;
+  const { BADGES, badge, inside, dotColour } = pinMarks;
   const FILLS = ["line", "solid", "rej"];
   const TONES = { own: "own", other: "", agent: "ag" };
 
@@ -397,9 +397,12 @@
           tone: Object.prototype.hasOwnProperty.call(TONES, p.tone) ? p.tone : "other",
           fill: FILLS.includes(p.fill) ? p.fill : "solid",
           badge: Object.prototype.hasOwnProperty.call(BADGES, p.badge) ? p.badge : "", lit: p.lit === true }));
-      // How they look (the viewer's Settings): large, and whose by shape too.
+      // How they look (the viewer's Settings): large, whose by shape too,
+      // and the dot's colour. Set even when red, so the page's own --dot,
+      // inherited into the layer, is never used.
       layer.classList.toggle("pins-big", m.big === true);
       layer.classList.toggle("pins-shaped", m.shaped === true);
+      layer.style.setProperty("--dot", dotColour(m.dot));
       schedule(true);
     } else if (m.type === "show" && isKey(m.key)) {
       const pin = pins.find((p) => p.key === m.key);

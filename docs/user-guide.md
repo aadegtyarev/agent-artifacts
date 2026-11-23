@@ -71,8 +71,9 @@ and says until when it works. Open it on your phone: you see the page under a
 one-line header with buttons for comments, full screen and the "≡" menu:
 open separately (where the service offers it), **Share…** (copy the link,
 download the file) and **Settings…**: the name your comments are signed
-with, the theme (auto, light or dark), the text size, larger pins, and
-whether whose a pin is shows by its shape as well as its colour.
+with, the theme (auto, light or dark), the text size, larger pins,
+whether whose a pin is shows by its shape as well as its colour, and the
+colour of the dot that marks what needs you (red, blue or green).
 
 If the agent says there is no key, it did not run step 2 or 3: paste the text
 again.
@@ -87,7 +88,8 @@ again.
   stays the same and its lifetime starts again.
 - "Put the contracts and the mockups in one project." You get one link to a
   project page listing the files by section; they stay until deleted, and
-  the files can link to each other.
+  the files can link to each other. A dot on a file's line means something
+  there needs you: a comment to decide on, or your review not finished.
 - Comments: press the bubble, tap a spot, write and press **Add**. When
   done, **Finish review** sends the comments to the agent; then tell it
   "look at the comments". It fixes the file at the same link and answers

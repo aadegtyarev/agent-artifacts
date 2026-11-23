@@ -7,8 +7,9 @@
    Colour: whose (orange a colleague's, blue this browser's or accepted
    here, purple the agent's). Outline: not done yet; filled: done; grey:
    rejected. Inside: the author's first letter, or the agent's star. One
-   badge at the corner: the red dot, something new to read. Settings can
-   make them larger, and show whose by shape as well (see the end).
+   badge at the corner: the dot, something new to read, in --dot (Settings'
+   Dot; red without it). Settings can make them larger, and show whose by
+   shape as well (see the end).
 
    No tokens reach a page, so the colours are written out: they mirror the
    light values of tokens.md (--blue, --orange, --purple, --faint, --red,
@@ -33,9 +34,10 @@
   0 2px 6px rgb(0 0 0 / 0.25); }
 .pin.line.lit { box-shadow: 0 0 0 6px rgb(0 0 0 / 0.25), 0 2px 6px rgb(0 0 0 / 0.25); }
 .pin.lit > svg { width: 23px; height: 23px; }
-/* The red dot. */
+/* The dot: --dot comes from site.css in the viewer and from pins.js in a
+   page. */
 .bdg { position: absolute; right: -4px; top: -4px; width: 14px; height: 14px; border-radius: 50%;
-  background: #cf291d; box-shadow: 0 0 0 2px #fff; pointer-events: none; }
+  background: var(--dot, #cf291d); box-shadow: 0 0 0 2px #fff; pointer-events: none; }
 /* Near the right or top edge the pin turns to stay in sight. */
 .pin.left { transform: translate(-100%, -100%); border-radius: 50% 50% 4px 50%; }
 .pin.down { transform: none; border-radius: 4px 50% 50% 50%; }

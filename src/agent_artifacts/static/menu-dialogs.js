@@ -1,7 +1,8 @@
 // The two dialogs of the ≡ menu (viewer.js sends aa:dialog), on the viewer
 // and the project page. Share: the page's link to copy, the file to
 // download. Settings: the name comments are signed with, the theme, the
-// text size, the pins' size and whether whose they are shows by shape too.
+// text size, the pins' size, whether whose they are shows by shape too and
+// the colour of the notification dot.
 // Each setting applies at once and is kept in this browser; theme.js
 // applies them before a page is drawn. Without storage they last as long as
 // the page.
@@ -129,6 +130,7 @@
     check("text", root.dataset.textSize || "large");
     check("pins", root.classList.contains("pins-big") ? "large" : "normal");
     check("shapes", root.classList.contains("pins-shaped") ? "shape" : "color");
+    check("dot", root.dataset.dot || "red");
   }
 
   // The name is kept only when it was changed here, so a person never asked
@@ -161,6 +163,14 @@
     shapes(v) {
       root.classList.toggle("pins-shaped", v !== "color");
       write("agent-artifacts:pin-shapes", v === "color" ? "color" : null);
+      document.dispatchEvent(new CustomEvent("aa:look"));
+    },
+    dot(v) {
+      const colour = v === "blue" || v === "green" ? v : null;
+      if (colour) root.dataset.dot = colour;
+      else delete root.dataset.dot;
+      write("agent-artifacts:dot", colour);
+      // The pins in a page are told it again.
       document.dispatchEvent(new CustomEvent("aa:look"));
     },
   };

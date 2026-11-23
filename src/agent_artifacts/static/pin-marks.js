@@ -1,5 +1,5 @@
 // What a pin holds: the author's letter, or the agent's star; and the one
-// badge at its corner, the red dot.
+// badge at its corner, the dot.
 // One copy for both places pins are drawn: the viewer loads it as a script
 // before comments.js, and pages.py puts it in a block with pins.js inside a
 // page, so `pinMarks` stays out of the page's globals there.
@@ -11,6 +11,12 @@ const pinMarks = (() => {
   const BADGES = { new: "" };
   // The label that stands for the agent's star inside a pin.
   const STAR = "*";
+  // The dot's colour by its name in Settings' Dot; any other name is red.
+  // Light values of tokens.md (--red-fill, --blue-fill, --green-fill):
+  // inside a page no tokens reach.
+  const DOTS = { red: "#cf291d", blue: "#0a64d8", green: "#1e7d36" };
+  const dotColour = (name) => DOTS[typeof name === "string"
+    && Object.prototype.hasOwnProperty.call(DOTS, name) ? name : "red"];
 
   function mark(name) {
     const ns = "http://www.w3.org/2000/svg";
@@ -35,5 +41,5 @@ const pinMarks = (() => {
   // A pin's inside: its letter, or the star.
   const inside = (label) => (label === STAR ? mark("star") : document.createTextNode(label));
 
-  return { BADGES, STAR, mark, badge, inside };
+  return { BADGES, STAR, mark, badge, inside, dotColour };
 })();

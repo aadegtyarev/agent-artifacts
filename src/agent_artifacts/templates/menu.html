@@ -51,7 +51,9 @@
     {{- choice("text", "Text", [("normal", "Normal"), ("large", "Large"), ("larger", "Larger")]) }}
     {{- choice("pins", "Pins", [("normal", "Normal"), ("large", "Large")]) }}
     {{- choice("shapes", "Mine / others", [("color", "Color"), ("shape", "Color + shape")]) }}
-    <div class="set-preview" aria-hidden="true"><span class="pin mini own">A</span><span class="pin mini">B</span><span class="pin mini ag"><svg viewBox="0 0 12 12"><path d="M6 .6C6.45 4 8 5.55 11.4 6 8 6.45 6.45 8 6 11.4 5.55 8 4 6.45.6 6 4 5.55 5.55 4 6 .6z"/></svg></span><span class="set-note">mine · a colleague's · the agent's</span></div>
+    {{- choice("dot", "Dot", [("red", "Red"), ("blue", "Blue"), ("green", "Green")]) }}
+    {#- The agent's pin carries the dot, so a change of Dot shows here too. #}
+    <div class="set-preview" aria-hidden="true"><span class="pin mini own">A</span><span class="pin mini">B</span><span class="pin mini ag"><svg viewBox="0 0 12 12"><path d="M6 .6C6.45 4 8 5.55 11.4 6 8 6.45 6.45 8 6 11.4 5.55 8 4 6.45.6 6 4 5.55 5.55 4 6 .6z"/></svg><span class="bdg new"></span></span><span class="set-note">mine · a colleague's · the agent's</span></div>
     <p class="set-note">Saved in this browser.</p>
     <div class="buttons"><button type="submit" class="btn pri">Done</button></div>
   </form>

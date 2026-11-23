@@ -24,7 +24,7 @@ Sources: `templates/icons.html` (Jinja macros), the `ICONS` map in
 | ![left](icons/left.svg) | `left` | comments.js | 18 | item view: previous |
 | ![right](icons/right.svg) | `right` | comments.js | 18 item view, 15 group title | item view: next; a folded group title |
 | ![down](icons/down.svg) | `down` | comments.js | 18 fold, 15 group title | fold button (⌄) on a phone; an open group title |
-| ![star](icons/star.svg) | `star` | pin-marks.js | 12 × 12 grid, filled `currentColor`; 20 in a pin, 18 in a list pin, 19 in the agent avatar, 14 in a project counter | the agent: pins, avatar, project page counter, Settings preview |
+| ![star](icons/star.svg) | `star` | pin-marks.js | 12 × 12 grid, filled `currentColor`; 20 in a pin, 18 in a list pin, 19 in the agent avatar | the agent: pins, avatar, Settings preview |
 
 ## Text glyphs
 

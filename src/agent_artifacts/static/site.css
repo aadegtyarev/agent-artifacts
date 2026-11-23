@@ -5,7 +5,8 @@
    and orange is only ever a fill. Everything else is mixed from these. */
 :root { color-scheme: light dark;
   --blue: #0a64d8; --blue-fill: #0a64d8; --orange: #e8890c; --purple: #5e5ce6;
-  --purple-fill: #5e5ce6; --green: #1e7d36; --red: #cf291d; --red-fill: #cf291d;
+  --purple-fill: #5e5ce6; --green: #1e7d36; --green-fill: #1e7d36; --red: #cf291d;
+  --red-fill: #cf291d;
   --bg: #fff; --surface: #f2f2f7; --surface-2: #e5e5ea; --line: #d1d1d6;
   --faint: #8e8e93; --muted: #6e6e73; --fg: #1c1c1e; --on-color: #fff;
   --scrim: rgb(0 0 0 / 0.3); --shadow-1: rgb(0 0 0 / 0.12); --shadow-2: rgb(0 0 0 / 0.25);
@@ -18,7 +19,12 @@
      browser without color-mix(). It is --fg at 92%. */
   --ink: rgb(28 28 30 / 0.92);
   /* Roles that take a different token in the dark. */
-  --raised: var(--bg); --field: var(--surface); --pri: var(--fg); --seg-on: var(--bg); }
+  --raised: var(--bg); --field: var(--surface); --pri: var(--fg); --seg-on: var(--bg);
+  /* The notification dot, everywhere one shows: Settings' Dot (theme.js
+     sets data-dot on <html>; none is red). */
+  --dot: var(--red-fill); }
+:root[data-dot="blue"] { --dot: var(--blue-fill); }
+:root[data-dot="green"] { --dot: var(--green-fill); }
 /* The dark theme is a palette of its own, not an inversion: dark grey
    surfaces, raised ones lighter, light text, lighter hues. It follows the
    system unless the menu's Theme picked light or dark ([data-theme]). */
@@ -465,8 +471,8 @@ body.commenting .fan-item[data-act="comment"] .fan-sq { color: var(--on-color); 
 .float-button[aria-expanded="true"] > svg:last-child { display: block; }
 
 /* The project page: one row per file, a type square, the title, size and
-   time; on the right the comment counters, the red pill of those waiting for
-   this person and the agent's pin with the number it has. */
+   time; on the right, when something there needs this person (a comment
+   waiting for their decision, their own unfinished review), one dot. */
 .pj { flex: 1; min-height: 0; overflow: auto; background: var(--bg); padding: 6px 14px 24px; }
 .pj .sec { margin: 16px 0 4px; }
 .pj .empty { padding: 16px 0; }
@@ -482,14 +488,8 @@ body.commenting .fan-item[data-act="comment"] .fan-sq { color: var(--on-color); 
 .pf .tx { flex: 1; min-width: 0; }
 .pf .main { display: block; overflow: hidden; font-size: 16px; line-height: 1.3;
   text-overflow: ellipsis; white-space: nowrap; }
-.cnts { flex: none; display: flex; gap: 6px; }
-.cnt { display: inline-flex; align-items: center; justify-content: center; gap: 3px;
-  min-width: 24px; height: 24px; padding: 0 7px; color: var(--on-color); background: var(--red-fill);
-  border-radius: 12px; font: 600 14px/1 system-ui, sans-serif; }
-.cnt.ag { gap: 6px; padding: 0; color: var(--purple); background: none; font-size: 15px; }
-.cnt .pin.mini { position: relative; width: 26px; min-width: 26px; height: 26px; margin: 0;
-  transform: none; }
-.cnt .pin.mini > svg { width: 14px; height: 14px; }
+.pf .dot { flex: none; width: 12px; height: 12px; margin-right: 4px; border-radius: 50%;
+  background: var(--dot); }
 
 .pf[aria-current="page"] { background: var(--surface); }
 
