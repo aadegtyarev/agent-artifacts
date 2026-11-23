@@ -566,6 +566,21 @@ body.commenting .fan-item[data-act="comment"] .fan-sq { color: var(--on-color); 
   font: 13px ui-monospace, monospace; background: var(--surface);
   border: 1px solid var(--line); border-radius: 6px; padding: 8px; resize: none; }
 
+/* Readable service text on phones, before the Text setting's scaling. Pin
+   marks and file content are not text controls and retain their geometry. */
+@media (max-width: 640px) {
+  h1, .meta, button:not(.all-pill):not(.all-link), .pmeta, .strip-hint, .sec, .strip-text,
+  .sheet .btn, .modal .btn, .toast .btn, .cap, .empty, .st, .dec, .ref,
+  .note, .nav .lbl, .msg .who, .msg .when,
+  .set-note, .set-label, .set-seg span, .toast-box, .banner, .join textarea {
+    font-size: 15px;
+  }
+  .join { zoom: var(--ts); }
+  .join h1 { font-size: 20px; }
+  .join .meta { white-space: normal; overflow: visible; }
+  .join button { min-width: 44px; min-height: 44px; }
+}
+
 /* A small chat in a comment: avatars of people and of the agent. */
 .av { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 28px;
   height: 28px; margin-top: 1px; border-radius: 50%; color: var(--on-color); background: var(--orange);
@@ -583,3 +598,4 @@ body.commenting .fan-item[data-act="comment"] .fan-sq { color: var(--on-color); 
 .banner .btn { position: relative; height: 32px; padding: 0 14px; color: var(--on-color); background: var(--blue-fill);
   border: 0; border-radius: 16px; font-weight: 600; }
 .banner .btn::before { content: ""; position: absolute; inset: -6px; }
+@media (max-width: 640px) { .banner { font-size: 15px; } }

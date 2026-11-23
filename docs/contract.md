@@ -342,8 +342,10 @@ dimmed page. It holds only what the header does not, top to bottom:
     applied before the page is drawn, like the theme. It sizes the service's
     own interface on the viewer and the project page: the header, the menu,
     the comments sheet or panel (the panel widens with it), the dialogs,
-    toasts and banners, the project's file list. The file and the pins drawn
-    on it keep their size;
+    toasts and banners, and the project's file list. On phones it also sizes
+    invite and key pages, and readable interface text is at least 15 px before
+    scaling, except the Accept all controls. The file and the pins drawn on it
+    keep their size;
   - **Pins: Normal / Large**: Large draws the pins on the content and in
     the comments list a quarter bigger (`agent-artifacts:pin-size`
     `large`);
