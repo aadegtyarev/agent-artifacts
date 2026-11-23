@@ -55,7 +55,9 @@ artifacts_cli.py list                                   # your files; also: proj
 ```
 
 Give the person the `url` (the project's for a job) and, outside a project,
-until when it works. On an error the CLI exits 1 with `{"error", "message"}`:
+until when it works. An `<id>` is the 22-character id or the link itself
+(`…/a/<id>`, `…/p/<pid>`). A wrong command or argument exits 2 with a usage
+line: fix the call. An error from the service exits 1 with `{"error", "message"}`:
 `not_found` — expired or not yours, upload again; `too_large` — shrink or
 zip; `quota_exceeded` — see below; `storage_full` — the service is full:
 delete nothing, tell the person; `unauthorized` — the key is wrong or
@@ -180,8 +182,8 @@ heading with non-ASCII letters cannot be linked to from another file.
 ## Also
 
 - Key leaked: `artifacts_cli.py new-key`; the old key stops, files stay. If
-  the key came from `AGENT_ARTIFACTS_KEY`, it prints the new one: the user
-  puts it there. Never write a key into an uploaded file or a log.
+  the key came from `AGENT_ARTIFACTS_KEY`, or the env file cannot be
+  written, it prints the new one: give it to the user to put there. Never write a key into an uploaded file or a log.
 - `me` says `"admin": true`: read [admin.md](admin.md) for invites, limits
   and people.
 - Updating this skill or the CLI: follow the Update section of

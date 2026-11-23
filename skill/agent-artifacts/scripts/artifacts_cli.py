@@ -7,8 +7,9 @@
 
 Run it with `uv run artifacts_cli.py <command>` or `python artifacts_cli.py <command>`.
 
-The service URL and key come from AGENT_ARTIFACTS_URL and AGENT_ARTIFACTS_KEY
-if set, otherwise from the env file that the setup command writes:
+The service URL and key come together from AGENT_ARTIFACTS_URL and
+AGENT_ARTIFACTS_KEY if both are set (one alone is an error), otherwise from
+the env file that the setup command writes:
 %APPDATA%\\agent-artifacts\\env on Windows, else
 $XDG_CONFIG_HOME/agent-artifacts/env (~/.config by default).
 AGENT_ARTIFACTS_ENV points to another file. The file is written with mode
@@ -23,6 +24,7 @@ import ipaddress
 import json
 import mimetypes
 import os
+import re
 import secrets
 import sys
 import time
@@ -96,7 +98,11 @@ admin keys only:
   quota NAME MB|null        NAME's own quota, or back to the common one
   remove NAME               revoke NAME's key and delete their files
 
+An ID is the 22 characters the service gave (letters, digits, - and _) or
+the link itself: .../a/ID for a file, .../p/ID for a project.
+
 Answers are JSON as the service sends them: sizes in bytes, times in seconds.
+A wrong command or argument exits 2; an error from the service exits 1.
 """
 
 URL_VAR, KEY_VAR = "AGENT_ARTIFACTS_URL", "AGENT_ARTIFACTS_KEY"
@@ -109,8 +115,29 @@ SETTINGS = {
 }
 
 
+ID_RE = re.compile(r"[A-Za-z0-9_-]{22}")
+
+
 class Usage(Exception):
     pass
+
+
+def _id(value: str, kind: str = "a") -> str:
+    """A file's (kind "a") or project's ("p") id, bare or from its link.
+    Anything else would land in the URL path: a link 404s, which wait takes
+    for a deleted file, and "ID/drafts" reaches another call."""
+    bare = value
+    parts = urllib.parse.urlsplit(value)
+    if parts.scheme in ("http", "https"):
+        m = re.fullmatch(rf"(?:/.*)?/{kind}/([^/]*)/?", parts.path)
+        bare = m.group(1) if m else ""
+    if not ID_RE.fullmatch(bare):
+        what = "file" if kind == "a" else "project"
+        raise Usage(
+            f"not a {what} id: {value}; an id is 22 letters, digits, - or _,"
+            f" or give the link .../{kind}/ID"
+        )
+    return bare
 
 
 def env_file() -> Path:
@@ -141,6 +168,18 @@ def write_settings(path: Path, url: str, key: str) -> None:
     with os.fdopen(fd, "w") as f:
         f.write(f"{URL_VAR}={url}\n{KEY_VAR}={key}\n")
     os.replace(tmp, path)
+
+
+def _check_writable(path: Path) -> None:
+    """Create and remove a file next to the env file, as write_settings
+    would, so a read-only folder stops new-key before the key changes."""
+    probe = path.with_name(path.name + ".tmp")
+    try:
+        os.close(os.open(probe, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600))
+        os.unlink(probe)
+        os.close(os.open(path, os.O_WRONLY | os.O_APPEND))
+    except OSError as e:
+        sys.exit(f"artifacts_cli: cannot write {path} ({e}); the key is not changed")
 
 
 def back_up(path: Path) -> Path:
@@ -321,11 +360,24 @@ def run(argv: list[str]) -> str | None:
         old = parse_settings(path.read_text()) if path.is_file() else {}
         backup = back_up(path) if old and old != found else None
         write_settings(path, found[URL_VAR], found[KEY_VAR])
-        return f"saved to {path}" + (f"; the previous one is kept in {backup}" if backup else "")
+        out = f"saved to {path}" + (f"; the previous one is kept in {backup}" if backup else "")
+        if set_in_env := [v for v in (URL_VAR, KEY_VAR) if os.environ.get(v)]:
+            names = " and ".join(set_in_env)
+            out += f"\nbut {names} in the environment win over the file: unset them to use it"
+        return out
 
-    from_file = parse_settings(path.read_text()) if path.is_file() else {}
-    url = os.environ.get(URL_VAR) or from_file.get(URL_VAR)
-    key = os.environ.get(KEY_VAR) or from_file.get(KEY_VAR)
+    # URL and key from one place: a URL alone from a project's environment
+    # with the saved key would send that key to another host.
+    in_env = {v: os.environ.get(v) for v in (URL_VAR, KEY_VAR) if os.environ.get(v)}
+    if len(in_env) == 1:
+        (has,) = in_env
+        missing = KEY_VAR if has == URL_VAR else URL_VAR
+        raise Usage(
+            f"{has} is set but {missing} is not: set both, or unset it to use the saved ones"
+        )
+    from_env = bool(in_env)
+    source = in_env or (parse_settings(path.read_text()) if path.is_file() else {})
+    url, key = source.get(URL_VAR), source.get(KEY_VAR)
     if not url or not key:
         raise Usage(f"no key: run 'artifacts_cli.py setup' or set {URL_VAR} and {KEY_VAR}")
     c = Client(url, key)
@@ -343,6 +395,8 @@ def run(argv: list[str]) -> str | None:
                 # "none" clears a field, which only `set` can do.
                 if value == "none" and (cmd != "set" or field == "title"):
                     raise Usage(f"{cmd}: --{field} none only clears a project or section, with set")
+                if field == "project" and value != "none":
+                    value = _id(value, "p")
                 details[field] = value
     opts = "[--title TEXT] [--project ID] [--section TEXT]"
     projects = "/api/v1/projects"
@@ -354,7 +408,7 @@ def run(argv: list[str]) -> str | None:
         case "replace":
             need(2, f"ID FILE [NAME] {opts}", 3)
             name = args[2] if len(args) > 2 else None
-            return c.upload("PUT", f"{api}/{args[0]}", args[1], {"name": name, **details})
+            return c.upload("PUT", f"{api}/{_id(args[0])}", args[1], {"name": name, **details})
         case "set":
             how = "ID [--title TEXT] [--project ID|none] [--section TEXT|none]"
             need(1, how)
@@ -364,7 +418,7 @@ def run(argv: list[str]) -> str | None:
             for field in ("project", "section"):
                 if details.get(field) == "none":
                     details[field] = None
-            return c.json("PATCH", f"{api}/{args[0]}", details)
+            return c.json("PATCH", f"{api}/{_id(args[0])}", details)
         case "project-new":
             need(1, "TITLE")
             return c.json("POST", projects, {"title": args[0]})
@@ -372,26 +426,26 @@ def run(argv: list[str]) -> str | None:
             return c.call("GET", projects)
         case "project":
             need(1, "ID")
-            return c.call("GET", f"{projects}/{args[0]}")
+            return c.call("GET", f"{projects}/{_id(args[0], 'p')}")
         case "project-rename":
             need(2, "ID TITLE")
-            return c.json("PATCH", f"{projects}/{args[0]}", {"title": args[1]})
+            return c.json("PATCH", f"{projects}/{_id(args[0], 'p')}", {"title": args[1]})
         case "project-delete":
             need(1, "ID")
-            c.call("DELETE", f"{projects}/{args[0]}")
+            c.call("DELETE", f"{projects}/{_id(args[0], 'p')}")
             return "deleted"
         case "list":
             return c.call("GET", api)
         case "delete":
             need(1, "ID")
-            c.call("DELETE", f"{api}/{args[0]}")
+            c.call("DELETE", f"{api}/{_id(args[0])}")
             return "deleted"
         case "comments":
             need(1, "ID")
-            return c.call("GET", f"{api}/{args[0]}/comments")
+            return c.call("GET", f"{api}/{_id(args[0])}/comments")
         case "take":
             need(1, "ID")
-            return c.call("POST", f"{api}/{args[0]}/take")
+            return c.call("POST", f"{api}/{_id(args[0])}/take")
         case "reply":
             # The option only before ID or after TEXT, so any TEXT can be sent.
             flags = ("--wrote", "--asked")
@@ -404,7 +458,7 @@ def run(argv: list[str]) -> str | None:
             state = state.removeprefix("--")
             return c.json(
                 "POST",
-                f"{api}/{args[0]}/comments/{_number(args[1])}/reply",
+                f"{api}/{_id(args[0])}/comments/{_number(args[1])}/reply",
                 {"text": args[2], "state": state},
             )
         case "wait":
@@ -415,29 +469,40 @@ def run(argv: list[str]) -> str | None:
             limit = float(limit if limit is not None else 6 * HOUR)
             if not (every >= 5 and limit >= 0):  # NaN too
                 raise Usage("wait: --every 5 or more seconds, --timeout 0 (no limit) or more")
-            return wait(c, f"{api}/{args[0]}/comments", every, limit)
+            return wait(c, f"{api}/{_id(args[0])}/comments", every, limit)
         case "resolve" | "reopen":
             need(2, "ID N")
             return c.json(
                 "PATCH",
-                f"{api}/{args[0]}/comments/{_number(args[1])}",
+                f"{api}/{_id(args[0])}/comments/{_number(args[1])}",
                 {"resolved": cmd == "resolve"},
             )
         case "delete-comment":
             need(2, "ID N")
-            c.call("DELETE", f"{api}/{args[0]}/comments/{_number(args[1])}")
+            c.call("DELETE", f"{api}/{_id(args[0])}/comments/{_number(args[1])}")
             return "deleted"
         case "drop-drafts":
             need(1, "ID")
-            c.call("DELETE", f"{api}/{args[0]}/drafts")
+            c.call("DELETE", f"{api}/{_id(args[0])}/drafts")
             return "drafts deleted"
         case "me":
             return c.call("GET", "/api/v1/me")
         case "new-key":
+            if not from_env:
+                _check_writable(path)  # before the old key stops working
             new = json.loads(c.call("POST", "/api/v1/me/key"))["key"]
-            if os.environ.get(KEY_VAR):
+            if from_env:
                 return f"the old key no longer works; put the new one into {KEY_VAR}:\n{new}"
-            write_settings(path, url, new)
+            try:
+                write_settings(path, url, new)
+            except OSError as e:
+                # The old key is gone already: the new one must not be.
+                print(
+                    f"the old key no longer works, and the new one could not be saved to"
+                    f" {path} ({e}); put this line into that file, or set {URL_VAR} and"
+                    f" {KEY_VAR} in the environment:\n{KEY_VAR}={new}"
+                )
+                sys.exit(1)
             return f"the old key no longer works; the new one is saved to {path}"
         case "users":
             return c.call("GET", f"{admin}/users")
@@ -475,6 +540,11 @@ def run(argv: list[str]) -> str | None:
 
 
 def main() -> None:
+    # A comment in Cyrillic or with an emoji must not crash a cp1252 or
+    # cp866 console after `take` has already moved it to "working".
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
     try:
         out = run(sys.argv[1:])
     except Usage as e:

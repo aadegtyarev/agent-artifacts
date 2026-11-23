@@ -57,7 +57,8 @@ key with the service and prints where it saved it. If the file already held a
 different key, the old file is kept next to it as `env.bak-<date>-<time>`.
 
 You can also keep the key in the environment variables `AGENT_ARTIFACTS_URL`
-and `AGENT_ARTIFACTS_KEY`. They win over the file.
+and `AGENT_ARTIFACTS_KEY`. Set both: together they win over the file, and one
+of them alone is an error.
 
 ## 4. Check it
 
