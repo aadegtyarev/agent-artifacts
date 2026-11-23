@@ -152,7 +152,7 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
   function acceptable() {
     const out = [];
     for (const it of items()) {
-      if (!it.c || actsOn(it.c.n).length) continue;
+      if (!it.c || it.c.resolved || actsOn(it.c.n).length) continue;
       if (it.c.agent === "done" || it.c.agent === "wrote") out.push([it.c, "accept"]);
       else if (it.pend) out.push([it.c, "approve"]);
     }
