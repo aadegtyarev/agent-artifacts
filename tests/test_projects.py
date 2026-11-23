@@ -177,6 +177,31 @@ def test_a_file_lost_from_disk_is_404_then_purged_with_its_comments(env, caplog)
         assert db.execute("SELECT COUNT(*) FROM comments").fetchone()[0] == 0
 
 
+def test_many_files_missing_at_once_or_unreadable_are_kept(env, caplog, monkeypatch):
+    # A files folder missing or half restored is not lost files: nothing goes.
+    client, store, keys = env
+    p = new_project(client, keys["alice"]).json()["id"]
+    ids = [
+        upload(client, keys["alice"], project=p).json()["id"]
+        for _ in range(store_module.LOST_AT_ONCE + 1)
+    ]
+    for i in ids:
+        store.path(i).unlink()
+    assert store.purge_expired() == 0
+    assert "files are missing; none removed" in caplog.text
+    assert all(store.get(i) for i in ids)
+    # A file that cannot be looked at (permissions, I/O) is not lost either.
+    real = store_module.os.stat
+
+    def stat(path, *a, **k):
+        if str(path).endswith(ids[0]):
+            raise PermissionError(13, "denied")
+        return real(path, *a, **k)
+
+    monkeypatch.setattr(store_module.os, "stat", stat)
+    assert store._lost(ids[0]) is False
+
+
 def test_a_file_being_uploaded_is_not_purged(env, monkeypatch):
     # The purge runs while an upload holds its row but has not yet put its
     # file in place: it waits for the upload and leaves the file be.
