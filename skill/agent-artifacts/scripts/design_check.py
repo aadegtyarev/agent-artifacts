@@ -13,17 +13,27 @@ Checks, each problem printed as `file:line: message`:
   rgba(), hsl(), hsla()) in a declaration of a CSS file, or in a colour
   property of a UI file (a <style> block, a style attribute, CSS in a JS
   string, `fill="…"`, `.style.color = "…"`), is written somewhere in
-  tokens.md. Spelling does not matter: #FFF, #ffffff, rgb(255,255,255) and
-  rgb(255 255 255 / 1) are one colour. Comments are skipped.
+  tokens.md. Spelling does not matter: #FFF, #ffffff, rgb(255,255,255),
+  rgb(100% 100% 100% / 1) are one colour, and so are rgba(0,0,0,.5) and
+  #00000080 (alpha is compared to two decimals). oklch(), hwb(),
+  color-mix() and named colours are not parsed, so not checked.
 - words: tone-of-voice.md has a Markdown table with a column named "Avoid";
   its cells list phrases separated by "," or "·" (backticks and quotes
   around them are dropped). None of them may appear, as whole words in any
-  case, in a string literal or a text node of a UI file. Lines that are
-  only a comment are skipped, and so are {{ }}, {% %} and ${ } expressions.
+  case, in the interface's text: HTML text nodes; the attributes title,
+  alt, placeholder, aria-label, label and value; string literals in JS
+  (and in <script> blocks). It is a heuristic that prefers missing a word
+  to flagging code: a JS string is skipped when it is the first argument
+  of addEventListener, querySelector, closest, getElementById, CustomEvent
+  and the like, an import or require, or one word that is all lowercase,
+  all capitals or holds one of # . : / [ _ - = (a selector, id, path, URL
+  or key). {{ }}, {% %} and ${ } expressions are skipped.
 - icons: every .svg in icons/ is referenced in icons.md, and every image
   icons.md references exists.
 
-Exit status: 0 clean, 1 problems found, 2 usage error or no design folder.
+Comments (/* */, <!-- -->, {# #}, and // after a space or at a line start)
+are skipped everywhere. Exit status: 0 clean, 1 problems found, 2 usage
+error or no design folder.
 """
 
 from __future__ import annotations
@@ -32,16 +42,23 @@ import argparse
 import os
 import re
 import sys
+import urllib.parse
 from pathlib import Path
 
-CSS = ["**/*.css"]
-UI = ["**/*.html", "**/*.js", "**/*.jsx", "**/*.tsx", "**/*.vue", "**/*.svelte"]
-SKIP_DIRS = set("node_modules .venv venv dist build docs vendor tests test __tests__".split())
+CSS = [f"**/*.{e}" for e in ("css", "scss", "less")]
+UI = [f"**/*.{e}" for e in "html js mjs ts jsx tsx vue svelte".split()]
+SKIP_DIRS = set(
+    "node_modules .venv venv env dist build docs vendor third_party staticfiles "
+    "tests test __tests__".split()
+)
 SKIP_FILES = re.compile(r"\.(min|umd|bundle)\.(css|js)$")  # built or vendored
+MARKUP = {".html", ".vue", ".svelte", ".jsx", ".tsx"}  # files with text nodes
+SCRIPT = {".js", ".mjs", ".ts", ".jsx", ".tsx"}  # files that are code
 
 HEX = r"#[0-9a-fA-F]{3,8}(?![\w-])"
 FUNC = r"(?:rgba?|hsla?)\([^()]*\)"
 COLOUR = re.compile(rf"{HEX}|{FUNC}", re.I)
+URL = re.compile(r"url\([^)]*\)", re.I)
 # A CSS declaration: `prop: value` that ends in ";" or "}" (so not a selector).
 DECL = re.compile(r"[\w-]+\s*:([^;{}]*)(?=[;}]|\Z)")
 # A colour property in a UI file: CSS, a JS object or style, an SVG attribute.
@@ -49,15 +66,16 @@ UI_DECL = re.compile(
     r"(?i)(?:--[\w-]+|[\w-]*(?:colou?r|background|border|fill|stroke|shadow|outline|"
     r"caret|decoration|filter|rule|stop|flood)[\w-]*)\s*[:=]\s*[\"'`]?([^;{}\"'`<>\n]*)"
 )
-BLOCK_COMMENT = re.compile(r"/\*.*?\*/|<!--.*?-->", re.S)
-LINE_COMMENT = re.compile(r"^[ \t]*(//|/\*|\*|<!--|\{#).*$", re.M)
-EXPR = re.compile(r"\{\{.*?\}\}|\{%.*?%\}|\$\{[^}]*\}")
+EXPR = re.compile(r"\{\{.*?\}\}|\{%.*?%\}|\$\{[^}]*\}", re.S)
+BLOCKS = re.compile(r"(<(script|style)\b[^>]*>)(.*?)</\2\s*>", re.S | re.I)
 TEXT_NODE = re.compile(r">([^<>]+)<")
-STRINGS = {
-    '"': re.compile(r'"((?:[^"\\\n]|\\.)*)"'),
-    "`": re.compile(r"`((?:[^`\\\n]|\\.)*)`"),
-    "'": re.compile(r"'((?:[^'\\\n]|\\.)*)'"),
-}
+ATTR = re.compile(r"\b(?:title|alt|placeholder|aria-label|label|value)\s*=\s*(\"[^\"]*\"|'[^']*')")
+STRING = re.compile(r"\"(?:[^\"\\\n]|\\.)*\"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`")
+CODE_ARG = re.compile(
+    r"(?:(?:add|remove)EventListener|querySelector(?:All)?|closest|matches|getElementById|"
+    r"dispatchEvent|CustomEvent|Event|require|import)\s*\(\s*$|\b(?:from|import)\s*$"
+)
+KEYISH = re.compile(r"[^\s]*[#.:/\[_\-=][^\s]*|[a-z0-9]+|[A-Z0-9_]+")
 IMAGE = re.compile(r"!\[[^\]]*\]\(\s*<?([^)\s>]+)|\bsrc\s*=\s*[\"']([^\"']+)")
 
 
@@ -66,41 +84,79 @@ def _found(text: str):
     return (c for c in COLOUR.finditer(text) if not re.fullmatch(r"#(.{5}|.{7})", c.group(0)))
 
 
-def _num(s: str) -> str:
-    """'0.120' -> '0.12', '.5' -> '0.5', '50%' stays."""
-    if s.endswith("%"):
-        return _num(s[:-1]) + "%"
-    try:
-        f = float(s)
-    except ValueError:
-        return s
-    return str(int(f)) if f == int(f) else repr(f)
+def _alpha(s: str) -> float:
+    return float(s[:-1]) / 100 if s.endswith("%") else float(s)
+
+
+def _short(f: float) -> str:
+    return f"{round(f, 2):g}"
 
 
 def normalise(colour: str) -> str:
-    """One spelling per colour: lowercase #rrggbb[aa], or `rgb(r g b / a)`."""
+    """One spelling per colour: #rrggbb when opaque, else `rgb(r g b / a)`; hsl kept as hsl."""
     c = colour.strip().lower()
     if c.startswith("#"):
         h = c[1:]
         if len(h) in (3, 4):
             h = "".join(ch * 2 for ch in h)
-        if len(h) == 8 and h.endswith("ff"):
-            h = h[:6]
-        return "#" + h
-    name, _, args = c.partition("(")
-    parts = [_num(p) for p in re.split(r"[\s,/]+", args.rstrip(")").strip()) if p]
-    name = name.rstrip("a")  # rgba -> rgb, hsla -> hsl
-    if len(parts) == 4 and parts[3] in ("1", "100%"):
-        parts = parts[:3]
-    if name == "rgb" and len(parts) == 3 and all(p.isdigit() and int(p) < 256 for p in parts):
-        return "#" + "".join(f"{int(p):02x}" for p in parts)
-    alpha = f" / {parts[3]}" if len(parts) == 4 else ""
-    return f"{name}({' '.join(parts[:3])}{alpha})"
+        rgb, a = [int(h[i : i + 2], 16) for i in (0, 2, 4)], int(h[6:] or "ff", 16) / 255
+    else:
+        name, _, args = c.partition("(")
+        parts = [p for p in re.split(r"[\s,/]+", args.rstrip(")").strip()) if p]
+        try:
+            a = _alpha(parts[3]) if len(parts) == 4 else 1.0
+            if name.startswith("hsl"):
+                h, s, li = parts[0].removesuffix("deg"), parts[1], parts[2]
+                alpha = "" if round(a, 2) == 1 else f" / {_short(a)}"
+                return f"hsl({_short(float(h))} {s} {li}{alpha})"
+            rgb = [
+                round(float(p[:-1]) * 2.55) if p.endswith("%") else round(float(p))
+                for p in parts[:3]
+            ]
+        except (ValueError, IndexError):
+            return c
+    if round(a, 2) == 1:
+        return "#" + "".join(f"{v:02x}" for v in rgb)
+    return f"rgb({' '.join(map(str, rgb))} / {_short(a)})"
+
+
+def strip_comments(text: str, line_comments: bool = True, jinja: bool = False) -> str:
+    """Comments blanked to spaces (newlines kept), so positions and lines stay right.
+
+    Quoted strings are copied as they are, so "http://x" is not a comment."""
+    out, i, n = [], 0, len(text)
+    while i < n:
+        ch = text[i]
+        if ch in "\"'`":
+            m = STRING.match(text, i)
+            end = m.end() if m else i + 1
+        else:
+            end = None
+            for start, stop in (("/*", "*/"), ("<!--", "-->"), ("{#", "#}")):
+                if text.startswith(start, i) and (jinja or start != "{#"):
+                    j = text.find(stop, i + len(start))
+                    end = n if j < 0 else j + len(stop)
+                    break
+            if end is None and line_comments and text.startswith("//", i):
+                if i == 0 or text[i - 1].isspace():
+                    j = text.find("\n", i)
+                    end = n if j < 0 else j
+            if end is not None:
+                out.append(_spaces(text[i:end]))
+                i = end
+                continue
+            end = i + 1
+        out.append(text[i:end])
+        i = end
+    return "".join(out)
+
+
+def _spaces(s: str) -> str:
+    return re.sub(r"[^\n]", " ", s)
 
 
 def _blank(m: re.Match) -> str:
-    """A comment replaced by its newlines, so line numbers stay right."""
-    return "\n" * m.group(0).count("\n")
+    return _spaces(m.group(0))
 
 
 def _line(text: str, pos: int) -> int:
@@ -134,13 +190,13 @@ def find(root: Path, patterns: list[str]) -> list[Path]:
 
 
 def read(path: Path) -> str:
-    return path.read_text(encoding="utf-8", errors="replace")
+    return path.read_text(encoding="utf-8-sig", errors="replace")
 
 
 def colours(root: Path, path: Path, known: set[str], ui: bool) -> list[str]:
-    text = BLOCK_COMMENT.sub(_blank, read(path))
-    if ui:
-        text = LINE_COMMENT.sub("", text)
+    lines = ui or path.suffix in (".scss", ".less")
+    text = strip_comments(read(path), line_comments=lines, jinja=path.suffix == ".html")
+    text = URL.sub(_blank, text)  # url(#id) is not a colour
     out = []
     for decl in (UI_DECL if ui else DECL).finditer(text):
         for c in _found(decl.group(1)):
@@ -172,23 +228,48 @@ def avoided(tone: str) -> list[str]:
     return phrases
 
 
-def words(root: Path, path: Path, phrases: list[re.Pattern]) -> list[str]:
-    quotes = '"`' if path.suffix == ".html" else "\"`'"
-    out = []
-    for n, line in enumerate(read(path).splitlines(), 1):
-        if LINE_COMMENT.match(line):
+def _script_texts(code: str, offset: int):
+    """(position, text) of the JS strings that may be shown to a person."""
+    for m in STRING.finditer(code):
+        body = m.group(0)[1:-1]
+        if CODE_ARG.search(code[max(0, m.start() - 40) : m.start()]):
             continue
-        texts = [m.group(1) for m in TEXT_NODE.finditer(line)]
-        texts += [m.group(1) for q in quotes for m in STRINGS[q].finditer(line)]
-        seen = set()
-        for t in texts:
-            t = EXPR.sub(" ", t)
-            for p in phrases:
-                if p.pattern not in seen and p.search(t):
-                    seen.add(p.pattern)
+        if not re.search(r"\s", body.strip()) and KEYISH.fullmatch(body.strip() or "x"):
+            continue
+        yield offset + m.start(), body
+
+
+def ui_texts(path: Path, text: str):
+    """(position, text) of everything in a UI file a person may read."""
+    text = EXPR.sub(_blank, text)
+    if path.suffix in SCRIPT:
+        yield from _script_texts(text, 0)
+    if path.suffix not in MARKUP:
+        return
+    markup = text
+    if path.suffix not in SCRIPT:  # HTML, Vue, Svelte: <script> and <style> blocks
+        for m in BLOCKS.finditer(text):
+            if m.group(2).lower() == "script":
+                yield from _script_texts(m.group(3), m.start(3))
+            markup = markup[: m.start(3)] + _spaces(m.group(3)) + markup[m.end(3) :]
+    for m in TEXT_NODE.finditer(markup):
+        yield m.start(1), m.group(1)
+    for m in ATTR.finditer(markup):
+        yield m.start(1), m.group(1)[1:-1]
+
+
+def words(root: Path, path: Path, phrases: list[re.Pattern]) -> list[str]:
+    text = strip_comments(read(path), jinja=path.suffix == ".html")
+    out, seen = [], set()
+    for pos, t in ui_texts(path, text):
+        for p in phrases:
+            m = p.search(t)
+            if m:
+                line = _line(text, pos + m.start())
+                if (line, p.pattern) not in seen:
+                    seen.add((line, p.pattern))
                     out.append(
-                        f'{rel(root, path)}:{n}: "{p.search(t).group(0)}" is '
-                        "avoided in tone-of-voice.md"
+                        f'{rel(root, path)}:{line}: "{m.group(0)}" is avoided in tone-of-voice.md'
                     )
     return out
 
@@ -199,13 +280,15 @@ def icons(root: Path, design: Path) -> list[str]:
     if not md.is_file():
         return [f"{rel(root, md)}:1: missing, but icons/ has {len(svgs)} .svg"] if svgs else []
     text = read(md)
-    out = []
+    out, refs = [], set()
     for m in IMAGE.finditer(text):
-        ref = m.group(1) or m.group(2)
+        ref = urllib.parse.unquote(m.group(1) or m.group(2))
+        refs.add(ref.removeprefix("./"))
         if "://" not in ref and not ref.startswith("data:") and not (design / ref).is_file():
             out.append(f"{rel(root, md)}:{_line(text, m.start())}: {ref} does not exist")
+    plain = urllib.parse.unquote(text)
     for svg in svgs:
-        if f"icons/{svg.name}" not in text:
+        if f"icons/{svg.name}" not in refs and f"icons/{svg.name}" not in plain:
             out.append(f"{rel(root, svg)}:1: not referenced in icons.md")
     return out
 
@@ -226,12 +309,14 @@ def main() -> None:
     )
     ap.add_argument("root", nargs="?", default=".", help="repository root (default .)")
     ap.add_argument("--design", default="docs/design", help="design folder, from the root")
-    ap.add_argument("--css", nargs="+", metavar="GLOB", help=f"CSS files (default {CSS[0]})")
+    ap.add_argument(
+        "--css", nargs="+", metavar="GLOB", help="CSS files (default **/*.css, .scss, .less)"
+    )
     ap.add_argument(
         "--ui",
         nargs="+",
         metavar="GLOB",
-        help="UI files (default **/*.html, .js, .jsx, .tsx, .vue, .svelte)",
+        help="UI files (default **/*.html, .js, .mjs, .ts, .jsx, .tsx, .vue, .svelte)",
     )
     a = ap.parse_args()
     root = Path(a.root).resolve()
@@ -247,11 +332,11 @@ def main() -> None:
 
     problems: list[str] = []
     tokens, tone = design / "tokens.md", design / "tone-of-voice.md"
-    known = set()
+    known = None
     if tokens.is_file():
         known = {normalise(c.group(0)) for c in _found(read(tokens))}
     else:
-        problems.append(f"{rel(root, tokens)}:1: missing")
+        problems.append(f"{rel(root, tokens)}:1: missing, colours not checked")
     phrases = avoided(read(tone)) if tone.is_file() else []
     if not phrases:
         problems.append(f'{rel(root, tone)}:1: no table with an "Avoid" column')
@@ -262,9 +347,10 @@ def main() -> None:
 
     css_files, ui_files = find(root, a.css or CSS), find(root, a.ui or UI)
     for f in css_files:
-        problems += colours(root, f, known, ui=False)
+        problems += colours(root, f, known, ui=False) if known is not None else []
     for f in ui_files:
-        problems += colours(root, f, known, ui=True) + words(root, f, patterns)
+        problems += colours(root, f, known, ui=True) if known is not None else []
+        problems += words(root, f, patterns)
     problems += icons(root, design)
 
     for p in problems:
@@ -273,11 +359,11 @@ def main() -> None:
     if problems:
         print(
             f"design_check: {len(problems)} problem(s) in {files} files; fix the code or, "
-            f"if the change was agreed, {rel(root, design)}/"
+            f"if the change was agreed, update {rel(root, design)}/"
         )
         sys.exit(1)
     print(
-        f"design_check: ok, {files} files against {len(known)} colours, "
+        f"design_check: ok, {files} files against {len(known or ())} colours, "
         f"{len(phrases)} avoided phrases"
     )
 

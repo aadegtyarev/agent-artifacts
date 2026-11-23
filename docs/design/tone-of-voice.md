@@ -52,7 +52,7 @@ dialog; "address" is the network address in the 429 error).
 | A colleague's comment let through | approve ("✓ Approve", "✓ Approved by Anna") | | confirm, allow |
 | A colleague's comment stopped | reject ("✕ Reject", "rejected") | decline, dismiss | delete |
 | Asking the agent for more | reply ("Reply to the agent…") | send back, reopen | return |
-| The AI that made the file | agent ("Agent", "Send to agent") | bot, assistant, Claude | AI |
+| The AI that made the file | agent ("Agent", "Send to agent") | bot, assistant | AI, Claude (fine as the product name: "Claude Code, Codex or any other" on the key page) |
 | Another person | their name; "a colleague's" in Settings | reviewer | user, author |
 | This person | you, your ("Your draft", "Your reply") | author key | me, my, user |
 | Personal options | Settings… | Preferences | Options |
