@@ -173,7 +173,8 @@ def write_settings(path: Path, url: str, key: str) -> None:
 def _check_writable(path: Path) -> None:
     """Create and remove a file next to the env file, as write_settings
     would, so a read-only folder stops new-key before the key changes."""
-    probe = path.with_name(path.name + ".tmp")
+    # Its own name: not the .tmp a setup running at the same time writes.
+    probe = path.with_name(f"{path.name}.probe-{os.getpid()}")
     try:
         os.close(os.open(probe, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600))
         os.unlink(probe)
