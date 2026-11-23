@@ -19,6 +19,7 @@ AGENT_ARTIFACTS_ENV points to another file. The file is written with mode
 
 from __future__ import annotations
 
+import base64
 import http.client
 import ipaddress
 import json
@@ -27,6 +28,7 @@ import os
 import re
 import secrets
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -43,13 +45,20 @@ USAGE = """usage: artifacts_cli.py <command> [args]
   setup                     read AGENT_ARTIFACTS_URL=... and AGENT_ARTIFACTS_KEY=...
                             lines from stdin and save them for later calls;
                             a different key already there is copied to env.bak-*
-  upload FILE [NAME] [--title TEXT] [--project ID] [--section TEXT]
+  upload FILE [NAME] [--title TEXT] [--project ID] [--section TEXT] [--inline]
                             upload a file, print the artifact JSON (url, id,
                             expires_at); pages show TEXT, else the name; in
-                            project ID (kept until deleted), under a section
-  replace ID FILE [NAME] [--title TEXT] [--project ID] [--section TEXT]
+                            project ID (kept until deleted), under a section;
+                            --inline packs the files an HTML page points at
+                            into it, so one link is one self-contained file
+  replace ID FILE [NAME] [--title TEXT] [--project ID] [--section TEXT] [--inline]
                             replace the file behind an existing link; title,
                             project and section stay unless given
+  bundle FILE [--out FILE] [--upload] [--title TEXT] [--project ID] [--section TEXT]
+                            pack the files an HTML page points at into it:
+                            images as data: URIs, stylesheets and scripts as
+                            their own tags; write it to --out, upload it, or
+                            both; prints what went in
   set ID [--title TEXT] [--project ID|none] [--section TEXT|none]
                             change a file's details without uploading it
                             again; none takes it out of its project (a new
@@ -406,6 +415,105 @@ def _quote(name: str) -> str:
     return name.replace("\\", "\\\\").replace('"', "%22").replace("\r", "").replace("\n", "")
 
 
+def _is_remote(ref: str) -> bool:
+    """A reference that is not a file next to the page."""
+    return not ref or ref.startswith(("http://", "https://", "data:", "#", "//", "mailto:"))
+
+
+def _ref(name: str) -> str:
+    """A pattern for an attribute value in either quote style."""
+    return rf'\b{name}=(?:"(?P<dq>[^"]+)"|\'(?P<sq>[^\']+)\')'
+
+
+def _ref_value(m: re.Match[str]) -> str:
+    return m.group("dq") if m.group("dq") is not None else m.group("sq")
+
+
+def upload_packed(
+    c: Client, method: str, path: str, file: str, name: str | None, details: dict[str, str | None]
+) -> str:
+    """Upload an HTML page with the files it points at packed into it, so
+    the link opens one self-contained file."""
+    page = Path(file)
+    if not page.is_file():
+        raise Usage(f"no such file: {page}")
+    text, packed = bundle_html(page)
+    with tempfile.NamedTemporaryFile("w", suffix=".html", delete=False, encoding="utf-8") as tmp:
+        tmp.write(text)
+        temp = tmp.name
+    try:
+        answer = c.upload(method, path, temp, {"name": name or page.name, **details})
+    finally:
+        os.unlink(temp)
+    note = f"packed {len(packed)} file(s): " + (", ".join(packed) if packed else "none")
+    return answer + "\n" + note
+
+
+def _data_uri(path: Path) -> str:
+    mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    return f"data:{mime};base64,{base64.b64encode(path.read_bytes()).decode()}"
+
+
+def bundle_html(path: Path) -> tuple[str, list[str]]:
+    """The HTML page with the files it points at packed into it: images as
+    data: URIs, stylesheets and scripts as their own tags. One file, one
+    link, nothing to fetch. Returns the page and what went in."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        raise Usage(f"not a text page: {path}")
+    packed: list[str] = []
+
+    def local(ref: str) -> Path | None:
+        if _is_remote(ref):
+            return None
+        target = (path.parent / ref).resolve()
+        return target if target.is_file() else None
+
+    def sub_link(m: re.Match[str]) -> str:
+        ref = _ref_value(m)
+        target = local(ref)
+        if target is None or target.suffix.lower() != ".css":
+            return m.group(0)
+        packed.append(ref)
+        return "<style>\n" + target.read_text(encoding="utf-8", errors="replace") + "\n</style>"
+
+    text = re.sub(r"<link\b[^>]*" + _ref("href") + r"[^>]*>", sub_link, text)
+
+    def sub_script(m: re.Match[str]) -> str:
+        ref = _ref_value(m)
+        target = local(ref)
+        if target is None:
+            return m.group(0)
+        packed.append(ref)
+        return "<script>\n" + target.read_text(encoding="utf-8", errors="replace") + "\n</script>"
+
+    text = re.sub(
+        r"<script\b[^>]*" + _ref("src") + r"[^>]*>\s*</script>", sub_script, text
+    )
+
+    def sub_src(m: re.Match[str]) -> str:
+        ref = _ref_value(m)
+        target = local(ref)
+        if target is None:
+            return m.group(0)
+        packed.append(ref)
+        return f'src="{_data_uri(target)}"'
+
+    text = re.sub(_ref("src"), sub_src, text)
+
+    def sub_url(m: re.Match[str]) -> str:
+        ref = m.group("ref").strip("'\"")
+        target = local(ref)
+        if target is None:
+            return m.group(0)
+        packed.append(ref)
+        return f'url("{_data_uri(target)}")'
+
+    text = re.sub(r"url\((?P<ref>[^)]+)\)", sub_url, text)
+    return text, packed
+
+
 def run(argv: list[str]) -> str | None:
     if not argv:
         raise Usage(USAGE)
@@ -453,7 +561,7 @@ def run(argv: list[str]) -> str | None:
             raise Usage(f"usage: artifacts_cli.py {cmd} {how}")
 
     details: dict[str, str | None] = {}
-    if cmd in ("upload", "replace", "set"):
+    if cmd in ("upload", "replace", "set", "bundle"):
         for field in ("title", "project", "section"):
             value, args = _option(args, f"--{field}")
             if value is not None:
@@ -467,13 +575,49 @@ def run(argv: list[str]) -> str | None:
     projects = "/api/v1/projects"
     match cmd:
         case "upload":
-            need(1, f"FILE [NAME] {opts}", 2)
+            need(1, f"FILE [NAME] {opts} [--inline]", 3)
+            inline = "--inline" in args[1:]
+            args = [a for a in args if a != "--inline"]
             name = args[1] if len(args) > 1 else None
+            if inline:
+                return upload_packed(c, "POST", api, args[0], name, details)
             return c.upload("POST", api, args[0], {"name": name, **details})
         case "replace":
-            need(2, f"ID FILE [NAME] {opts}", 3)
+            need(2, f"ID FILE [NAME] {opts} [--inline]", 4)
+            inline = "--inline" in args[1:]
+            args = [a for a in args if a != "--inline"]
             name = args[2] if len(args) > 2 else None
+            if inline:
+                return upload_packed(c, "PUT", f"{api}/{_id(args[0])}", args[1], name, details)
             return c.upload("PUT", f"{api}/{_id(args[0])}", args[1], {"name": name, **details})
+        case "bundle":
+            out, args = _option(args, "--out")
+            upload = "--upload" in args
+            args = [a for a in args if a != "--upload"]
+            need(1, f"FILE [--out FILE] [--upload] {opts}")
+            if len(args) > 1:
+                raise Usage("bundle: FILE [--out FILE] [--upload]")
+            if not out and not upload:
+                raise Usage("bundle: give --out FILE, --upload, or both")
+            page = Path(args[0])
+            if not page.is_file():
+                raise Usage(f"no such file: {page}")
+            text, packed = bundle_html(page)
+            if out:
+                Path(out).write_text(text, encoding="utf-8")
+            note = f"packed {len(packed)} file(s): " + (", ".join(packed) if packed else "none")
+            if upload:
+                with tempfile.NamedTemporaryFile(
+                    "w", suffix=".html", delete=False, encoding="utf-8"
+                ) as tmp:
+                    tmp.write(text)
+                    temp = tmp.name
+                try:
+                    answer = c.upload("POST", api, temp, {"name": page.name, **details})
+                finally:
+                    os.unlink(temp)
+                return answer + "\n" + note
+            return note + (f"\nwrote {out}" if out else "")
         case "set":
             how = "ID [--title TEXT] [--project ID|none] [--section TEXT|none]"
             need(1, how)

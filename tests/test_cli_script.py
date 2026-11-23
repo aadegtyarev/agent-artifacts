@@ -8,6 +8,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -470,3 +471,39 @@ def test_output_is_utf8_on_a_narrow_console(server):
         env={"HOME": str(home), "PYTHONIOENCODING": "cp1252", **env},
     )
     assert r.returncode == 0 and "сделай зелёным" in r.stdout.decode()
+
+
+def test_bundle_packs_the_files_a_page_points_at(server, tmp_path):
+    url, store, home = server
+    key = store.add_agent("alice")
+    cli(home, "setup", stdin=f"AGENT_ARTIFACTS_URL={url}\nAGENT_ARTIFACTS_KEY={key}\n")
+
+    work = home / "work"
+    work.mkdir()
+    (work / "style.css").write_text("body { color: #222; }")
+    (work / "app.js").write_text("console.log('hi');")
+    (work / "pic.svg").write_text("<svg xmlns='http://www.w3.org/2000/svg'/>")
+    page = work / "page.html"
+    page.write_text(
+        "<html><head><link rel='stylesheet' href='style.css'></head>"
+        "<body><script src='app.js'></script><img src='pic.svg'>"
+        "<img src='https://example.com/remote.png'></body></html>"
+    )
+
+    out_file = work / "packed.html"
+    code, out, _ = cli(home, "bundle", str(page), "--out", str(out_file))
+    assert code == 0 and "style.css" in out and "pic.svg" in out
+    packed = out_file.read_text()
+    assert "data:image/svg+xml;base64," in packed
+    assert "body { color: #222; }" in packed
+    assert "console.log('hi');" in packed
+    assert "https://example.com/remote.png" in packed  # a remote file stays as it is
+    assert 'href="style.css"' not in packed
+
+    code, out, _ = cli(home, "upload", str(page), "--inline")
+    assert code == 0
+    art = json.loads(out.splitlines()[0])
+    assert "packed 3 file(s)" in out
+    fetched = urllib.request.urlopen(f"{url}/a/{art['id']}/raw").read().decode("utf-8")
+    assert "data:image/svg+xml;base64," in fetched
+    assert "body { color: #222; }" in fetched
