@@ -92,9 +92,10 @@ What works with people reviewing on a phone:
    `components.md` (components and their states), `icons/` (one `.svg`
    per icon) with `icons.md` (each shown, named, where used) and
    `tone-of-voice.md` (voice rules, a glossary of the words used and
-   avoided, status words, message patterns); with no repository, the same
-   folder in the folder you work in. Never only here: files on this
-   service are temporary. Every later mockup follows
+   avoided — the avoided ones in a table column headed "Avoid", phrases
+   separated by commas — status words, message patterns); with no
+   repository, the same folder in the folder you work in. Never only
+   here: files on this service are temporary. Every later mockup follows
    them; a decision that changes the look or the words goes into them too.
 2. **Then wireframes of the flow** — for a new product, a new screen and a
    redesign alike. Numbered steps from the person's first action to the
@@ -125,7 +126,13 @@ What works with people reviewing on a phone:
    run `wait <id>`, and for each round: `take`, change, `replace` the same
    id, `reply` to each comment saying what you did. An accepted comment
    (`"event": "accepted"`) is their yes.
-8. Nothing goes live before the person's explicit yes on the mockup.
+8. **An accepted change to the interface updates `docs/design/` too**:
+   tokens, components, pins or icons, tone of voice — whatever it touched,
+   in the same commit or pull request as the code; your reply to their
+   comment says what changed in the design files. Run `design_check.py`
+   before saying it is done and fix what it reports. Whoever reviews the
+   change checks that `docs/design/` matches it.
+9. Nothing goes live before the person's explicit yes on the mockup.
 
 Beyond screens: when you design a process, a workflow or
 an architecture with the person, keep the agreed result in their project
@@ -209,6 +216,8 @@ heading with non-ASCII letters cannot be linked to from another file.
 - Key leaked: `artifacts_cli.py new-key`; the old key stops, files stay. If
   the key came from `AGENT_ARTIFACTS_KEY`, or the env file cannot be
   written, it prints the new one: give it to the user to put there. Never write a key into an uploaded file or a log.
+- `design_check.py [repo]` (next to the CLI) checks the code's colours,
+  avoided words and icons against `docs/design/`; exit 1 lists each problem.
 - `me` says `"admin": true`: read [admin.md](admin.md) for invites, limits
   and people.
 - Updating this skill or the CLI: follow the Update section of

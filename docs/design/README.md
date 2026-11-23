@@ -29,3 +29,16 @@ look or the words updates them in the same pull request. Behaviour is in
 | [pins.md](pins.md) | pin tone, fill, mark, badge, states, sizes and shapes |
 | [icons.md](icons.md) | every icon with its size and place; the SVGs are in [icons/](icons/) |
 | [tone-of-voice.md](tone-of-voice.md) | who we talk to, voice rules, glossary, status words, buttons, empty states, toasts, errors, counts |
+
+## Keeping it true
+
+`skill/agent-artifacts/scripts/design_check.py` compares the code with these
+files: every colour in the CSS and in the UI files' styles must be in
+[tokens.md](tokens.md), no phrase from the "Avoid" column of the
+[tone-of-voice.md](tone-of-voice.md#glossary) glossary may appear in the
+interface's text, and every icon in [icons/](icons/) must be in
+[icons.md](icons.md). `tests/test_design.py` runs it on this repository and
+also checks that every pin class in `pin.css` is described in
+[pins.md](pins.md). The rule, in the skill: when a person accepts a change to
+the interface, the same pull request updates these files, the reply says
+what changed in them, and the reviewer checks that they match the code.

@@ -61,7 +61,7 @@ const commentsPins = ({
       pin.style.left = `${p.anchor.x * 100}%`;
       pin.style.top = `${p.anchor.y * 100}%`;
       pin.setAttribute("aria-label", p.key === "new" ? "The spot of the new draft"
-        : p.label === STAR ? "Comment with the agent" : `Comment by ${p.label}`);
+        : p.label === STAR ? "The agent's comment" : `Comment by ${p.label}`);
       return pin;
     });
     pinLayer.replaceChildren(...drawn);

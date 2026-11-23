@@ -32,28 +32,34 @@ own language, replies included ([SKILL.md](../../skill/agent-artifacts/SKILL.md)
 
 ## Glossary
 
-| Concept | The UI says | Not |
-| --- | --- | --- |
-| The file shown | file ("Download file", "About the whole file", "The file was updated") | artifact, document, upload |
-| A group of files | project ("Project files", "Project page ›") | folder, collection, workspace |
-| The page address | link ("Copy link", "Link copied.") | URL, address |
-| A remark on the file | comment ("Comment", "3 comments") | note, annotation, feedback |
-| A comment not published yet | draft ("your draft", "New draft", "2 drafts") | pending, unsent comment |
-| Publishing all drafts at once | review: **Finish review**, "Review published", "Review sent to the agent" | submit, send all, commit |
-| Waiting for this person's decision | need you ("2 need you", "Need you") | action required, pending, to do |
-| Sent and not answered yet | in progress ("1 in progress", "In progress") | with the agent, queued |
-| The agent's finished work, taken | accept ("✓ Accept", "✓ Accepted") | resolve, close, done |
-| A colleague's comment let through | approve ("✓ Approve", "✓ Approved by Anna") | confirm, allow |
-| A colleague's comment stopped | reject ("✕ Reject", "rejected") | decline, dismiss, delete |
-| Asking the agent for more | reply ("Reply to the agent…") | return, send back, reopen |
-| The AI that made the file | agent ("Agent", "Send to agent") | AI, bot, assistant, Claude |
-| Another person | their name; "a colleague's" in Settings | user, reviewer, author |
-| This person | you, your ("Your draft", "Your reply") | me, my, user |
-| Personal options | Settings… | Preferences, Options |
-| Passing the link on | Share… | Export, Send |
-| Comment mode | "Comment", "Stop commenting", "Commenting", "Commenting on" / "Commenting off" | annotate mode, edit mode |
-| The comment's spot | spot ("Tap a spot", "spot not found") | anchor, pin point, element |
-| Time | "just now", "5 min ago", "2 h ago", "Nov 3", "Nov 3, 2025" | timestamps, seconds |
+"Avoid" lists words that never appear in the interface's text: no string or
+text node in the UI code may contain them (`design_check.py` from the skill
+checks it, see [README.md](README.md#keeping-it-true)). "Not for this" lists
+words that are wrong for the concept but fine elsewhere ("Done" closes a
+dialog; "address" is the network address in the 429 error).
+
+| Concept | The UI says | Avoid | Not for this |
+| --- | --- | --- | --- |
+| The file shown | file ("Download file", "About the whole file", "The file was updated") | artifact | document, upload |
+| A group of files | project ("Project files", "Project page ›") | workspace | folder, collection |
+| The page address | link ("Copy link", "Link copied.") | URL | address |
+| A remark on the file | comment ("Comment", "3 comments") | annotation | note, feedback |
+| A comment not published yet | draft ("your draft", "New draft", "2 drafts") | unsent comment | pending |
+| Publishing all drafts at once | review: **Finish review**, "Review published", "Review sent to the agent" | send all | submit, commit |
+| Waiting for this person's decision | need you ("2 need you", "Need you") | action required, awaiting input | pending, to do |
+| Sent and not answered yet | in progress ("1 in progress", "In progress") | with the agent, queued | |
+| The agent's finished work, taken | accept ("✓ Accept", "✓ Accepted") | resolve, resolved | close, done |
+| A colleague's comment let through | approve ("✓ Approve", "✓ Approved by Anna") | | confirm, allow |
+| A colleague's comment stopped | reject ("✕ Reject", "rejected") | decline, dismiss | delete |
+| Asking the agent for more | reply ("Reply to the agent…") | send back, reopen | return |
+| The AI that made the file | agent ("Agent", "Send to agent") | bot, assistant, Claude | AI |
+| Another person | their name; "a colleague's" in Settings | reviewer | user, author |
+| This person | you, your ("Your draft", "Your reply") | author key | me, my, user |
+| Personal options | Settings… | Preferences | Options |
+| Passing the link on | Share… | Export | Send |
+| Comment mode | "Comment", "Stop commenting", "Commenting", "Commenting on" / "Commenting off" | annotate mode, edit mode | |
+| The comment's spot | spot ("Tap a spot", "spot not found") | pin point | anchor, element |
+| Time | "just now", "5 min ago", "2 h ago", "Nov 3", "Nov 3, 2025" | timestamps | seconds |
 
 ## Status words
 
