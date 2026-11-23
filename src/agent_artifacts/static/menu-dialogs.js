@@ -166,7 +166,7 @@
       document.dispatchEvent(new CustomEvent("aa:look"));
     },
     dot(v) {
-      const colour = v === "blue" || v === "green" ? v : null;
+      const colour = v === "green" || v === "yellow" ? v : null;
       if (colour) root.dataset.dot = colour;
       else delete root.dataset.dot;
       write("agent-artifacts:dot", colour);

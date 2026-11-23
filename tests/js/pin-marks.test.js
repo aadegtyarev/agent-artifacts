@@ -10,15 +10,15 @@ const source = fs.readFileSync(path.join(__dirname, "../../src/agent_artifacts/s
 const pinMarks = new Function(`${source}\nreturn pinMarks;`)();
 
 test("the dot's colour is one of the list, by its name", () => {
-  assert.equal(pinMarks.dotColour("red"), "#cf291d");
-  assert.equal(pinMarks.dotColour("blue"), "#0a64d8");
-  assert.equal(pinMarks.dotColour("green"), "#1e7d36");
+  assert.equal(pinMarks.dotColour("red"), "#de4f44");
+  assert.equal(pinMarks.dotColour("green"), "#23a136");
+  assert.equal(pinMarks.dotColour("yellow"), "#c9a100");
 });
 
 test("anything else from the viewer's message is red", () => {
-  const sly = { toString: () => "blue" };
-  for (const v of [undefined, null, "", "Blue", " blue", "#00ff00", "purple", "__proto__", "toString",
-    "constructor", "hasOwnProperty", ["blue"], sly, 1, true]) {
-    assert.equal(pinMarks.dotColour(v), "#cf291d", String(v));
+  const sly = { toString: () => "green" };
+  for (const v of [undefined, null, "", "blue", "Green", " green", "#00ff00", "purple", "__proto__", "toString",
+    "constructor", "hasOwnProperty", ["green"], sly, 1, true]) {
+    assert.equal(pinMarks.dotColour(v), "#de4f44", String(v));
   }
 });

@@ -620,7 +620,7 @@ def test_the_menu_holds_what_the_header_does_not(tmp_path):
             "text": ["normal", "large", "larger"],
             "pins": ["normal", "large"],
             "shapes": ["color", "shape"],
-            "dot": ["red", "blue", "green"],
+            "dot": ["red", "green", "yellow"],
         }
         assert "Saved in this browser." in settings
         assert "/static/menu-dialogs.js" in page

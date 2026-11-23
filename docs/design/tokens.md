@@ -31,26 +31,63 @@ holds white at 4.5:1 or more. Orange is only ever a fill.
 | `--purple` | `#5e5ce6` | `#9d9bff` | the agent as text: "Agent is working" |
 | `--purple-fill` | `#5e5ce6` | — | the agent under white: its avatar, its pins |
 | `--green` | `#1e7d36` | `#30d158` | done: "Done · check it", "Done, wrote" |
-| `--green-fill` | `#1e7d36` | — | green under white: the dot when Settings → Dot is Green (white on the dark `--green` is 2.0, too little for the pin's white ring) |
 | `--red` | `#cf291d` | `#ff6b5e` | needs you or went wrong, as text: "Asks you", "spot not found" |
-| `--red-fill` | `#cf291d` | — | red under white: error toast; the dot by default |
+| `--red-fill` | `#cf291d` | — | red under white: error toast |
+
+### One set, one brightness
+
+Colours shown side by side as a set match in lightness and saturation
+(OKLCH L and C) wherever that makes sense, so no one of them shouts or
+fades: the dot's colours are matched to each other and to the pins' fills;
+the text variants of a hue differ only where contrast needs it. To add or
+change a colour, match the set it joins (L, C to two decimals:
+`uv run --with coloraide`, `Color(hex).convert("oklch")`). A hue that
+cannot hold the set's L and stay itself (yellow is muddy at 0.62) takes the
+nearest L that keeps it.
+
+| Set | Token | Value | L | C | H |
+| --- | --- | --- | --- | --- | --- |
+| text, light | `--blue` | `#0a64d8` | 0.53 | 0.19 | 259 |
+| | `--purple` | `#5e5ce6` | 0.56 | 0.20 | 278 |
+| | `--green` | `#1e7d36` | 0.52 | 0.14 | 148 |
+| | `--red` | `#cf291d` | 0.55 | 0.20 | 29 |
+| text, dark | `--blue` | `#4c9bff` | 0.69 | 0.17 | 256 |
+| | `--purple` | `#9d9bff` | 0.73 | 0.14 | 283 |
+| | `--green` | `#30d158` | 0.76 | 0.21 | 147 |
+| | `--red` | `#ff6b5e` | 0.71 | 0.18 | 28 |
+| pins (fills) | `--blue-fill` (own) | `#0a64d8` | 0.53 | 0.19 | 259 |
+| | `--orange` (colleague) | `#e8890c` | 0.72 | 0.16 | 63 |
+| | `--purple-fill` (agent) | `#5e5ce6` | 0.56 | 0.20 | 278 |
+| the dot | `--dot-red` | `#de4f44` | 0.62 | 0.18 | 28 |
+| | `--dot-green` | `#23a136` | 0.62 | 0.18 | 145 |
+| | `--dot-yellow` | `#c9a100` | 0.72 | 0.15 | 91 |
 
 ### The dot
 
 One notification dot, one colour everywhere it shows: the badge of a pin (on
 the content, in a page, in the list, in the Settings preview) and the dot of
 a project row. Settings → Dot picks it; theme.js sets `data-dot` on `<html>`
-before the page is drawn (`localStorage` `agent-artifacts:dot`: `blue` or
-`green`; no value is Red).
+before the page is drawn (`localStorage` `agent-artifacts:dot`: `green` or
+`yellow`; no value, or anything else such as an earlier `blue`, is Red).
+No blue: blue is you, and a blue dot would vanish on the own pin.
 
-| Token | Red (default) | Blue (`data-dot="blue"`) | Green (`data-dot="green"`) |
-| --- | --- | --- | --- |
-| `--dot` | `--red-fill` | `--blue-fill` | `--green-fill` |
+| Token | Value, both themes | Picked by |
+| --- | --- | --- |
+| `--dot-red` | `#de4f44` | Red, the default |
+| `--dot-green` | `#23a136` | `data-dot="green"` |
+| `--dot-yellow` | `#c9a100` | `data-dot="yellow"` |
+| `--dot` | one of the three | `:root[data-dot]` |
 
-Against the page: 5.3 / 5.5 / 5.2 on the light `--bg`, 3.2 / 3.5 / 3.3 on
-the dark one (non-text, 3:1 needed). On the dark `--surface` (the current
-file in the drop-down) it is 2.6 / 2.8 / 2.7, short of 3:1. In a page,
-where no tokens reach, pin-marks.js writes the light values out.
+The same in both themes: the dot sits on a pin's white ring (2 px) and is
+matched to the pins, not to the text hues (see
+[One set, one brightness](#one-set-one-brightness)). Against the page,
+ring aside: 4.0 / 3.4 / 2.5 on the light `--bg`, 4.3 / 5.0 / 7.0 on the
+dark one, 3.5 / 4.1 / 4.8 on the dark `--surface` (non-text, 3:1 needed);
+the yellow on white leans on its white ring. The project row's dot has no
+ring: yellow there is 2.5 on the light `--bg` and 2.2 on the light `--surface`
+(the current row), below 3:1 — an accepted exception, the colour the
+operator chose; the row says "Needs you" to screen readers either way. In a page, where no tokens
+reach, pin-marks.js writes the values out.
 
 ### Neutrals
 
@@ -96,8 +133,8 @@ theme.
 Pins (`pin.css`, also drawn inside a page's sandbox), the outline of a
 pointed element (`pins.js`) and the plain-text and Markdown pages get no
 tokens: they write the **light** values out (`--blue-fill`, `--orange`,
-`--purple-fill`, `--faint`, `--red-fill`, `--green-fill` (the dot, in
-pin-marks.js), `--shadow-2`, `--fg`,
+`--purple-fill`, `--faint`, the dot's `--dot-*` (in pin-marks.js;
+`--dot-red` as pin.css's fallback), `--shadow-2`, `--fg`,
 `--surface`, `--line`, `--muted`, `--tint`) in both themes, since they sit
 on the file's own white canvas. Change them together with the tokens.
 

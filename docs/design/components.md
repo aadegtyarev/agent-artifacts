@@ -75,7 +75,7 @@ Inputs and plain buttons use `--field`. A tap on the scrim or Escape closes.
 | Dialog | Content | Buttons |
 | --- | --- | --- |
 | Share | read-only link field + **Copy link** (primary, h 40); status line ("Link copied." or the failure); **Download file** row button with icon, 44 high (viewer only) | Done (plain) |
-| Settings | rows: label (muted 14, 4.4em) + control. Name (text field, placeholder "No name"); Theme: Auto / Light / Dark; Text: Normal / Large / Larger; Pins: Normal / Large; Mine / others: Color / Color + shape; Dot: Red / Blue / Green (the colour of every notification dot, [tokens.md](tokens.md#the-dot)); pin preview, the agent's pin with the dot; "Saved in this browser." | Done (primary) |
+| Settings | rows: label (muted 14, 4.4em) + control. Name (text field, placeholder "No name"); Theme: Auto / Light / Dark; Text: Normal / Large / Larger; Pins: Normal / Large; Mine / others: Color / Color + shape; Dot: Red / Green / Yellow (the colour of every notification dot, [tokens.md](tokens.md#the-dot)); pin preview, the agent's pin with the dot; "Saved in this browser." | Done (primary) |
 | Name | near the top (padding-top 60, so the keyboard leaves it in sight): "What should we call you?", field "Name" | No name (plain), Done (primary) |
 
 Settings controls apply at once; there is no Cancel.

@@ -12,9 +12,9 @@ const pinMarks = (() => {
   // The label that stands for the agent's star inside a pin.
   const STAR = "*";
   // The dot's colour by its name in Settings' Dot; any other name is red.
-  // Light values of tokens.md (--red-fill, --blue-fill, --green-fill):
+  // The values of tokens.md (--dot-red, --dot-green, --dot-yellow):
   // inside a page no tokens reach.
-  const DOTS = { red: "#cf291d", blue: "#0a64d8", green: "#1e7d36" };
+  const DOTS = { red: "#de4f44", green: "#23a136", yellow: "#c9a100" };
   const dotColour = (name) => DOTS[typeof name === "string"
     && Object.prototype.hasOwnProperty.call(DOTS, name) ? name : "red"];
 

@@ -344,11 +344,12 @@ dimmed page. It holds only what the header does not, top to bottom:
     shows whose a pin is by its shape too, see **Pins** under
     [Comments](#comments) (`agent-artifacts:pin-shapes` `color` for colour
     only);
-  - **Dot: Red / Blue / Green**: the colour of the notification dot,
+  - **Dot: Red / Green / Yellow**: the colour of the notification dot,
     one colour everywhere it shows: a pin's badge (on the content and in the
     list) and a line's dot on the project page and in the project's file
-    list. Red is the default. Kept as `agent-artifacts:dot` (`blue` or
-    `green`, no value for Red) and applied before the page is drawn; the
+    list. Red is the default. Kept as `agent-artifacts:dot` (`green` or
+    `yellow`, no value for Red; anything else, such as an earlier `blue`,
+    is Red) and applied before the page is drawn; the
     preview's agent pin carries the dot.
 
   It says "Saved in this browser."; **Done** closes it. Without storage
@@ -624,7 +625,7 @@ with its number; a rejected one is grey and stays. One badge at the corner
 says what is next: the agent's state (grey ✦ waiting, purple ✦ working,
 green ✦ done, green "?" done and wrote, orange "?" asked), or the person's
 decision not yet sent (blue ✓ approve or accept, blue ↩ reply, grey ✕
-reject), or a dot (red unless Settings → Dot chose blue or green) for a
+reject), or a dot (red unless Settings → Dot chose green or yellow) for a
 colleague's reply not yet seen in this browser.
 In the list drafts come first, on a light blue ground. A comment that is
 accepted or that the agent resolved leaves the content and the list. The selected
@@ -812,7 +813,7 @@ talk only through `postMessage`:
   decision or an unseen reply) and whether it is lit, never texts or names;
   with them, whether pins are large and shaped (Settings), each taken only
   when it is `true`, and the dot's colour by name (Settings → Dot), taken
-  only when it is the string `red`, `blue` or `green` (anything else is red)
+  only when it is the string `red`, `green` or `yellow` (anything else is red)
   and set on the script's own layer, so the page's styles do not reach it;
 - the script answers with the anchor of the tapped spot, or with the key of
   a tapped pin. While placing, it takes each click in the capture phase and
