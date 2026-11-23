@@ -155,7 +155,7 @@ fields (4.4).
 | `system-ui, sans-serif` | body, header, header buttons, menu, project page |
 | `-apple-system, BlinkMacSystemFont, "SF Pro Text", Roboto, "Segoe UI", sans-serif` | sheet, dialogs, toast (antialiased) |
 | `-apple-system, system-ui, Roboto, sans-serif` | pin letters |
-| `ui-monospace, monospace` 13px | setup text on the key page |
+| `ui-monospace, monospace` 13px (15px on phones) | setup text on the key page |
 
 Base: `15px/1.4` on `body`; the sheet `15px`, line-height `1.35`.
 
@@ -176,6 +176,10 @@ Sizes in use, in CSS px before [text size](#text-size):
 | 12 | 400 | header meta line; project title in the header (600) |
 | 11 | 700 | file type square on the project page |
 
+At ≤640 px, readable interface text is at least 15 px before Text scaling,
+except the Accept all link and pill, which retain their 13 px typography and geometry;
+pin and avatar marks and file type glyphs keep their geometry.
+
 ## Text size
 
 Settings → Text sets `data-text-size` on `<html>` (theme.js, before the page is
@@ -188,12 +192,12 @@ drawn; kept as `agent-artifacts:text-size`, no value for Large).
 | Larger | 1.3 |
 
 `zoom: var(--ts)` is set on: `body > header`, `.sheet > *`, `.toast-box`,
-`.fan-item`, `.modal`, `.banner > *`, `.pj > *`. The desktop panel width is
-`360px × --ts`; the banner's top is `15px + 45px × --ts`.
+`.fan-item`, `.modal`, `.banner > *`, `.pj > *`, and on phones `.join`.
+The desktop panel width is `360px × --ts`; the banner's top is `15px + 45px × --ts`.
 
 Not zoomed: the file (frame or image), the pins on it, the floating ≡ (44 px
-as is), the sheet's own box (its height is set in px by drags), the invite,
-key and message pages. A browser without `zoom` keeps `--ts: 1`.
+as is), the sheet's own box (its height is set in px by drags), desktop invite
+and key pages, and message pages. A browser without `zoom` keeps `--ts: 1`.
 
 Text size is the way to enlarge the viewer's interface: the browser does not
 zoom the viewer page of a page, a Markdown or text file or an image (viewport `maximum-scale=1, user-scalable=no`, and

@@ -292,4 +292,6 @@ no drafts.
 ## Invite, key and message pages
 
 A single column, max 560, padding 24 16; title 20; plain site buttons
-(h auto, padding 8 16, 15 px). Theme applies; text size does not.
+(padding 8 16, 15 px; at ≤640 px at least 44 × 44). Theme applies;
+On phones Text scales invite and key pages, but not message pages; desktop
+invite and key metrics remain unchanged.
