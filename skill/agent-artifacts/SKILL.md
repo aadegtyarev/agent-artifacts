@@ -80,7 +80,7 @@ the person.
 What works with people reviewing on a phone:
 
 1. **A design system and a tone-of-voice reference before any screen.**
-   For a new interface write both first: colours, type sizes, spacing,
+   For a new interface write them first: colours, type sizes, spacing,
    components and their states; and how the interface speaks — words for
    actions and states, length, form of address, what is never said. For an
    existing interface describe what it already is in them first,
@@ -127,7 +127,7 @@ What works with people reviewing on a phone:
    (`"event": "accepted"`) is their yes.
 8. Nothing goes live before the person's explicit yes on the mockup.
 
-The same holds beyond screens: when you design a process, a workflow or
+Beyond screens: when you design a process, a workflow or
 an architecture with the person, keep the agreed result in their project
 — `docs/` in the repository, or in the folder you work in (a flow, the
 decisions and why, open questions) — not only here, so either of you can
