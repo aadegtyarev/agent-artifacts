@@ -60,6 +60,7 @@ flowchart LR
 | [Deploy](docs/deploy.md) | you install, configure, back up or upgrade the service |
 | [Contract](docs/contract.md) | you need the exact API, file types, limits or the security model |
 | [Design](docs/design/README.md) | you design or change the interface: tokens, components, pins, icons, words |
+| [Plans](docs/plans/README.md) | you want to know what is agreed but not built yet |
 | [Skill](skill/agent-artifacts/SKILL.md) | you want to see what the agent is told, or run `artifacts_cli.py` by hand |
 
 ## What it does not do
