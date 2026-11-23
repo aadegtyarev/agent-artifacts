@@ -11,6 +11,7 @@ const base = process.env.BASE_URL;
     const mobile = await browser.newContext({ viewport: { width: 320, height: 568 }, isMobile: true, hasTouch: true });
     await mobile.addInitScript(() => localStorage.setItem('agent-artifacts:text-size', 'normal'));
     const page = await mobile.newPage();
+    await page.clock.setFixedTime(new Date('2026-11-23T12:00:00Z'));
     await page.goto(`${base}/a/${f.ids['one.html']}`);
     await page.waitForTimeout(1000); // Let the initial poll establish the file version.
     const response = await page.request.put(`${base}/api/v1/artifacts/${f.ids['one.html']}`, {
@@ -28,6 +29,7 @@ const base = process.env.BASE_URL;
 
     const desktop = await browser.newContext({ viewport: { width: 1000, height: 800 } });
     const p = await desktop.newPage();
+    await p.clock.setFixedTime(new Date('2026-11-23T12:00:00Z'));
     const buttonSizes = {};
     for (const [i, size] of ['normal', 'large', 'larger'].entries()) {
       if (i === 0) await p.goto(`${base}/join/${f.invites[20 + i]}`);

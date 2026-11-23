@@ -991,3 +991,18 @@ def test_with_a_pin_lit_the_first_tap_is_held_back_from_the_page():
     comments = (static / "comments.js").read_text()
     assert "hold: () => { kept = keeps(); return !kept; }," in comments
     assert pins.index("pageZoom.attach(window") < pins.index("let held = false;") < pins.index("function swallow(e)")
+
+
+def test_local_deadline_has_utc_fallback_and_neutral_api_timestamp(env):
+    client, store, keys = env
+    store.clock = lambda: 1795395600.0  # 2026-11-23 01:00 UTC
+    artifact = upload(client, keys["alice"], "date.html", b"date").json()
+    assert artifact["expires_at"] == "2026-11-25T01:00:00Z"
+    page = client.get(f"/a/{artifact['id']}")
+    assert ('<time datetime="2026-11-25T01:00:00Z" data-local-deadline>'
+            '2026-11-25 01:00 UTC</time>') in page.text
+    invite, token = store.add_invite("guest", by="alice", ttl=86400)
+    assert invite.expires_at == 1795482000.0
+    join = client.get(f"/join/{token}")
+    assert ('<time datetime="2026-11-24T01:00:00Z" data-local-deadline>'
+            '2026-11-24 01:00 UTC</time>') in join.text

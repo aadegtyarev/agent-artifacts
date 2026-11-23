@@ -63,6 +63,7 @@ header { display: flex; gap: 8px; align-items: center; padding: 4px 8px 4px 12px
 h1, .meta { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 h1 { font-size: 14px; }
 .meta { color: var(--muted); font-size: 12px; }
+header .deadline-meta { white-space: normal; overflow: visible; }
 .actions { display: flex; gap: 12px; padding-right: 4px; }
 button { display: flex; align-items: center; justify-content: center; gap: 6px;
   min-width: 32px; height: 32px; padding: 0 6px; font: 13px system-ui, sans-serif;

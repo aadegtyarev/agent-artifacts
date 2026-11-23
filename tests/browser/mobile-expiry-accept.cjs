@@ -11,9 +11,10 @@ const base = process.env.BASE_URL;
   const browser = await chromium.launch({ executablePath: process.env.CHROME, args: ['--no-sandbox'] });
   try {
     for (const [width, height, size] of [[320, 568, 'normal'], [390, 844, 'larger'], [320, 390, 'larger']]) {
-      const context = await browser.newContext({ viewport: { width, height }, isMobile: true, hasTouch: true });
+      const context = await browser.newContext({ timezoneId: 'UTC', viewport: { width, height }, isMobile: true, hasTouch: true });
       await context.addInitScript(size => localStorage.setItem('agent-artifacts:text-size', size), size);
       const page = await context.newPage();
+      await page.clock.setFixedTime(new Date('2026-11-23T12:00:00Z'));
       await page.goto(`${base}/join/${fixture.invites[18]}`);
       const expiry = await page.locator('.join .meta').evaluate(e => {
         const range = document.createRange();
@@ -22,7 +23,7 @@ const base = process.env.BASE_URL;
         return { text: e.textContent.trim(), box: box.toJSON(), lines: Array.from(range.getClientRects(), r => r.toJSON()),
           whiteSpace: getComputedStyle(e).whiteSpace, overflow: getComputedStyle(e).overflow };
       });
-      assert.match(expiry.text, /^This invite works once, until \d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC\.$/);
+      assert.match(expiry.text, /^This invite works once, until Nov 23, 2026 at 13:00 UTC\.$/);
       assert.equal(expiry.whiteSpace, 'normal');
       assert.equal(expiry.overflow, 'visible');
       assert.ok(expiry.lines.length >= 2, JSON.stringify(expiry));
@@ -44,6 +45,7 @@ const base = process.env.BASE_URL;
         localStorage.setItem('agent-artifacts:name', 'Tester');
       }, key);
       const page = await context.newPage();
+      await page.clock.setFixedTime(new Date('2026-11-23T12:00:00Z'));
       if (mode === 'baseline') await page.route('**/static/site.css*', route => route.fulfill({ status: 200, contentType: 'text/css', body: baseline }));
       await page.goto(`${base}/a/${fixture.ids['tap.html']}`);
       await page.locator('#comments-toggle').click();

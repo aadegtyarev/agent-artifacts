@@ -1615,6 +1615,19 @@
   banner.setAttribute("role", "status");
   banner.append(el("span", "", "The file was updated"), button("Show", () => showNewFile(), "btn pri"));
   document.body.append(banner);
+  const bannerHeader = document.querySelector("body > header");
+  function placeBanner() {
+    const bottom = bannerHeader && bannerHeader.getBoundingClientRect().bottom;
+    // When the header is hidden, let CSS position the banner in full screen.
+    banner.style.top = bottom ? `${bottom + 15}px` : "";
+  }
+  window.addEventListener("resize", placeBanner);
+  new MutationObserver(placeBanner).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+  if (bannerHeader) {
+    new MutationObserver(placeBanner).observe(bannerHeader, { childList: true, subtree: true, characterData: true });
+    if (typeof ResizeObserver !== "undefined") new ResizeObserver(placeBanner).observe(bannerHeader);
+  }
+  placeBanner();
   // Only the content is loaded again, not the page: a reload would end full
   // screen and fold the sheet. The page is fetched for the file's new name
   // and size; a file of another kind (an image now, say) needs the page
@@ -1646,7 +1659,10 @@
       const now = document.querySelector(sel);
       const then = fresh.querySelector(sel);
       if (now && then) {
-        now.textContent = then.textContent;
+        if (sel === "header .meta:not(.pm)") {
+          now.replaceChildren(...then.childNodes);
+          localDates.apply(now);
+        } else now.textContent = then.textContent;
         if (then.title) now.title = then.title;
       }
     }
@@ -1670,7 +1686,7 @@
   // the file was replaced.
   function noteFile(at) {
     if (at && fileAt === null) fileAt = at;
-    else if (at && at !== fileAt) banner.hidden = false;
+    else if (at && at !== fileAt) { placeBanner(); banner.hidden = false; }
   }
   let pollSeq = 0;
   let pollStopped = false;

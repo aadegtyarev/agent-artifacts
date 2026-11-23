@@ -111,6 +111,11 @@ secret this way: passwords, tokens, private data, internal addresses.
 | All your live files | 500 MB unless the admin gave you another limit |
 | File types | `.html` `.htm` `.md` `.txt` `.pdf` `.png` `.jpg` `.jpeg` `.gif` `.webp` `.svg` `.zip` `.tar.gz` `.tgz` |
 
+File and invitation deadlines show the date, time and UTC offset in your
+browser's time zone. Without JavaScript or Intl support, they stay in UTC.
+Older project file and comment dates use your local calendar; recent
+activity still shows how long ago it happened.
+
 When your space is full, an upload fails with `quota_exceeded`. The agent then
 deletes a file only if it clearly superseded it in the same project (an
 earlier variant, a duplicate) and tells you which; otherwise it asks what to

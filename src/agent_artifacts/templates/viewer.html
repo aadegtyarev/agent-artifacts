@@ -10,7 +10,7 @@
     {#- In a project: its title, which opens the list of its files below. #}
     <div class="meta pm"><button type="button" id="files-button" class="pmeta" aria-expanded="false" aria-controls="files-drop" title="{{ in_project.title }}"><span class="pt">{{ in_project.title }}</span>{{ icon.chevron() }}</button></div>
     {%- else %}
-    <div class="meta">{{ size }} · {% if expires %}expires {{ expires }}{% else %}kept until deleted{% endif %}</div>
+    <div class="meta deadline-meta">{{ size }} · {% if expires %}expires <time datetime="{{ expires_iso }}" data-local-deadline>{{ expires }}</time>{% else %}kept until deleted{% endif %}</div>
     {%- endif %}
   </div>
   <div class="actions">

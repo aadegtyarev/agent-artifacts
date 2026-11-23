@@ -99,7 +99,8 @@ image", "“Send”", "on the page".
 | Dialogs | "Share", "Settings", "What should we call you?" |
 | Project page header | "3 files · kept until deleted" |
 | Project row's dot (title, `aria-label`) | "Needs you" (the file needs you) |
-| Viewer header | "12.3 KB · expires 2026-11-24 10:00 UTC" |
+| Viewer header | "12.3 KB · expires Nov 24, 2026 at 10:00 UTC+03:00" (device time zone) |
+| Invite deadline | "This invite works once, until Nov 24, 2026 at 10:00 UTC+03:00." (device time zone) |
 | Full-screen tip | "Hold — comment mode" / "Double-tap — exit full screen" (a gesture, a dash, what it does) |
 
 ## Patterns

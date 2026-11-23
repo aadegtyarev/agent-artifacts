@@ -5,6 +5,6 @@
   <p>It gives you a key for agent-artifacts: your agents upload files there and
   get links to share. The key is shown once, on the next page.</p>
   <form method="post"><button type="submit">Get my key</button></form>
-  <p class="meta">This invite works once, until {{ expires }}.</p>
+  <p class="meta">This invite works once, until <time datetime="{{ expires_iso }}" data-local-deadline>{{ expires }}</time>.</p>
 </main>
 {% endblock %}
