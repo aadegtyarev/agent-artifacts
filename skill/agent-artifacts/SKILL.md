@@ -215,6 +215,10 @@ not exist.
   string, `/raw` or `/download` makes it an ordinary link.
 - Phones first: `<meta name="viewport" content="width=device-width">`, text
   at least 15 px, taps at least 44 px.
+- Colours (pages, SVG, charts, images): one hue per meaning, spaced evenly
+  around the colour wheel; within a set equal lightness and chroma (OKLCH
+  L and C); text at least 4.5:1 against its background in both themes;
+  never meaning by colour alone — a label or a shape too.
 
 Markdown renders in the browser (tables included); headings get ids, but a
 heading with non-ASCII letters cannot be linked to from another file.
