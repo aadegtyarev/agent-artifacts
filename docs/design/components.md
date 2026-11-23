@@ -221,9 +221,13 @@ last).
 | Replies | avatar 28 (agent: white star on `--purple-fill`; person: initial on `--orange`, `--blue-fill` when mine), "Agent", "You" or the name |
 | Decision | one line under the thread: "✕ Rejected" / "✓ Accepted" (600, `--blue`; Rejected muted), "goes with your review" or "closes with your review", **Undo** at the right |
 | Unsent reply | `--tint`, ↩ avatar, "Your reply", Edit / Delete |
-| Actions | awaiting approval: **✓ Accept** (primary), **✕ Reject**; agent done: **✓ Accept** (primary) |
+| Actions | awaiting approval: **✓ Accept** (primary), **✕ Reject** for a colleague's comment; agent done: **✓ Accept** (primary) |
 | Own draft | `--tint`, "Your draft" + time, text, Edit / Delete; editing: field, Save (primary), Cancel |
 | Reply field | pill field in the footer: "Reply to the agent…", "Add a reply…" or "Reply to {name}…"; not shown on a rejected comment or with an accept draft |
+
+An agent-authored proposal says "Awaiting approval" and offers only **✓ Accept**
+when it can be approved. Approval keeps the thread and its pin. It does not
+send work to the agent unless the same review sends a reply.
 
 ### Compose
 

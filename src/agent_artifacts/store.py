@@ -247,6 +247,10 @@ def _migrate_to_v5(db: sqlite3.Connection) -> None:
     db.execute("CREATE INDEX drafts_key ON drafts(artifact_id, author_key_hash, of_n)")
 
 
+def _migrate_to_v6(db: sqlite3.Connection) -> None:
+    db.execute("ALTER TABLE comments ADD COLUMN by_agent INTEGER NOT NULL DEFAULT 0")
+
+
 def _repair_comment_seq(db: sqlite3.Connection) -> None:
     """A counter behind its comments (added to a database that had comments,
     or comments written by an older version after a rollback) would hand out
@@ -267,6 +271,7 @@ _MIGRATIONS: tuple[Callable[[sqlite3.Connection], None], ...] = (
     _migrate_to_v3,
     _migrate_to_v4,
     _migrate_to_v5,
+    _migrate_to_v6,
 )
 
 
@@ -374,6 +379,7 @@ class Comment:
     rejected_by: str | None = None
     agent: str | None = None  # one of AGENT_STATES
     replies: tuple[Reply, ...] = ()
+    by_agent: bool = False
 
 
 # :key is the author key hash asking, or NULL: then no comment is its own.
@@ -381,7 +387,7 @@ _COMMENT_SQL = (
     "SELECT c.n, c.author, c.text, c.anchor, c.created_at, c.resolved_at, "
     "a.replaced_at IS NOT NULL AND COALESCE(c.written_at, c.created_at) < a.replaced_at, "
     "COALESCE(c.author_key_hash = :key, 0), "
-    "c.approved_by, c.rejected_by, c.agent "
+    "c.approved_by, c.rejected_by, c.agent, c.by_agent "
     "FROM comments c JOIN artifacts a ON a.id = c.artifact_id "
     "WHERE c.artifact_id = :id AND (a.expires_at IS NULL OR a.expires_at > :now)"
 )
@@ -729,12 +735,17 @@ class Store:
             return self._artifact(db, artifact_id, owner)
 
     def _artifact(
-        self, db: sqlite3.Connection, artifact_id: str, owner: str | None = None
+        self,
+        db: sqlite3.Connection,
+        artifact_id: str,
+        owner: str | None = None,
+        *,
+        now: float | None = None,
     ) -> Artifact | None:
         row = db.execute(
             f"{_ARTIFACT_SQL} WHERE a.id = :id AND (a.expires_at IS NULL OR a.expires_at > :now) "
             "AND (:owner IS NULL OR a.owner = :owner)",
-            {"id": artifact_id, "now": self.clock(), "owner": owner},
+            {"id": artifact_id, "now": self.clock() if now is None else now, "owner": owner},
         ).fetchone()
         return Artifact(*row) if row else None
 
@@ -985,10 +996,12 @@ class Store:
             rows = db.execute(
                 "SELECT a.id, "
                 # A file without open comments joins one row of NULLs: c.n tells.
-                "COALESCE(SUM(c.n IS NOT NULL AND (c.agent IN ('done', 'wrote', 'asked') "
+                "COALESCE(SUM(c.n IS NOT NULL AND (c.agent = 'asked' OR "
+                "(c.agent IN ('done', 'wrote') AND (NOT c.by_agent OR c.approved_by IS NULL)) "
                 "OR (c.agent IS NULL "
                 "AND NOT COALESCE(c.author_key_hash = :key, 0) AND c.approved_by IS NULL "
-                "AND c.rejected_by IS NULL)) AND (:key IS NULL OR NOT EXISTS (SELECT 1 FROM drafts d "
+                "AND c.rejected_by IS NULL)) AND (:key IS NULL OR NOT EXISTS "
+                "(SELECT 1 FROM drafts d "
                 "WHERE d.artifact_id = c.artifact_id AND d.author_key_hash = :key "
                 "AND d.of_n = c.n AND d.kind != 'comment' "
                 "AND d.updated_at > :stale))), 0), "
@@ -1074,6 +1087,38 @@ class Store:
                 return artifact.updated_at, _load(db, "ORDER BY c.n", args)
             return artifact.updated_at, _load(db, "AND c.resolved_at IS NULL ORDER BY c.n", args)
 
+    def agent_comment(
+        self,
+        artifact_id: str,
+        text: str,
+        anchor: object,
+        *,
+        owner: str,
+        validate_anchor: Callable[[object, str | None], str | None],
+    ) -> Comment | None:
+        """Publish an owner proposal without sending it to the agent's queue."""
+        with self._conn(write=True) as db:
+            # An expiry during this transaction must not turn a committed write into a 404.
+            now = self.clock()
+            artifact = self._artifact(db, artifact_id, owner, now=now)
+            if artifact is None:
+                return None
+            checked = validate_anchor(anchor, kinds.get(artifact.kind).pin)
+            if artifact.comments >= MAX_COMMENTS:
+                raise TooManyComments
+            (n,) = db.execute(
+                "UPDATE artifacts SET comment_seq = comment_seq + 1 "
+                "WHERE id = ? RETURNING comment_seq",
+                (artifact_id,),
+            ).fetchone()
+            db.execute(
+                "INSERT INTO comments (artifact_id, n, author, text, anchor, "
+                "author_key_hash, created_at, by_agent) "
+                "VALUES (?, ?, 'agent', ?, ?, '', ?, 1)",
+                (artifact_id, n, text, checked, now),
+            )
+            return self._comment(db, artifact_id, n, now=now)
+
     def resolve_comment(
         self, artifact_id: str, n: int, resolved: bool, *, owner: str
     ) -> Comment | None:
@@ -1095,8 +1140,10 @@ class Store:
             sql = "DELETE FROM comments WHERE artifact_id = ? AND n = ?"
             return db.execute(sql, (artifact_id, n)).rowcount > 0
 
-    def _comment(self, db: sqlite3.Connection, artifact_id: str, n: int) -> Comment | None:
-        args = {"id": artifact_id, "now": self.clock(), "n": n, "key": None}
+    def _comment(
+        self, db: sqlite3.Connection, artifact_id: str, n: int, *, now: float | None = None
+    ) -> Comment | None:
+        args = {"id": artifact_id, "now": self.clock() if now is None else now, "n": n, "key": None}
         found = _load(db, "AND c.n = :n", args)
         return found[0] if found else None
 
@@ -1213,13 +1260,15 @@ class Store:
         args = self._draft_args(artifact_id, key_hash, of=of_n)
         if of_n is not None:
             about = db.execute(
-                "SELECT author_key_hash = :key, agent FROM comments "
+                "SELECT author_key_hash = :key, agent, by_agent FROM comments "
                 "WHERE artifact_id = :id AND n = :of AND resolved_at IS NULL",
                 args,
             ).fetchone()
             if about is None:
                 raise NoSuchComment
-            own, agent = about
+            own, agent, by_agent = about
+            if by_agent and kind in ("accept", "reject"):
+                raise DraftRefused("a proposal can only be approved")
             if kind in ("approve", "reject") and own:
                 raise DraftRefused(f"you cannot {kind} your own comment")
             if kind == "accept" and agent not in ANSWERED:
@@ -1305,8 +1354,9 @@ class Store:
         also takes the comment off the agent's work), accept resolves the
         comment. Replies and decisions about a comment no longer open are
         dropped. When ``for_agent`` (the review is sent to the agent), the new
-        comments and those replied to or approved go to the agent: agent
-        "waiting". An accept takes
+        comments, threads replied to and human-authored comments approved
+        go to the agent: agent "waiting". Proposal approval alone is not
+        work for the agent. An accept takes
         effect only on a comment the agent has answered, after the rest of the
         review, and not on one this review replies to (a reply asks for more).
 
@@ -1343,16 +1393,17 @@ class Store:
                 items.append((author, text, None, args["now"]))
             if artifact.comments + len(items) > MAX_COMMENTS:
                 raise TooManyComments
-            open_n = {
-                r[0]
-                for r in db.execute(
-                    "SELECT n FROM comments WHERE artifact_id = :id AND resolved_at IS NULL", args
+            open_comments = dict(
+                db.execute(
+                    "SELECT n, by_agent FROM comments "
+                    "WHERE artifact_id = :id AND resolved_at IS NULL",
+                    args,
                 )
-            }
+            )
             about = [
                 (kind, of_n, d_author or author, d_text)
                 for _, d_author, d_text, _, _, kind, of_n in drafts
-                if kind != "comment" and of_n in open_n
+                if kind != "comment" and of_n in open_comments
             ]
             replies = [(of_n, a, t) for kind, of_n, a, t in about if kind == "reply"]
             self._check_replies(db, artifact_id, [of_n for of_n, _, _ in replies])
@@ -1386,7 +1437,8 @@ class Store:
             for kind, n, d_author, _ in about:
                 if kind == "approve":
                     sql = "approved_by = :name, rejected_by = NULL"
-                    to_agent.add(n)
+                    if not open_comments[n]:
+                        to_agent.add(n)
                 elif kind == "reject":
                     sql = "approved_by = NULL, rejected_by = :name, agent = NULL"
                     to_agent.discard(n)
@@ -1523,7 +1575,7 @@ def _load(db: sqlite3.Connection, where: str, args: dict) -> list[Comment]:
 
 
 def _comment(row: tuple, replies: tuple[Reply, ...] = ()) -> Comment:
-    *fields, before_replace, mine, approved_by, rejected_by, agent = row
+    *fields, before_replace, mine, approved_by, rejected_by, agent, by_agent = row
     return Comment(
         *fields,
         before_replace=bool(before_replace),
@@ -1532,6 +1584,7 @@ def _comment(row: tuple, replies: tuple[Reply, ...] = ()) -> Comment:
         rejected_by=rejected_by,
         agent=agent,
         replies=replies,
+        by_agent=bool(by_agent),
     )
 
 

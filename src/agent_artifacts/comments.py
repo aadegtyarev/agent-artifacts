@@ -210,6 +210,27 @@ def comment_routes(store: Store) -> list[Route]:
     async def owner_list(request: Request) -> Response:
         agent = require_agent(store, request)
         artifact_id = request.path_params["id"]
+        if request.method == "POST":
+            data = await json_body(request, {"text", "anchor"}, {"text"})
+            text = _text(data["text"])
+            try:
+                comment = await run_in_threadpool(
+                    functools.partial(
+                        store.agent_comment,
+                        artifact_id,
+                        text,
+                        data.get("anchor"),
+                        owner=agent,
+                        validate_anchor=_anchor,
+                    )
+                )
+            except TooManyComments:
+                raise ApiError(
+                    409, "too_many_comments", "this file has the most comments it can hold"
+                ) from None
+            if comment is None:
+                raise _no_artifact()
+            return _answer(_json(comment), 201)
         found = await run_in_threadpool(store.comments, artifact_id, owner=agent)
         if found is None:
             raise _no_artifact()
@@ -280,7 +301,7 @@ def comment_routes(store: Store) -> list[Route]:
         _route("/a/{id:artifact_id}/drafts/{d}", draft_item, "PATCH", "DELETE"),
         _route("/a/{id:artifact_id}/review", review, "POST"),
         _route("/p/{id:artifact_id}/summary", project_summary, "GET"),
-        _route("/api/v1/artifacts/{id:artifact_id}/comments", owner_list, "GET"),
+        _route("/api/v1/artifacts/{id:artifact_id}/comments", owner_list, "GET", "POST"),
         _route("/api/v1/artifacts/{id:artifact_id}/comments/{n}", owner_item, "PATCH", "DELETE"),
         _route("/api/v1/artifacts/{id:artifact_id}/comments/{n}/reply", owner_reply, "POST"),
         _route("/api/v1/artifacts/{id:artifact_id}/take", owner_take, "POST"),
@@ -323,6 +344,7 @@ def _route(path: str, handler: Callable[[Request], Awaitable[Response]], *method
 
 def _json(c: Comment) -> dict:
     return {
+        **({"by_agent": True} if c.by_agent else {}),
         "n": c.n,
         "author": c.author,
         "text": c.text,

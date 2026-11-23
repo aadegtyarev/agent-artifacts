@@ -260,3 +260,24 @@ test("an approved colleague thread keeps its unread pin outside Need you", () =>
   assert.equal(m.groupCounts().need, 0);
   assert.equal(m.groups()[0].id, "talk");
 });
+
+
+test("agent proposals keep their star and group through approval and replies", () => {
+  for (const [extra, group, acceptable] of [
+    [{}, "need", true],
+    [{ agent: "waiting" }, "agent", false],
+    [{ agent: "working" }, "agent", false],
+    [{ agent: "done" }, "need", true],
+    [{ agent: "wrote", approved_by: "Pat" }, "talk", false],
+    [{ agent: "asked", approved_by: "Pat" }, "need", false],
+    [{ approved_by: "Pat" }, "talk", false],
+  ]) {
+    const c = comment(1, { author: "agent", by_agent: true, ...extra });
+    const m = model([c]);
+    assert.equal(itemFor(m, 1).label, "*");
+    assert.equal(m.groups().find(g => g.items.length).id, group);
+    assert.equal(m.acceptable().length, acceptable ? 1 : 0);
+    if (acceptable) assert.equal(m.acceptable()[0][1], "approve");
+  }
+  assert.notEqual(model([comment(1, { author: "agent" })]).itemOf("c1").label, "*");
+});

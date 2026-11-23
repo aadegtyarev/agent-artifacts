@@ -71,6 +71,10 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
       if (c.agent !== "done" && c.agent !== "wrote") fill = "line";
       if (c.agent === "asked") badge = "new";
     } else if (pend) fill = "line";
+    if (c.by_agent) {
+      label = STAR;
+      if (!dec && !c.approved_by) tone = "agent";
+    }
     if (unseen(c)) badge = "new";
     return { tone, fill, label, badge, pend };
   }
@@ -111,6 +115,9 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
     waiting: [null, "sent, not taken yet"], working: ["work", "Agent is working"],
     done: ["fin", "Done · check it"], wrote: ["fin", "Done, wrote"], asked: ["ask", "Asks you"],
   };
+  const finished = (c) => c.agent === "done" || c.agent === "wrote";
+  const proposalCanApprove = (c) => c.by_agent && !c.approved_by && (!c.agent || finished(c));
+
   function status(it, lost = null) {
     // Under "Your drafts" a draft needs no word of its own: when, and where
     // when its pin is not on what is shown.
@@ -126,10 +133,11 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
     else if (mine) lead = ["mine", "↩ Your reply"];
     else if (!c.rejected_by && c.mine === true && unseen(c)) lead = ["ask", "New reply"];
     else if (c.rejected_by) lead = [null, "rejected"];
-    else if (it.pend) lead = [null, "awaiting approval"];
+    else if (it.pend || proposalCanApprove(c)) lead = [null, "awaiting approval"];
+    else if (c.by_agent && c.approved_by && (!c.agent || finished(c))) lead = ["fin", "✓ Approved"];
     else if (LEADS[c.agent]) lead = LEADS[c.agent];
     if (dec && mine) lead = ["mine", `${lead[1]} · your reply`];
-    const parts = [c.author];
+    const parts = [c.by_agent ? "Agent" : c.author];
     if (it.c.mine) parts.push("you");
     const replies = c.replies.length;
     parts.push(replies ? `${replies} ${replies === 1 ? "reply" : "replies"}` : when(c.created_at));
@@ -145,8 +153,9 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
     const out = [];
     for (const it of items()) {
       if (!it.c || actsOn(it.c.n).length) continue;
-      if (it.c.agent === "done" || it.c.agent === "wrote") out.push([it.c, "accept"]);
-      else if (it.pend) out.push([it.c, "approve"]);
+      const c = it.c;
+      if (c.by_agent ? proposalCanApprove(c) : it.pend) out.push([c, "approve"]);
+      else if (!c.by_agent && finished(c)) out.push([c, "accept"]);
     }
     return out;
   }
@@ -169,7 +178,7 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
     // A reply drafted on a rejected comment is part of the review.
     if (actsOn(c.n).length) return "drafts";
     if (c.rejected_by) return "closed";
-    if (c.agent === "done" || c.agent === "wrote" || c.agent === "asked" || it.pend
+    if (c.agent === "asked" || (c.by_agent ? proposalCanApprove(c) : it.pend || finished(c))
       || (c.mine === true && unseen(c))) return "need";
     if (c.agent === "waiting" || c.agent === "working") return "agent";
     return "talk";
@@ -206,7 +215,7 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
   return {
     STAR, initial, liveDrafts, draftById, isComment, commentDrafts, actsOn, decisionOn, repliesOn,
     reviewCount, othersReplies, markSeen, stateOf, items, itemOf, when, status,
-    acceptable, acceptAllShown, groups, ordered, keptOrder, groupCounts,
+    acceptable, acceptAllShown, proposalCanApprove, groups, ordered, keptOrder, groupCounts,
   };
 };
 
