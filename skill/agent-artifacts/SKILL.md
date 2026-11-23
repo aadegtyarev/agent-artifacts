@@ -197,8 +197,13 @@ What works with people reviewing on a phone:
     verify delivery to the current session before saying you are watching.
     In Pi, process logs alone do not wake the agent; use an available
     notification bridge (for example, pi-intercom CLI from the watcher to
-    this session). Handle the event, then re-arm the watcher; deduplicate
-    repeated outstanding events. A watcher that exited is a person who
+    this session). Handle the event, then re-arm the watcher. Never
+    deduplicate by the summary's waiting count: one waiting thread can be
+    replaced by another, or get another human reply with the same count.
+    Diff file ID + comment number + latest human revision; ignore agent
+    replies. Persist the delivery watermark only after confirmed delivery,
+    so a failed notification is retried. Recover taken-but-unanswered
+    comments too. A watcher that exited is a person who
     writes a comment into the void. Check it after every replace, delete
     and new file. When the session changes, rebind the notification target.
 
