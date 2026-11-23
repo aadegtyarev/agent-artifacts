@@ -126,3 +126,36 @@ test('unavailable seen storage keeps acknowledgements in the current page', () =
   context.markSeen({ n: 1, count: 2 });
   assert.equal(vm.runInNewContext('seen[1]', context), 2);
 });
+
+test('pending server count retains draft and Finish review in the strip', () => {
+  for (const count of [1, 2]) for (const review of [0, 1]) {
+    const stripText = { replaceChildren(...nodes) { this.textContent = nodes.join(''); } };
+    const strip = { children: [stripText], append(node) { this.children.push(node); } };
+    const context = { S: { loaded: false, comments: [], view: 'list' }, sheet: { dataset: { count: String(count) } },
+      stripText, strip, desk: { matches: false }, reviewCount: () => review,
+      groupCounts: () => ({}), button: text => text, el: (_, __, text) => text };
+    vm.runInNewContext(part('  function renderStrip()', '  const views ='), context);
+    context.renderStrip();
+    assert.match(stripText.textContent, new RegExp(`${count} comment${count === 1 ? '' : 's'}`));
+    if (review) { assert.match(stripText.textContent, /1 draft/); assert.ok(strip.children.includes('Finish review')); }
+  }
+});
+
+test('pending list keeps whole-file compose, local drafts and mobile Finish review', () => {
+  for (const desktop of [false, true]) for (const review of [0, 1]) {
+    const draft = { draft: true };
+    const context = { S: { loaded: false, mode: true }, sheet: { dataset: { count: '1' } },
+      desk: { matches: desktop }, stored: true, titled: text => text, reviewCount: () => review,
+      items: () => review ? [draft] : [], groups: () => review ? [{ id: 'drafts', title: 'Drafts', items: [draft] }] : [],
+      FOLDED: new Set(), row: () => 'draft row', status: () => '', finishBar: () => 'Finish review',
+      el: (_, __, text) => text === undefined ? { append(x) { this.child = x; } } : text,
+      button: text => text };
+    vm.createContext(context);
+    vm.runInContext(part('  const views =', '  function toWhom()') + '\nthis.list = views.list;', context);
+    const [content, footer] = context.list();
+    assert.equal(content[0], 'Loading comments…');
+    assert.ok(content.some(node => node && node.child === '+ About the whole file'));
+    assert.equal(content.includes('draft row'), !!review);
+    assert.equal(footer.includes('Finish review'), !!review && !desktop);
+  }
+});

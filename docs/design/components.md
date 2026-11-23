@@ -165,8 +165,8 @@ list at middle height; drag: the sheet follows the finger.
 | **N need you** (bold) | the agent answered, a colleague’s comment awaits approval, or a colleague replied unread on this person’s comment, with no draft on it |
 | N drafts | the person has drafts; **Finish review** (primary) at the right |
 | N in progress | sent to the agent and not answered, and no drafts |
-| N comments | none of the above; in comment mode the hint "tap a spot to add" at the right |
-| Tap a spot on the image/page to comment | no comments, comment mode on, a spot can be tapped |
+| N comments | none of the above |
+| Tap a spot to comment. | comment mode on, a spot can be tapped: alone without comments, otherwise beside a plain comment count |
 | No comments yet | no comments otherwise |
 | › | at the end on a phone when there is no Finish review |
 
@@ -184,7 +184,7 @@ Empty groups are left out. ‹ › in the item view follow this order.
 | Your drafts | new comments, and comments with this person's decision or reply draft | open | — |
 | In progress | `waiting`, `working` | open | — |
 | Discussion | published, nothing waits for this person | folded | title is a button with › / ⌄, min h 44 |
-| Closed | accepted or rejected | folded | same |
+| Closed | rejected, unless moved to Your drafts by a personal draft | folded | same |
 
 On your comment, an unread colleague reply leads with “New reply” in Need you.
 Local drafts and Closed take precedence; existing agent ordering is unchanged.
@@ -279,8 +279,8 @@ scrolled into view. At the bottom right "Project page ›" (16/600, `--blue`,
 
 | Where | Text |
 | --- | --- |
-| Strip, no comments | "No comments yet", or in comment mode "Tap a spot on the image/page to comment" |
-| List, no comments | title "No comments yet"; "Tap a spot on the image/page to leave a comment." (comment mode), "Nobody has commented yet." (comment mode, no spot possible), "Turn on the speech bubble to comment." (mode off) |
+| Strip, no comments | "No comments yet", or in comment mode "Tap a spot to comment." |
+| List, no comments | title "No comments yet"; "Tap a spot to comment." (comment mode), "Nobody has commented yet." (comment mode, no spot possible), "Turn on the speech bubble to comment." (mode off) |
 | Finish review, no drafts | "No drafts: you can publish a general comment only." |
 | Project, no files | "No files yet" |
 | Archive in the viewer | "Archive: download it to see the contents." |

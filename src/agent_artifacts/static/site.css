@@ -182,7 +182,7 @@ html:has(> body > .stage.zooms) { touch-action: pan-x pan-y; }
   font: inherit; cursor: pointer; transition: background 0.15s; }
 .it:last-of-type { box-shadow: none; }
 .it:active, .it.cur { background: var(--surface); }
-/* Drafts come first, on a light blue ground, their state in blue. */
+/* Drafts have a light blue ground and blue state. */
 .it.dr { background: var(--tint); box-shadow: none; }
 .it.dr + .it.dr { margin-top: 2px; }
 .it.dr:active, .it.dr.cur { background: var(--tint-2); }
@@ -272,10 +272,7 @@ html:has(> body > .stage.zooms) { touch-action: pan-x pan-y; }
 .seg .opt[aria-checked="true"] { background: var(--seg-on); font-weight: 600;
   box-shadow: 0 1px 3px var(--shadow-1), 0 0 0 0.5px var(--hair); }
 .seg .opt:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
-.towhom .note { margin-top: 6px; }
 .sfoot .towhom { margin: 0 0 10px; }
-/* By the buttons the labels say enough: no note under the choice. */
-.sfoot .towhom .note { display: none; }
 .sfoot.typing .pill + .foot2, .sfoot.typing .towhom { display: none; }
 .general textarea { min-height: 60px; }
 

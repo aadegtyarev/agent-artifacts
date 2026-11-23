@@ -73,7 +73,6 @@ author, "you" when it is mine, "N replies" or the time
 | my decision in this review | ✓ Accept / ✕ Reject | blue |
 | the same, with my reply | ✓ Accept · your reply (etc.) | blue |
 | my reply draft | ↩ Your reply | blue |
-| accepted | accepted | muted |
 | rejected | rejected | muted |
 | a colleague's, not approved | awaiting approval | muted |
 | `waiting` | sent, not taken yet | muted |
@@ -119,7 +118,7 @@ ends with "…": **Share…**, **Settings…**. A count goes after " · ":
 ### Empty states
 
 Say what is missing, then how to start, in one sentence each:
-"No comments yet", "Tap a spot on the page to leave a comment.",
+"No comments yet", "Tap a spot to comment.",
 "Turn on the speech bubble to comment.", "Nobody has commented yet.",
 "No files yet", "No drafts: you can publish a general comment only."
 

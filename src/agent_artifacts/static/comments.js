@@ -86,6 +86,7 @@
     // after a decision moves the item to another group; null on the list
     order: null,
     comments: [],
+    loaded: false,
     // drafts: the server's, with `gone` while a Delete waits for its Undo
     drafts: [],
   };
@@ -173,6 +174,7 @@
     if (mine !== generation) return; // something newer has landed meanwhile
     const [comments, drafts] = found;
     S.comments = comments;
+    S.loaded = true;
     // Pending deletes and edits go by id, so they hold across this.
     S.drafts = drafts;
     // An item that is no longer there leaves the view.
@@ -417,7 +419,7 @@
     const keptHeading = active && active.matches(".sbody > .handle");
     const caret = kept ? [kept.selectionStart, kept.selectionEnd] : null;
 
-    const shown = S.mode || S.comments.length > 0 || liveDrafts().length > 0;
+    const shown = S.mode || S.comments.length > 0 || liveDrafts().length > 0 || (!S.loaded && Number(sheet.dataset.count) > 0);
     sheet.hidden = !shown;
     if (!shown) S.pos = "strip";
     sheet.dataset.pos = desk.matches ? "panel" : S.pos;
@@ -464,11 +466,13 @@
   // The strip: what waits for the person, in bold, then their drafts and
   // what the agent has; words only, the pins are in the list.
   function renderStrip() {
+    const pendingCount = !S.loaded ? Number(sheet.dataset.count) : 0;
     const review = reviewCount();
     const n = groupCounts();
     const more = desk.matches || review ? "" : " ›";
     const many = (k) => `${k} ${k === 1 ? "comment" : "comments"}`;
     const parts = [];
+    if (pendingCount) parts.push(many(pendingCount));
     if (n.need) parts.push(el("b", null, `${n.need} need you`));
     if (review) parts.push(`${review} ${review === 1 ? "draft" : "drafts"}`);
     // With Finish review at its side the line has no room for the agent's part.
@@ -478,13 +482,13 @@
     const plain = !parts.length;
     if (!plain) line.push(more);
     else if (S.comments.length) line.push(`${many(S.comments.length)}${more}`);
-    else if (S.mode && canPin()) line.push(`Tap a spot on the ${pinType === "point" ? "image" : "page"} to comment`);
+    else if (S.mode && canPin()) line.push("Tap a spot to comment.");
     else line.push("No comments yet");
     stripText.replaceChildren(...line);
     for (const child of [...strip.children]) if (child !== stripText) child.remove();
     // In comment mode, with comments to list, the hint goes to the right.
     if (plain && S.comments.length && S.mode && canPin()) {
-      strip.append(el("span", "strip-hint", "tap a spot to add"));
+      strip.append(el("span", "strip-hint", "Tap a spot to comment."));
     }
     if (review && S.view !== "finish") {
       strip.append(button("Finish review", (e) => { e.stopPropagation(); openFinish(); }, "btn pri"));
@@ -493,13 +497,14 @@
 
   const views = {
     list() {
+      const pending = !S.loaded && Number(sheet.dataset.count) > 0;
       const review = reviewCount();
       const all = items();
       const drafts = all.filter((i) => i.draft).length;
-      const out = [titled(all.length ? `Comments · ${all.length}` : "No comments yet")];
-      if (!all.length) {
+      const out = [titled(pending ? "Loading comments…" : all.length ? `Comments · ${all.length}` : "No comments yet")];
+      if (!pending && !all.length) {
         out.push(el("p", "empty", S.mode && canPin()
-          ? `Tap a spot on the ${pinType === "point" ? "image" : "page"} to leave a comment.`
+          ? "Tap a spot to comment."
           : S.mode ? "Nobody has commented yet." : "Turn on the speech bubble to comment."));
       }
       for (const g of groups()) {
@@ -644,12 +649,8 @@
     const seg = el("div", "seg");
     seg.setAttribute("role", "radiogroup");
     seg.setAttribute("aria-label", "Where the comments go");
-    const note = el("p", "note");
     const show = () => {
       for (const b of seg.children) b.setAttribute("aria-checked", String(b.agent === S.toAgent));
-      note.textContent = S.toAgent
-        ? "Everyone will see them, and the agent gets them to work on."
-        : "Everyone will see them. Ask the agent to look at the comments.";
     };
     for (const [agent, label] of [[true, "Send to agent"], [false, "Only publish"]]) {
       // Changed in place, not by render(), so focus stays on the option.
@@ -663,7 +664,7 @@
       seg.append(b);
     }
     show();
-    box.append(seg, note);
+    box.append(seg);
     return box;
   }
 
@@ -1641,7 +1642,7 @@
       location.reload();
       return;
     }
-    for (const sel of ["header h1", "header .meta"]) {
+    for (const sel of ["header h1", "header .meta:not(.pm)", "header .meta.pm .pt"]) {
       const now = document.querySelector(sel);
       const then = fresh.querySelector(sel);
       if (now && then) {
@@ -1649,6 +1650,9 @@
         if (then.title) now.title = then.title;
       }
     }
+    const projectButton = document.querySelector("#files-button");
+    const freshProjectButton = fresh.querySelector("#files-button");
+    if (projectButton && freshProjectButton) projectButton.title = freshProjectButton.title;
     if (fresh.title) document.title = fresh.title;
     banner.hidden = true;
     fileAt = null;
@@ -1685,7 +1689,8 @@
       return;
     }
     if (mine !== generation || seq !== pollSeq || !Array.isArray(data)) return;
-    if (JSON.stringify(data) === JSON.stringify(S.comments)) return;
+    if (S.loaded && JSON.stringify(data) === JSON.stringify(S.comments)) return;
+    S.loaded = true;
     S.comments = data;
     if (S.sel && !items().some((i) => i.key === S.sel)) unselect();
     render();
