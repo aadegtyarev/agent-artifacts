@@ -8,13 +8,15 @@
 //   onPin(key): a pin was tapped
 //   onSpot(anchor): a spot was chosen for a new draft (in comment mode)
 //   onEscape(): Escape was pressed in the page while picking
+//   onBlank(): outside comment mode, a plain tap on the content away from
+//     pins and from anything the page acts on
 //   onChange(spotsOnly): what is known of the page changed; with
 //     `spotsOnly`, only which spots were not found or are hidden
 // It returns `page`, what is known of the frame's script, and the calls the
 // sheet makes when it redraws or moves.
 const commentsPins = ({
   pinType, image, imageBox, imageLink, pinLayer, frame,
-  pins, picking, onPin, onSpot, onEscape, onChange,
+  pins, picking, onPin, onSpot, onEscape, onBlank, onChange,
 }) => {
   const { badge: badgeEl, inside, STAR } = pinMarks;
   const TONES = { own: " own", other: "", agent: " ag" };
@@ -153,6 +155,28 @@ const commentsPins = ({
         y: fraction((e.clientY - box.top) / box.height),
       });
     });
+    // Outside comment mode a plain tap on the image or the space around it,
+    // away from the pins, is a tap on an empty spot (the sheet checks the
+    // mode): not a drag, a long press, a double click or one with a
+    // modifier key. A press is a tap when it lifts within 500 ms and 10 px
+    // of where it began.
+    let press = null;
+    imageBox.addEventListener("pointerdown", (e) => {
+      press = e.isPrimary ? { x: e.clientX, y: e.clientY, at: performance.now(), tap: false } : null;
+    }, { passive: true });
+    imageBox.addEventListener("pointerup", (e) => {
+      if (press && e.isPrimary) {
+        press.tap = Math.hypot(e.clientX - press.x, e.clientY - press.y) <= 10 && performance.now() - press.at <= 500;
+      }
+    }, { passive: true });
+    imageBox.addEventListener("pointercancel", () => { press = null; });
+    imageBox.addEventListener("click", (e) => {
+      const tapped = press && press.tap;
+      press = null;
+      if (!tapped || e.button !== 0 || e.detail !== 1 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      if (e.target instanceof Element && e.target.closest(".pin")) return;
+      onBlank();
+    });
     image.addEventListener("load", fitPins);
     // As the sheet grows or shrinks, the image moves in its box.
     if (window.ResizeObserver) {
@@ -219,6 +243,11 @@ const commentsPins = ({
       onPin(fromFrame(m.key));
     } else if (m.type === "escape" && page.picking) {
       onEscape();
+    } else if (m.type === "blank" && !page.picking
+      && (!navigator.userActivation || navigator.userActivation.isActive)) {
+      // Only right after a tap in the frame, so the page cannot clear the
+      // selection on its own (a click in the frame counts for this page too).
+      onBlank();
     } else if (m.type === "open") {
       openLink(m.path, m.fragment);
     }

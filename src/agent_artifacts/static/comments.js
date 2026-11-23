@@ -793,6 +793,7 @@
     onPin: tapPin,
     onSpot: place,
     onEscape: escape,
+    onBlank: blank,
     // The list and the item say which spots were not found; a field being
     // typed in is not redrawn for that.
     onChange: (spotsOnly) => {
@@ -888,6 +889,17 @@
     S.view = "list";
     S.pos = "strip";
     render();
+  }
+
+  // A tap on an empty spot of the content, outside comment mode, lets go of
+  // the selected comment, as the fold button does. With nothing selected,
+  // or with a reply typed or an edit changed, it does nothing, quietly: the
+  // person may only be reading the page.
+  function blank() {
+    if (S.mode || !S.sel) return;
+    const editing = S.edit && draftById(S.edit);
+    if (fields.reply.value.trim() || (editing && fields.edit.value !== editing.text)) return;
+    fold();
   }
 
   // --- Comment mode and the name ---------------------------------------------------

@@ -346,6 +346,47 @@
     tell({ type: "open", path: to.path, fragment: to.fragment });
   });
 
+  // Outside pin mode, a tap on an empty spot of the page tells the viewer,
+  // which lets go of the selected comment. Only a plain tap: not one that
+  // moved (a scroll or a drag) or was held, not a double click, one with a
+  // modifier key or one begun over selected text (those handle text), and
+  // not on anything the page may act on: a control, a canvas, an element
+  // with a widget role, an editable element, one in the tab order, one
+  // with an onclick or a pointer cursor. A click the page's own script
+  // cancelled is left alone; one it stopped never gets here.
+  // Widget roles only: a landmark or a structure role (main, region,
+  // article…) often wraps the whole page.
+  const WIDGETS = "button link tab menuitem menuitemcheckbox menuitemradio checkbox radio switch option"
+    + " slider spinbutton textbox searchbox combobox treeitem gridcell scrollbar";
+  const ACTS = `${INTERACTIVE},area[href],canvas,${WIDGETS.split(" ").map((r) => `[role=${r}]`).join(",")},`
+    + "[contenteditable]:not([contenteditable=false]),[tabindex]:not([tabindex=\"-1\"]),[onclick],video,audio,iframe,embed,object";
+  // A press is a tap when it lifts within 500 ms and 10 px of where it
+  // began; told by the pointer's own events, as a click's point is not
+  // always where the finger was.
+  let press = null;
+  window.addEventListener("pointerdown", (e) => {
+    const selection = window.getSelection();
+    press = picking || !e.isPrimary || (selection && !selection.isCollapsed) ? null
+      : { x: e.clientX, y: e.clientY, at: performance.now(), tap: false };
+  }, { capture: true, passive: true });
+  window.addEventListener("pointerup", (e) => {
+    if (press && e.isPrimary) {
+      press.tap = Math.hypot(e.clientX - press.x, e.clientY - press.y) <= 10 && performance.now() - press.at <= 500;
+    }
+  }, { capture: true, passive: true });
+  window.addEventListener("pointercancel", () => { press = null; }, true);
+  window.addEventListener("click", (e) => {
+    const tapped = press && press.tap;
+    press = null;
+    if (picking || !tapped || e.defaultPrevented || e.button !== 0 || e.detail !== 1 || fromLayer(e)
+      || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    if (!(e.target instanceof Element)) return;
+    for (let x = e.target; x; x = x.parentElement) {
+      if (x.matches(ACTS) || getComputedStyle(x).cursor === "pointer") return;
+    }
+    tell({ type: "blank" });
+  });
+
   // Escape in pin mode reaches the viewer too while the focus is in the page.
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && picking) tell({ type: "escape" });
