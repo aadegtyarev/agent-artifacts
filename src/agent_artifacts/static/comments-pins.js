@@ -89,8 +89,8 @@ const commentsPins = ({
     }
   }
 
-  const LIT = 32;
-  const LIT_BIG = 40; // large pins, Settings' Pins: Large
+  const LIT = 36;
+  const LIT_BIG = 45; // large pins, Settings' Pins: Large
 
   // Brings a pin into the middle of what is visible of the content.
   function reveal(key) {

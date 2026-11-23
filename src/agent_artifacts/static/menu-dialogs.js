@@ -51,9 +51,15 @@
     const { name, from } = e.detail || {};
     if (Object.prototype.hasOwnProperty.call(dialogs, name)) open(name, from);
   });
+  // A tap on the scrim closes; a drag that only ends there (selecting the
+  // link or the name) does not.
   for (const scrim of Object.values(dialogs)) {
+    let pressed = null;
+    scrim.addEventListener("pointerdown", (e) => { pressed = e.target; });
     scrim.addEventListener("click", (e) => {
-      if (e.target === scrim || e.target.closest("[data-close]")) close();
+      const onScrim = e.target === scrim && pressed === scrim;
+      pressed = null;
+      if (onScrim || e.target.closest("[data-close]")) close();
     });
   }
   $("settings-form").addEventListener("submit", (e) => {

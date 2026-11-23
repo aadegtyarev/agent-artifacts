@@ -896,3 +896,12 @@ def test_admin_bodies_skip_the_public_body_checks(env):
     ):
         r = client.request(method, path, content=iter([body]), headers=root)
         assert r.status_code in (200, 201), (path, r.text)
+
+
+def test_the_frame_takes_the_pin_look_only_when_strictly_true():
+    # The viewer tells the untrusted frame two settings; anything but true
+    # (a string, 1, an object) leaves the pins as they are.
+    static = Path(__file__).parent.parent / "src" / "agent_artifacts" / "static"
+    pins = (static / "pins.js").read_text()
+    assert 'toggle("pins-big", m.big === true)' in pins
+    assert 'toggle("pins-shaped", m.shaped === true)' in pins
