@@ -664,8 +664,9 @@ every few seconds, so the badges follow the agent without a reload. When
 updated" offers **Show**, which reloads the page; the file is not swapped
 under the person's finger.
 
-**Failures.** When a call answers `429`, `409` or `404`, a toast says why and
-the text stays in the field or the draft. **Delete** hides a draft at once
+**Failures.** Comment errors use local, action-specific copy, never the server
+message. Network failures, rate limits, known limits and missing objects include
+a next step; unknown errors suggest retrying. Text stays in the field or draft. **Delete** hides a draft at once
 with Undo in a toast and sends the `DELETE` when the Undo time ends, so Undo
 keeps the draft's id and order. **Finish review** and leaving the page send
 pending deletes first.

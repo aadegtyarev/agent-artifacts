@@ -96,11 +96,34 @@
 
   // --- The server ----------------------------------------------------------------
   class ApiError extends Error {
-    constructor(status, code, message) {
-      super(message);
+    constructor(status, code, nameRejected = false) {
+      super();
       this.status = status;
       this.code = code;
+      this.nameRejected = nameRejected;
     }
+  }
+
+  // Only these exact validation responses reopen the name prompt; none is displayed.
+  const refusedNames = new Set([
+    "author must be one line",
+    "author must be text without control characters",
+    "author is longer than 64 characters",
+  ]);
+  function errorCopy(e, action) {
+    let next = "Try again.";
+    if (e.status === 0) next = "Check the connection and try again.";
+    else if (e.status === 429) next = "Wait a minute and try again.";
+    else if (e.status === 404) next = "It may no longer be available. Refresh and try again.";
+    else if (e.status === 409) {
+      const limits = {
+        too_many_drafts: "This file has too many drafts. Delete a draft and try again.",
+        too_many_comments: "This file cannot hold more comments. Remove a new comment and try again.",
+        too_many_replies: "This comment cannot hold more replies. Remove a reply and try again.",
+      };
+      if (typeof e.code === "string" && Object.hasOwn(limits, e.code)) next = limits[e.code];
+    }
+    return `${action} ${next}`;
   }
 
   async function call(method, path, payload, keepalive = false) {
@@ -119,19 +142,15 @@
     try {
       response = await fetch(`/a/${artifact}${path}`, init);
     } catch {
-      throw new ApiError(0, "network", "Could not reach the server. Check the connection and try again.");
+      throw new ApiError(0, "network");
     }
     if (response.status === 204) return { data: null, headers: response.headers };
     let data = null;
     try { data = await response.json(); } catch { /* not JSON, e.g. a proxy's page */ }
     if (response.ok && data !== null) return { data, headers: response.headers };
-    if (response.status === 429) {
-      throw new ApiError(429, "rate_limited", "Too many requests from your address. Wait a minute and try again.");
-    }
-    const message = data && typeof data.message === "string"
-      ? data.message.charAt(0).toUpperCase() + data.message.slice(1) + "."
-      : `The server answered ${response.status}. Try again later.`;
-    throw new ApiError(response.status, data && data.error, message);
+    const nameRejected = response.status === 400 && data?.error === "bad_request"
+      && refusedNames.has(data.message);
+    throw new ApiError(response.status, data?.error, nameRejected);
   }
 
   // The one way the comments are fetched: by load() and by poll(). The
@@ -148,7 +167,7 @@
     try {
       found = await Promise.all([fetchComments(), call("GET", "/drafts")]);
     } catch (e) {
-      if (mine === generation) toast(`Could not load comments. ${e.message}`, { error: true, ms: 8000 });
+      if (mine === generation) toast(errorCopy(e, "Could not load comments."), { error: true, ms: 8000 });
       return;
     }
     if (mine !== generation) return; // something newer has landed meanwhile
@@ -1069,7 +1088,7 @@
   // The server refused the name (one kept from an older version, say): it
   // is forgotten and asked again; the text stays where it is.
   function nameRefused(e) {
-    if (e.status !== 400 || !/^author\b/i.test(e.message)) return false;
+    if (!e.nameRejected) return false;
     nameInput.value = name || nameInput.value;
     name = null;
     try { localStorage.removeItem(NAME_KEY); } catch { /* not kept anyway */ }
@@ -1099,7 +1118,7 @@
       if (!c.anchor) toast("Added about the whole file");
       return true;
     } catch (e) {
-      if (!nameRefused(e)) toast(e.message, { error: true, ms: 8000 });
+      if (!nameRefused(e)) toast(errorCopy(e, "Could not save the draft."), { error: true, ms: 8000 });
       return false;
     } finally {
       sendButton.disabled = !fields.compose.value.trim();
@@ -1120,7 +1139,7 @@
       S.drafts.push(draft);
       render();
     } catch (e) {
-      if (!nameRefused(e)) toast(e.message, { error: true, ms: 8000 });
+      if (!nameRefused(e)) toast(errorCopy(e, "Could not save the decision."), { error: true, ms: 8000 });
     } finally {
       deciding = false;
     }
@@ -1148,7 +1167,7 @@
     try {
       made = await call("POST", "/drafts/batch", { author: name, decisions });
     } catch (e) {
-      if (!nameRefused(e)) toast(`Nothing accepted. ${e.message}`, { error: true, ms: 8000 });
+      if (!nameRefused(e)) toast(errorCopy(e, "Nothing accepted."), { error: true, ms: 8000 });
       return;
     } finally {
       deciding = false;
@@ -1175,7 +1194,7 @@
     try {
       await call("POST", "/drafts/delete", { ids: [...ids] });
     } catch (e) {
-      toast(`Not undone. ${e.message}`, { error: true, ms: 8000 });
+      toast(errorCopy(e, "Not undone."), { error: true, ms: 8000 });
       return;
     } finally {
       deciding = false;
@@ -1190,7 +1209,7 @@
       await call("DELETE", `/drafts/${d.id}`);
     } catch (e) {
       if (e.status !== 404) {
-        toast(e.message, { error: true, ms: 8000 });
+        toast(errorCopy(e, "Could not undo the decision."), { error: true, ms: 8000 });
         return;
       }
     }
@@ -1218,7 +1237,7 @@
       render();
       toChatEnd();
     } catch (e) {
-      if (!nameRefused(e)) toast(e.message, { error: true, ms: 8000 });
+      if (!nameRefused(e)) toast(errorCopy(e, "Could not save the reply."), { error: true, ms: 8000 });
     } finally {
       replyButton.disabled = !fields.reply.value.trim();
     }
@@ -1255,7 +1274,7 @@
       render();
       toast("Saved");
     } catch (e) {
-      toast(e.message, { error: true, ms: 8000 });
+      toast(errorCopy(e, "Could not save the draft."), { error: true, ms: 8000 });
     }
   }
 
@@ -1294,7 +1313,7 @@
         pending.delete(id);
         changed();
         render();
-        toast(`Could not delete the draft. ${e.message}`, { error: true, ms: 8000 });
+        toast(errorCopy(e, "Could not delete the draft."), { error: true, ms: 8000 });
         return false;
       }
     }
@@ -1377,7 +1396,7 @@
       // dropped, say).
       load();
     } catch (e) {
-      if (!nameRefused(e)) toast(e.message, { error: true, ms: 8000 });
+      if (!nameRefused(e)) toast(errorCopy(e, "Could not finish the review."), { error: true, ms: 8000 });
       // The drafts on the server may differ now (one gone, say).
       load();
     } finally {
