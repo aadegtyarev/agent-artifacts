@@ -144,13 +144,17 @@ What happened, then what to do; a full stop after each sentence.
 
 | Situation | Text |
 | --- | --- |
-| No network | Could not reach the server. Check the connection and try again. |
-| 429 | Too many requests from your address. Wait a minute and try again. |
-| Other failure, no message | The server answered 502. Try again later. |
-| Comments did not load | Could not load comments. + the reason |
-| Accept all failed | Nothing accepted. + the reason |
-| Undo of Accept all failed | Not undone. + the reason |
-| Draft delete failed | Could not delete the draft. + the reason |
+| No network | Could not save the draft. Check the connection and try again. |
+| 429 | Could not save the draft. Wait a minute and try again. |
+| Missing object | Could not save the draft. It may no longer be available. Refresh and try again. |
+| Draft limit | Could not save the draft. This file has too many drafts. Delete a draft and try again. |
+| Comment limit | Could not finish the review. This file cannot hold more comments. Remove a new comment and try again. |
+| Reply limit | Could not finish the review. This comment cannot hold more replies. Remove a reply and try again. |
+| Other failure | Could not save the draft. Try again. |
+| Comments did not load | Could not load comments. + a local next step |
+| Accept all failed | Nothing accepted. + a local next step |
+| Undo of Accept all failed | Not undone. + a local next step |
+| Draft delete failed | Could not delete the draft. + a local next step |
 | Before Finish review | Could not delete a draft. Try again. |
 | Busy | Still saving. Try again. / Still saving your decisions. Try again. |
 | Name refused | That name cannot be used. Give another one. |
@@ -162,9 +166,9 @@ What happened, then what to do; a full stop after each sentence.
 | Used invite (page) | This invite was used, has expired or never existed. Ask for a new one. |
 | Name taken (page) | This name is already taken. Ask for a new invite. |
 
-"The reason" is the server's message with its first letter raised and a full
-stop added, for example "There are too many drafts on this file." or "This
-comment has the most replies it can hold."
+The action and next step are local UI copy. Never show the server's message,
+status, exception or field names. Unknown errors use the action and “Try again.”
+Name validation uses only known responses internally to reopen name entry.
 
 ### Counts
 
