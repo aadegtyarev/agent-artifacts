@@ -6,7 +6,14 @@
 //   pending: ids of drafts deleted but not yet sent (a Map or a Set)
 //   seen:    replies of others seen in this browser, per comment number
 //   now:     the clock, for the tests
-const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now } = {}) => {
+//   role:    { reviewer: this browser decides, reviewerName: who decides }
+//            MOCKUP ONLY: the server will say who the reviewer is.
+const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now,
+  role = { reviewer: true, reviewerName: "" } } = {}) => {
+  // Blue is the reviewer's: written, accepted or sent to the agent by them.
+  // Colleagues only advise: their comment stays a suggestion until then.
+  const blue = (c) => (role.reviewer ? c.mine === true : c.author === role.reviewerName)
+    || !!c.agent || !!c.approved_by;
   const LETTERS = "abcdefghijklmnopqrstuvwxyz";
   const letter = (i) => LETTERS[i % 26] + (i >= 26 ? String(Math.floor(i / 26) + 1) : "");
   const liveDrafts = () => state.drafts.filter((d) => !pending.has(d.id));
@@ -28,8 +35,10 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
     return commentDrafts().length + touched.size;
   }
 
-  // Replies of others seen in this browser, per comment, for the red dot.
+  // Replies of colleagues seen in this browser, per comment, for the red
+  // dot; the agent's answers have badges of their own.
   const othersReplies = (c) => c.replies.filter((r) => !r.mine && !r.agent).length;
+  const unread = (c) => othersReplies(c) > (seen[c.n] || 0);
   // True when it changed, so the caller keeps it.
   function markSeen(c) {
     if (othersReplies(c) === (seen[c.n] || 0)) return false;
@@ -38,18 +47,21 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
   }
 
   // A comment's pin: the fill says its stage, the badge what is next.
-  const AGENT = { waiting: "wait", working: "work", done: "fin", wrote: "wrote", asked: "ask" };
+  // Five badges: grey the agent has it (waiting or working), green it is
+  // done and waits for Accept (a remark of its own is in the chat), orange
+  // it asks, blue the person's decision or reply in this review, red a
+  // colleague's reply not read yet.
+  const AGENT = { waiting: "wait", working: "wait", done: "fin", wrote: "fin", asked: "ask" };
   function stateOf(c) {
     // Awaiting approval: someone else's comment nothing was asked of the
     // agent about yet: no `agent` state (the agent's own reply to an
     // only-published comment sets it too).
-    const pend = c.mine !== true && !c.agent && !c.approved_by && !c.rejected_by;
+    const pend = !blue(c) && !c.rejected_by;
     const fill = c.rejected_by ? "rej" : pend ? "pend" : "solid";
     const dec = decisionOn(c.n);
     let badge = "";
-    if (dec) badge = dec.kind === "reject" ? "no" : "ok";
-    else if (repliesOn(c.n).length) badge = "re";
-    else if (othersReplies(c) > (seen[c.n] || 0)) badge = "new";
+    if (dec || repliesOn(c.n).length) badge = "ok";
+    else if (unread(c)) badge = "new";
     else if (AGENT[c.agent]) badge = AGENT[c.agent];
     return { fill, badge, pend };
   }
@@ -60,12 +72,12 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
   function items() {
     const list = [];
     commentDrafts().forEach((d, i) => list.push({
-      key: `d${d.id}`, draft: true, own: true, label: letter(i), anchor: d.anchor, text: d.text, d,
+      key: `d${d.id}`, draft: true, own: role.reviewer, label: letter(i), anchor: d.anchor, text: d.text, d,
       fill: "draft", badge: "",
     }));
     for (const c of state.comments) {
       const st = stateOf(c);
-      list.push({ key: `c${c.n}`, draft: false, own: c.mine === true, label: String(c.n),
+      list.push({ key: `c${c.n}`, draft: false, own: blue(c), label: String(c.n),
         anchor: c.anchor, text: c.text, c, fill: st.fill, badge: st.badge, pend: st.pend });
     }
     return list;
@@ -102,8 +114,8 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
   // many replies or when. `lost`: where its pin is when it is not on the
   // content shown, or null.
   const LEADS = {
-    waiting: [null, "with the agent"], working: ["work", "Agent is working"],
-    done: ["fin", "Done · check it"], wrote: ["fin", "Done, wrote"], asked: ["ask", "Asks you"],
+    waiting: [null, "with the agent"], working: [null, "agent is working"],
+    done: ["fin", "Done · check it"], wrote: ["fin", "Done · check it"], asked: ["ask", "Asks you"],
   };
   function status(it, lost = null) {
     if (it.draft) return [null, lost ? `your draft · ${lost}` : "your draft"];
@@ -111,14 +123,17 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
     const dec = decisionOn(c.n);
     const mine = repliesOn(c.n).length;
     let lead = null;
-    if (dec) lead = ["mine", { approve: "✓ Approve", reject: "✕ Reject", accept: "✓ Accept" }[dec.kind]];
+    if (dec) lead = ["mine", { approve: "✓ Accept", reject: "✕ Reject", accept: "✓ Accept" }[dec.kind]];
     else if (mine) lead = ["mine", "↩ Your reply"];
     else if (c.rejected_by) lead = [null, "rejected"];
-    else if (it.pend) lead = [null, "awaiting approval"];
-    else if (LEADS[c.agent]) lead = LEADS[c.agent];
+    else if (it.pend) lead = [null, "suggestion"];
+    else if (unread(c) && (!role.reviewer || !["done", "wrote", "asked"].includes(c.agent))) lead = ["new", "New reply"];
+    else if (LEADS[c.agent]) lead = role.reviewer ? LEADS[c.agent]
+      : { waiting: [null, "with the agent"], working: [null, "agent is working"], done: [null, "agent did it"],
+        wrote: [null, "agent did it"], asked: [null, `agent asks ${role.reviewerName || "the reviewer"}`] }[c.agent];
     if (dec && mine) lead = ["mine", `${lead[1]} · your reply`];
     const parts = [c.author];
-    if (it.own) parts.push("you");
+    if (c.mine) parts.push("you");
     const replies = c.replies.length;
     parts.push(replies ? `${replies} ${replies === 1 ? "reply" : "replies"}` : when(c.created_at));
     if (lost) parts.push(lost);
@@ -131,6 +146,7 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
   // approve. The agent's questions are left to be answered one by one.
   function acceptable() {
     const out = [];
+    if (!role.reviewer) return out;
     for (const it of items()) {
       if (!it.c || actsOn(it.c.n).length) continue;
       if (it.c.agent === "done" || it.c.agent === "wrote") out.push([it.c, "accept"]);
@@ -143,8 +159,8 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
 
   return {
     letter, liveDrafts, draftById, isComment, commentDrafts, actsOn, decisionOn, repliesOn,
-    reviewCount, othersReplies, markSeen, stateOf, items, itemOf, agentCounts, lastSent, when, status,
-    acceptable, acceptAllShown,
+    reviewCount, othersReplies, unread, markSeen, stateOf, items, itemOf, agentCounts, lastSent, when, status,
+    acceptable, acceptAllShown, role,
   };
 };
 

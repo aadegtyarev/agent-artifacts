@@ -2,7 +2,7 @@
 // off; in comment mode a tap on the content places a draft pin and opens the
 // sheet with a field. Drafts stay on the server, seen only by this browser's
 // author key, until Finish review publishes them all. On a phone the sheet
-// has four heights (strip, a quarter, half, full); on a computer the same
+// has three heights (strip, fitted to its content, full); on a computer the same
 // views sit in a panel at the right. Names and texts come from anyone with
 // the link, so they go in as text nodes only, never as HTML.
 (() => {
@@ -166,10 +166,17 @@
   const seenKey = `aa-seen:${artifact}`;
   let seen = {};
   try { seen = JSON.parse(localStorage.getItem(seenKey) || "{}") || {}; } catch { /* none */ }
-  const model = commentsModel(S, { pending, seen });
+  // MOCKUP ONLY: who decides comes from the server later.
+  let role = { reviewer: true, reviewerName: "" };
+  try {
+    if (localStorage.getItem("aa-mock-role") === "commenter") {
+      role = { reviewer: false, reviewerName: localStorage.getItem("aa-mock-reviewer") || "" };
+    }
+  } catch { /* the reviewer */ }
+  const model = commentsModel(S, { pending, seen, role });
   const {
     liveDrafts, draftById, isComment, actsOn, decisionOn, repliesOn,
-    reviewCount, items, itemOf, agentCounts, lastSent, when, acceptable, acceptAllShown,
+    reviewCount, unread, items, itemOf, agentCounts, lastSent, when, acceptable, acceptAllShown,
   } = model;
   function markSeen(c) {
     if (!model.markSeen(c)) return;
@@ -280,7 +287,6 @@
   const fields = {
     compose: field("Comment", "Comment"),
     edit: field("Comment", "Edit the draft"),
-    general: field("General comment", "General comment, optional"),
     reply: field("Reply…", "Reply"),
   };
   // The comment the reply field writes to.
@@ -382,7 +388,7 @@
     }
     // A field being typed in hides what would sit under the finger (the
     // item's Finish review, the choice of where to send).
-    const typing = document.activeElement === fields.reply || document.activeElement === fields.general;
+    const typing = document.activeElement === fields.reply;
     foot.classList.toggle("typing", typing);
     drawPins();
     syncPicking();
@@ -393,26 +399,20 @@
 
   function renderStrip() {
     const review = reviewCount();
+    const g = groups();
     const a = agentCounts();
-    const answered = a.done + a.wrote + a.asked;
-    const busy = a.waiting + a.working;
     const more = desk.matches ? "" : " ›";
-    const many = (n) => `${n} ${n === 1 ? "comment" : "comments"}`;
+    // One formula: what waits for the person, then what the agent has.
     let line;
     let badge = "";
+    const parts = [];
+    if (g.wait.length) parts.push(`${g.wait.length} ${g.wait.length === 1 ? "waits" : "wait"} for you`);
+    if (g.agent.length) parts.push(`${g.agent.length} with the agent`);
     if (review) line = `Review · ${review}`;
-    else if (answered && busy) {
-      line = `${busy} with the agent · ${answered} to check${more}`;
-      badge = a.done || a.wrote ? "fin" : "ask";
-    } else if (answered) {
-      line = `Agent answered ${answered} · take a look${more}`;
-      badge = a.done || a.wrote ? "fin" : "ask";
-    } else if (a.working) {
-      line = `Agent is working · ${many(a.working)}${more}`;
-      badge = "work";
-    } else if (a.waiting) {
-      line = `With the agent · ${many(a.waiting)}${more}`;
-      badge = "wait";
+    else if (parts.length) {
+      line = parts.join(" · ") + more;
+      badge = !role.reviewer ? (g.wait.length ? "new" : "") : a.asked ? "ask" : a.done + a.wrote ? "fin" : g.wait.some((i) => i.badge === "new") ? "new"
+        : g.agent.length && !g.wait.length ? "wait" : "";
     } else if (S.comments.length) line = `Comments · ${S.comments.length}${more}`;
     else if (S.mode && canPin()) line = `Tap a spot on the ${pinType === "point" ? "image" : "page"} to comment`;
     else line = "No comments yet";
@@ -423,14 +423,30 @@
       strip.append(el("span", "strip-hint", "tap a spot to add"));
     }
     if (review && S.view !== "finish") {
-      strip.append(button("Finish review", (e) => { e.stopPropagation(); openFinish(); }, "btn pri"));
+      strip.append(button(role.reviewer ? "Finish review" : "Publish", (e) => { e.stopPropagation(); openFinish(); }, "btn pri"));
     }
   }
+
+  // The list's sections, in this order: what waits for the person's word
+  // (the agent's answers, colleagues' comments not accepted yet), what this
+  // review holds, what the agent has, the rest.
+  function groups() {
+    const g = { wait: [], mine: [], agent: [], rest: [] };
+    for (const it of items()) {
+      if (it.draft || actsOn(it.c.n).length) g.mine.push(it);
+      else if (unread(it.c) || (role.reviewer && (["done", "wrote", "asked"].includes(it.c.agent) || it.pend))) g.wait.push(it);
+      else if (it.c.agent === "waiting" || it.c.agent === "working") g.agent.push(it);
+      else g.rest.push(it);
+    }
+    return g;
+  }
+  // The items in the list's order, for ‹ › and "N of M".
+  const ordered = () => { const g = groups(); return [...g.wait, ...g.mine, ...g.agent, ...g.rest]; };
 
   const views = {
     list() {
       const review = reviewCount();
-      if (!review && S.comments.some((c) => c.agent) && !S.allShown) return views.agent();
+      const g = groups();
       const all = items();
       const drafts = all.filter((i) => i.draft).length;
       const out = [];
@@ -438,15 +454,19 @@
       if (review) title = `Review · ${review}` + (S.comments.length ? ` · ${S.comments.length} published` : "");
       else if (S.comments.length) title = `Comments · ${S.comments.length}`;
       out.push(titled(title, acceptAllButton()));
-      if (all.some((i) => i.pend && !actsOn(i.c.n).length)) {
-        out.push(el("p", "cap", "Colleagues’ comments wait for your approval."));
-      }
       if (!all.length) {
         out.push(el("p", "empty", S.mode && canPin()
           ? `Tap a spot on the ${pinType === "point" ? "image" : "page"} to leave a comment.`
           : S.mode ? "Nobody has commented yet." : "Turn on the speech bubble to comment."));
       }
-      for (const it of all) out.push(row(it, status(it)));
+      const last = lastSent();
+      const secs = [["Waiting for you", g.wait, ""], ["Your review", g.mine, ""],
+        ["With the agent", g.agent, last ? ` · sent ${last.at}` : ""], ["Others", g.rest, ""]].filter(([, l]) => l.length);
+      for (const [name, list, extra] of secs) {
+        // One section alone needs no heading.
+        if (secs.length > 1) out.push(el("p", "sec", `${name} · ${list.length}${extra}`));
+        for (const it of list) out.push(row(it, status(it)));
+      }
       if (S.mode) {
         const add = el("div", "addwhole");
         add.append(button("+ About the whole file", () => composeWhole()));
@@ -457,34 +477,10 @@
       return [out, review && !desk.matches ? [finishBar(review)] : []];
     },
 
-    // What is with the agent, alone; the rest behind one line.
-    agent() {
-      const sent = items().filter((i) => i.c && i.c.agent);
-      const others = items().filter((i) => !(i.c && i.c.agent));
-      const a = agentCounts();
-      const answered = a.done + a.wrote + a.asked;
-      const title = answered ? `Agent answered · ${answered}`
-        : a.working ? `Agent is working · ${sent.length}` : `Sent to the agent · ${sent.length}`;
-      const out = [titled(title, acceptAllButton())];
-      const last = lastSent();
-      if (last) out.push(el("p", "cap", `Sent ${last.at}`));
-      for (const it of sent) out.push(row(it, status(it)));
-      if (S.mode) {
-        const add = el("div", "addwhole");
-        add.append(button("+ About the whole file", () => composeWhole()));
-        out.push(add);
-      }
-      if (others.length) {
-        const more = button(`Others · ${others.length} ›`, () => { S.allShown = true; render(); }, "more");
-        out.push(more);
-      }
-      return [out, []];
-    },
-
     item() {
       const it = itemOf(S.sel);
       if (!it) return views.list();
-      const all = items();
+      const all = ordered();
       const at = all.findIndex((i) => i.key === it.key);
       const nav = el("div", "nav handle");
       nav.append(
@@ -501,8 +497,8 @@
       if (!desk.matches) nav.append(foldButton());
 
       const out = [nav, ...(it.draft ? [draftMsg(it)] : thread(it))];
-      // Pulled up to half or full on a phone: the others under it.
-      if (!desk.matches && (S.pos === "h" || S.pos === "f")) {
+      // Pulled up to full height on a phone: the others under it.
+      if (!desk.matches && S.pos === "f") {
         const others = all.filter((o) => o.key !== it.key);
         if (others.length) out.push(el("p", "sec", "Others"));
         for (const o of others) out.push(row(o, status(o)));
@@ -538,37 +534,36 @@
       // so none is left behind: the agent's answers, and colleagues'
       // comments awaiting approval. Then what this review changes, what is
       // accepted last.
-      const undecided = items().filter((i) => i.c && (["done", "wrote", "asked"].includes(i.c.agent) || i.pend)
-        && !actsOn(i.c.n).length);
+      const undecided = role.reviewer ? items().filter((i) => i.c && (["done", "wrote", "asked"].includes(i.c.agent) || i.pend)
+        && !actsOn(i.c.n).length) : [];
       const accepting = (i) => (decisionOn(i.c.n) || {}).kind === "accept";
-      const out = [titled(`Finish review · ${count}`)];
+      const out = [titled(`${role.reviewer ? "Finish review" : "Publish"} · ${count}`)];
       if (undecided.length) {
         const sec = el("div", "sec-row");
-        sec.append(el("p", "sec", `Not decided yet · ${undecided.length}`));
+        sec.append(el("p", "sec", `Waiting for you · ${undecided.length}`));
         const all = acceptAllButton("link");
         if (all) sec.append(all);
         out.push(sec);
         for (const it of undecided) out.push(row(it, status(it)));
-        out.push(el("p", "sec", "In this review"));
+        out.push(el("p", "sec", "Your review"));
       }
-      if (!count) out.push(el("p", "empty", "No drafts: you can publish a general comment only."));
+      if (!count) out.push(el("p", "empty", "Nothing to send yet."));
       for (const it of drafts) out.push(row(it, where(it)));
       for (const it of touched.filter((i) => !accepting(i))) out.push(row(it, status(it)));
       for (const it of touched.filter(accepting)) out.push(row(it, status(it)));
-      const general = el("div", "general");
-      general.append(fields.general);
-      out.push(general);
       const bar = el("div", "foot2");
-      const done = button("Finish review", () => finish(done), "btn pri big");
+      const done = button(role.reviewer ? "Finish review" : "Publish", () => finish(done), "btn pri big");
       finishButton = done;
-      done.disabled = sending || (!count && !fields.general.value.trim());
+      done.disabled = sending || !count;
       bar.append(button("Back", () => go("list", "h")), done);
       // The choice stays in sight next to the button it changes.
-      return [out, [toWhom(), bar]];
+      // Only the reviewer sends to the agent; a colleague publishes.
+      if (!role.reviewer) S.toAgent = false;
+      return [out, role.reviewer ? [toWhom(), bar] : [bar]];
     },
   };
 
-  // Finish review on the finish view, enabled by a general comment.
+  // Finish review on the finish view.
   let finishButton = null;
   // A review on its way: no second one, and the choice holds.
   let sending = false;
@@ -646,9 +641,11 @@
     if (c.before_replace && !c.agent) notes.push("written before the file was replaced");
     if (lost(it)) notes.push(page.off ? `on ${where(it)}` : `${lostText(it)} · ${where(it)}`);
     if (notes.length) bd.append(el("span", `st${lostClass(it)}`, notes.join(" · ")));
-    if (c.approved_by) bd.append(el("span", "ref", `✓ Approved by ${c.approved_by}`));
+    if (c.approved_by) bd.append(el("span", "ref", `✓ Accepted by ${c.approved_by}`));
     else if (c.rejected_by) bd.append(el("span", "ref", `✕ Rejected by ${c.rejected_by}`));
-    else if (it.pend) bd.append(el("span", "ref", "Awaiting approval · not sent to the agent"));
+    else if (it.pend && !decisionOn(c.n) && !repliesOn(c.n).length) bd.append(el("span", "ref", role.reviewer
+      ? "Suggestion · not in force yet"
+      : `Suggestion · ${role.reviewerName || "the reviewer"} decides`));
     head.append(miniPin(it), bd);
     out.push(head);
     for (const r of c.replies) {
@@ -665,7 +662,7 @@
     const dec = decisionOn(c.n);
     if (dec) {
       const line = el("div", "dec");
-      const said = { approve: ["✓ Approved", "goes with your review"], reject: ["✕ Rejected", "goes with your review"],
+      const said = { approve: ["✓ Accepted", "goes with your review"], reject: ["✕ Rejected", "goes with your review"],
         accept: ["✓ Accepted", "closes with your review"] }[dec.kind];
       line.append(el("b", dec.kind === "reject" ? "no" : "", said[0]), el("span", "", said[1]),
         button("Undo", () => undoDecision(dec), "undo"));
@@ -689,10 +686,10 @@
       out.push(m);
     }
     // Buttons only on the selected comment, and only what fits its state.
-    if (!dec && !c.rejected_by) {
+    if (!dec && !c.rejected_by && role.reviewer && !(it.pend && repliesOn(c.n).length)) {
       const acts = el("div", "acts thread-acts");
       if (it.pend) {
-        acts.append(button("✓ Approve", () => decide(c, "approve"), "btn pri"),
+        acts.append(button("✓ Accept", () => decide(c, "approve"), "btn pri"),
           button("✕ Reject", () => decide(c, "reject")));
       } else if ((c.agent === "done" || c.agent === "wrote") && !repliesOn(c.n).length) {
         acts.append(button("✓ Accept", () => decide(c, "accept"), "btn pri"));
@@ -736,7 +733,7 @@
 
   function finishBar(count) {
     const bar = el("div", "foot2");
-    bar.append(button(`Finish review · ${count}`, () => openFinish(), "btn pri"));
+    bar.append(button(`${role.reviewer ? "Finish review" : "Publish"} · ${count}`, () => openFinish(), "btn pri"));
     return bar;
   }
 
@@ -749,7 +746,7 @@
         || (S.view === "list" && (desk.matches || S.pos !== "strip"))),
     }));
     if (S.compose && pinnable(S.compose.anchor)) {
-      shown.push({ key: "new", label: "", anchor: S.compose.anchor, own: true, fill: "draft", badge: "", lit: true });
+      shown.push({ key: "new", label: "", anchor: S.compose.anchor, own: role.reviewer, fill: "draft", badge: "", lit: true });
     }
     return shown;
   }
@@ -760,7 +757,7 @@
   function tapPin(key) {
     if (key === "new") {
       if (S.compose) {
-        if (S.view !== "compose" || S.pos === "strip") go("compose", "q");
+        if (S.view !== "compose" || S.pos === "strip") go("compose", "h");
         fields.compose.focus({ preventScroll: true });
       }
       return;
@@ -797,8 +794,9 @@
   });
 
   // --- Navigation ------------------------------------------------------------------
-  // ¼ is "as tall as its content, at most half".
-  const DEFAULT_POS = { list: "h", item: "q", compose: "q", finish: "h" };
+  // Three heights on a phone: the strip, as tall as the content (at most
+  // 60%), and full.
+  const DEFAULT_POS = { list: "h", item: "h", compose: "h", finish: "h" };
 
   function go(view, pos) {
     S.view = view;
@@ -838,22 +836,22 @@
     if (opened && opened.c) markSeen(opened.c);
     // One comment: the sheet fits it. Pulled up with the others under it,
     // it keeps its height and the chosen one comes to the top.
-    const keep = S.view === "item" && (S.pos === "h" || S.pos === "f");
-    go("item", keep ? S.pos : "q");
+    const keep = S.view === "item" && S.pos === "f";
+    go("item", keep ? S.pos : "h");
     if (keep) body.scrollTop = 0;
     else toChatEnd();
     revealSoon(key);
   }
 
-  // At ¼ a comment's chat shows its end: the message being answered sits
+  // Fitted to its content a comment's chat shows its end: the message being answered sits
   // right above the reply field.
   function toChatEnd() {
     const it = itemOf(S.sel);
-    if (!desk.matches && S.view === "item" && S.pos === "q" && it && !it.draft) body.scrollTop = body.scrollHeight;
+    if (!desk.matches && S.view === "item" && S.pos === "h" && it && !it.draft) body.scrollTop = body.scrollHeight;
   }
 
   function step(by) {
-    const all = items();
+    const all = ordered();
     if (!all.length) return;
     const at = all.findIndex((i) => i.key === S.sel);
     openItem(all[(at + by + all.length) % all.length].key);
@@ -910,10 +908,6 @@
   dialog.addEventListener("click", (e) => { if (e.target === dialog) closeName(null); });
 
   function setMode(on, then = null) {
-    if (on && name === null) {
-      askName(() => setMode(true, then));
-      return;
-    }
     S.mode = on;
     if (!on) {
       if (S.compose) dropCompose(false);
@@ -941,13 +935,13 @@
     if (S.compose && S.compose.anchor) {
       // Moving the spot keeps what is typed.
       S.compose.anchor = anchor;
-      if (S.view !== "compose" || S.pos === "strip") go("compose", "q");
+      if (S.view !== "compose" || S.pos === "strip") go("compose", "h");
       else drawPins();
     } else {
       if (S.compose) dropCompose(true);
       S.compose = { anchor };
       S.sel = null;
-      go("compose", "q");
+      go("compose", "h");
     }
     fields.compose.focus({ preventScroll: true });
     revealSoon("new");
@@ -957,7 +951,7 @@
     if (S.compose) dropCompose(true);
     S.compose = { anchor: null };
     S.sel = null;
-    go("compose", "q");
+    go("compose", "h");
     fields.compose.focus({ preventScroll: true });
   }
 
@@ -972,7 +966,7 @@
         if (!S.mode) return;
         S.compose = kept.compose;
         fields.compose.value = kept.text;
-        go("compose", "q");
+        go("compose", "h");
         fields.compose.focus({ preventScroll: true });
       },
     });
@@ -993,6 +987,11 @@
     const c = S.compose;
     const text = fields.compose.value;
     if (!c || !text.trim() || sendButton.disabled) return false;
+    // The name is asked at the first thing sent, not on the way in.
+    if (name === null) {
+      askName(() => addDraft());
+      return false;
+    }
     sendButton.disabled = true;
     try {
       const draft = await call("POST", "/drafts", { author: name || "", text, anchor: c.anchor });
@@ -1076,10 +1075,7 @@
     changed();
     S.drafts.push(...made);
     render();
-    const approved = made.filter((d) => d.kind === "approve").length;
-    const accepted = made.length - approved;
-    toast([accepted && `Accepted ${accepted}`, approved && `approved ${approved}`].filter(Boolean).join(", ")
-      .replace(/^a/, "A"), { undo: () => undoAll(made) });
+    toast(`Accepted ${made.length}`, { undo: () => undoAll(made) });
   }
 
   // Deletes the drafts Accept all made, in one call; one already gone (a
@@ -1268,10 +1264,7 @@
         toast("Could not delete a draft. Try again.", { error: true, ms: 8000 });
         return;
       }
-      const general = fields.general.value;
       const payload = { author: name || "" };
-      // Omitted when empty: the review is then the drafts alone.
-      if (general.trim()) payload.text = general;
       if (S.toAgent) payload.agent = true;
       const sent = S.toAgent;
       const made = await call("POST", "/review", payload);
@@ -1284,7 +1277,6 @@
       S.comments = [...S.comments.filter((c) => !accepted.has(c.n)).map((c) => byN.get(c.n) || c),
         ...made.filter((c) => !S.comments.some((o) => o.n === c.n))];
       S.drafts = [];
-      fields.general.value = "";
       S.mode = false;
       S.compose = null;
       S.sel = null;
@@ -1301,7 +1293,7 @@
       load();
     } finally {
       sending = false;
-      if (done.isConnected) done.disabled = !reviewCount() && !fields.general.value.trim();
+      if (done.isConnected) done.disabled = !reviewCount();
     }
   }
 
@@ -1313,7 +1305,7 @@
   fields.edit.addEventListener("input", () => grow(fields.edit));
   // While a reply is typed, Finish review steps aside: no tap meant for the
   // send arrow lands on it.
-  for (const f of [fields.reply, fields.general]) {
+  for (const f of [fields.reply]) {
     f.addEventListener("focus", () => {
       foot.classList.add("typing");
       if (f === fields.reply) toChatEnd();
@@ -1332,11 +1324,6 @@
       e.preventDefault();
       addReply();
     }
-  });
-  fields.general.addEventListener("input", () => {
-    grow(fields.general);
-    const done = finishButton;
-    if (done && done.isConnected) done.disabled = sending || (!reviewCount() && !fields.general.value.trim());
   });
   // Enter adds the draft; Shift+Enter is a new line.
   fields.compose.addEventListener("keydown", (e) => {
@@ -1374,8 +1361,6 @@
       if (best === "strip") {
         if (S.compose) dropCompose(false);
         fold();
-      } else if (best === "q" && S.view !== "item" && S.view !== "compose") {
-        go(S.view, "h");
       } else go(S.view, best);
     },
     // A tap on the grip steps the height and keeps the view. A tap on the

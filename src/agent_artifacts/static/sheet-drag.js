@@ -1,7 +1,7 @@
 // The comments sheet on a phone: tap and drag. Loaded as its own script
 // before comments.js, which calls this once with the sheet's parts and says
 // what a height or a tap means for what the sheet shows:
-//   pos():          the sheet's height now: strip, q (¼), h (½), f (full)
+//   pos():          the sheet's height now: strip, h (fits), f (full)
 //   open():         a drag from the strip has begun: the sheet opens
 //   snap(pos):      a drag ended nearest to height `pos`
 //   tap(onGrip):    a tap on the grip (true) or on the title line (false)
@@ -9,7 +9,7 @@
 // sheet with the finger; let go, it snaps to the height nearest to where it
 // is. A drag changes the height only; what a tap does is the caller's.
 const sheetDrag = ({ sheet, strip, grip, desk, pos, open, snap, tap }) => {
-  const POS = ["strip", "q", "h", "f"];
+  const POS = ["strip", "h", "f"];
   let drag = null;
 
   const onHandle = (t) => t === grip || !!t.closest(".sbody > .handle");
@@ -58,9 +58,9 @@ const sheetDrag = ({ sheet, strip, grip, desk, pos, open, snap, tap }) => {
     if (!d.moved) return;
     draggedAt = performance.now();
     const stage = sheet.parentElement.clientHeight;
-    const heights = { strip: 44, q: stage * 0.3, h: stage * 0.52, f: stage };
+    const heights = { strip: 44, h: stage * 0.45, f: stage };
     // The height it started from is where it was, not the nominal one, so a
-    // small slip snaps back instead of folding a short ¼ sheet.
+    // small slip snaps back instead of folding a short sheet.
     if (d.pos in heights && d.pos !== "strip") heights[d.pos] = d.from;
     const up = now > d.from;
     let best = "strip";
@@ -70,7 +70,7 @@ const sheetDrag = ({ sheet, strip, grip, desk, pos, open, snap, tap }) => {
       if (dd < distance) { distance = dd; best = p; }
     }
     // Let go well below a quarter: folded.
-    if (!up && now < Math.min(heights.q, stage * 0.3) * 0.75) best = "strip";
+    if (!up && now < Math.min(heights.h, stage * 0.3) * 0.75) best = "strip";
     snap(best);
   }
   sheet.addEventListener("pointerup", endDrag);

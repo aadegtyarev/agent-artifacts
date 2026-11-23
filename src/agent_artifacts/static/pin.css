@@ -16,9 +16,8 @@
   -webkit-tap-highlight-color: transparent; }
 .pin::before { content: ""; position: absolute; inset: -10px; }
 .pin.own { --c: #0a84ff; }
-.pin.draft, .pin.pend { color: var(--c); background: #fff; border: 2px dashed var(--c);
+.pin.draft, .pin.pend { color: var(--c); background: #fff; border: 2px solid var(--c);
   box-shadow: 0 2px 6px rgb(0 0 0 / 0.2); }
-.pin.pend { border-style: solid; }
 .pin.rej { background: #8e8e93; }
 /* The selected pin is bigger, with a halo. */
 .pin.lit { z-index: 2; width: 32px; min-width: 32px; height: 32px; font-size: 15px; box-shadow: 0 0 0 2px #fff, 0 0 0 6px rgb(28 28 30 / 0.18),

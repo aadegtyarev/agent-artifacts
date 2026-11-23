@@ -149,6 +149,7 @@ iframe { display: block; border: 0; width: 100%; height: 100%; background: #fff;
   height: 18px; margin-right: 8px; vertical-align: -4px; box-shadow: none; }
 .strip-text .bdg svg { width: 10px; height: 10px; }
 .strip-text .bdg::after { display: none; }
+.strip-text .bdg.new { width: 10px; height: 10px; margin: 0 10px 0 4px; vertical-align: 1px; box-shadow: none; }
 /* Under a comment: the person's decision, with a small Undo. */
 .dec { display: flex; align-items: baseline; gap: 6px; margin-top: 4px; color: var(--muted);
   font-size: 13px; }
@@ -165,6 +166,9 @@ iframe { display: block; border: 0; width: 100%; height: 100%; background: #fff;
 :root[data-theme="dark"] .st b.fin { color: #30d158; } :root[data-theme="dark"] .st b.ask { color: #ff9f0a; }
 :root[data-theme="dark"] .st b.work { color: #7d7aff; }
 .st b.mine { color: var(--accent); }
+.st b.new { color: #d70015; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .st b.new { color: #ff453a; } }
+:root[data-theme="dark"] .st b.new { color: #ff453a; }
 .more { display: block; width: 100%; min-height: 44px; margin: 6px 0 0; padding: 0;
   color: var(--accent); background: none; border: 0;
   font: inherit; font-size: 15px; text-align: left; cursor: pointer; }
@@ -218,7 +222,6 @@ iframe { display: block; border: 0; width: 100%; height: 100%; background: #fff;
 .send:disabled { background: var(--send-off); cursor: default; }
 .send:not(:disabled):active { transform: scale(0.92); }
 .send svg { stroke-width: 2.4; }
-.general { margin: 10px 0; }
 /* Finish review: to the agent or only published, a segmented control. */
 .towhom { margin: 0 0 12px; }
 /* Accept all that waits: a pill in a title line, a link by a section. */
@@ -244,7 +247,6 @@ iframe { display: block; border: 0; width: 100%; height: 100%; background: #fff;
 /* By the buttons the labels say enough: no note under the choice. */
 .sfoot .towhom .note { display: none; }
 .sfoot.typing .pill + .foot2, .sfoot.typing .towhom { display: none; }
-.general textarea { min-height: 60px; }
 
 /* Pins and badges: pin.css, shared with pins.js in a page. */
 /* In a list row, the item's pin, or ≡ for the whole file. */
@@ -310,11 +312,9 @@ body.commenting #image-box img { cursor: crosshair; }
   .sheet[data-pos="strip"] { border-radius: 0; box-shadow: 0 -0.5px 0 var(--hair); }
   .sheet[data-pos="strip"] > :not(.strip), .sheet:not([data-pos="strip"]) > .strip { display: none; }
   /* The sheet's rounded top lies over the content's last pixels. */
-  .sheet[data-pos="q"], .sheet[data-pos="h"] { margin-top: -16px; }
-  .sheet[data-pos="q"] { max-height: 52%; }
+  .sheet[data-pos="h"] { margin-top: -16px; max-height: 60%; }
   /* A row scrolled into view clears the sticky title line. */
   .sbody { scroll-padding-top: 40px; }
-  .sheet[data-pos="h"] { height: 52%; }
   .sheet[data-pos="f"] { height: 100%; border-radius: 0; box-shadow: none; }
   .sheet.dragging { max-height: none; }
 }
