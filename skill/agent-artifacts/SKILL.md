@@ -54,10 +54,23 @@ artifacts_cli.py wait <id>                              # in the background: ret
 artifacts_cli.py list                                   # your files; also: projects, me
 ```
 
+### Share the link and start watching
+
 Give the person the `url` (the project's for a job) and, outside a project,
-until when it works. An `<id>` is the 22-character id or the link itself
-(`…/a/<id>`, `…/p/<pid>`). A wrong command or argument exits 2 with a usage
-line: fix the call. An error from the service exits 1 with `{"error", "message"}`:
+until when it works. **Whenever you share an artifact or project link, start
+`artifacts_cli.py wait <id>` in the background before ending the turn.** Use
+`artifacts wait <id>` if that shortcut is installed. Keep one watcher per link;
+a project watcher covers all its files. Use the agent's background process
+tool (in Pi, `start_process`). If you cannot start a watcher, say so.
+
+`wait` polls every 10 seconds by default. It returns one event and exits.
+On `waiting`, handle the comments below; `accepted` needs no action on those
+comments. Restart after handling the event or after `timeout` (6 h) if feedback
+is still expected. Stop on `gone` or when the review is complete.
+
+An `<id>` is the 22-character id or the link itself (`…/a/<id>`, `…/p/<pid>`).
+A wrong command or argument exits 2 with a usage line: fix the call. An error
+from the service exits 1 with `{"error", "message"}`:
 `not_found` — expired or not yours, upload again; `too_large` — shrink or
 zip; `quota_exceeded` — see below; `storage_full` — the service is full:
 delete nothing, tell the person; `unauthorized` — the key is wrong or
@@ -123,10 +136,9 @@ What works with people reviewing on a phone:
 6. **Check every frame at full size before sending**: same states everywhere
    it appears, no cut text, no gaps, nothing wider than the screen, nothing
    secret — and the page itself in both light and dark colour schemes.
-7. **Discuss in the file.** Ask the person to comment right on the mockup,
-   run `wait <id>`, and for each round: `take`, change, `replace` the same
-   id, `reply` to each comment saying what you did. An accepted comment
-   (`"event": "accepted"`) is their yes.
+7. **Discuss in the file.** Ask the person to comment right on the mockup.
+   For each round: `take`, change, `replace` the same id, and `reply` to each
+   comment saying what you did. An accepted comment is their yes on that point.
 8. **An accepted change to the interface updates `docs/design/` too**:
    tokens, components, pins or icons, tone of voice — whatever it touched,
    in the same commit or pull request as the code; your reply to their
@@ -165,13 +177,10 @@ file; `screen`/`hash` say which screen of a multi-screen page),
   you started), fix the file, `replace`, then `reply` per comment — plain for
   done, `--wrote` for done with a remark, `--asked` for not done until they
   answer — ask rather than guess. Then tell the person what changed and
-  what is open, and `wait`.
+  what is open.
 - `working` with no reply of yours after the person's last word — yours too
   (a session ended after `take`).
 - anything else — context; act only when the person asks.
-
-`wait <id>` prints one JSON line and exits: `waiting` (go round again),
-`accepted` (they closed it; nothing to do), `gone`, or `timeout` (6 h).
 
 ## Projects
 
