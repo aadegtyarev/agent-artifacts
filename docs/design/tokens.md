@@ -26,7 +26,7 @@ holds white at 4.5:1 or more. Orange is only ever a fill.
 | Token | Light | Dark | Means, used for |
 | --- | --- | --- | --- |
 | `--blue` | `#0a64d8` | `#4c9bff` | you and actions: links, link buttons, draft status, decision line, Accept all, project title and "Project page ›", focus outlines, comment-mode ring on the floating ≡ |
-| `--blue-fill` | `#0a64d8` | `#0a6edc` | blue under white: send arrow, primary button (dark theme), pressed comment bubble and menu Comment, banner Show, own avatar; own pin |
+| `--blue-fill` | `#0a64d8` | `#0a6edc` | blue under white: send arrow, primary button (dark theme), pressed comment bubble and menu Comment, banner Show, own avatar (the own pin keeps the light value, see below) |
 | `--orange` | `#e8890c` | — | a colleague: their pins and avatars |
 | `--purple` | `#5e5ce6` | `#9d9bff` | the agent as text: "Agent is working", agent counter on the project page |
 | `--purple-fill` | `#5e5ce6` | — | the agent under white: its avatar, its pins |
@@ -66,7 +66,7 @@ theme.
 | `--hair` | `--fg` at 12% | same | hairlines between rows, panel edge, field focus |
 | `--tint` | `--blue` at 8% | `--blue` at 12% | draft rows, unsent messages, Accept all pill; outline fill of a pointed element in a page |
 | `--tint-2` | `--blue` at 12% | `--blue` at 18% | the same pressed or selected; 4 px focus ring of a field |
-| `--ink` | `--fg` at 92% | `--surface-2` | toast, "file was updated" banner, menu labels, floating ≡ while open or dragged |
+| `--ink` | `rgb(28 28 30 / 0.92)` (`--fg` at 92%, written out so it works without `color-mix()`) | `--surface-2` | toast, "file was updated" banner, menu labels, floating ≡ while open or dragged |
 | `--raised` | `--bg` | `--surface` | dialogs, menu squares |
 | `--field` | `--surface` | `--surface-2` | inputs, plain buttons and the segmented track in dialogs |
 | `--pri` | `--fg` | `--blue-fill` | primary button: dark in the light theme, blue in the dark |
@@ -78,7 +78,7 @@ theme.
 Pins (`pin.css`, also drawn inside a page's sandbox), the outline of a
 pointed element (`pins.js`) and the plain-text and Markdown pages get no
 tokens: they write the **light** values out (`--blue-fill`, `--orange`,
-`--purple-fill`, `--faint`, `--red-fill`, `--shadow-1`/`-2`, `--fg`,
+`--purple-fill`, `--faint`, `--red-fill`, `--shadow-2`, `--fg`,
 `--surface`, `--line`, `--muted`, `--tint`) in both themes, since they sit
 on the file's own white canvas. Change them together with the tokens.
 
@@ -234,3 +234,5 @@ toast 60, dialogs 70.
 
 `prefers-reduced-motion: reduce` turns off the toast, strip, menu, scrim and
 file list animations.
+
+Browsers: the tints and hairlines use `color-mix()` (Chrome 111, Safari 16.2, Firefox 113). Older ones lose only those soft fills; the toast, banner and menu labels keep their ground.

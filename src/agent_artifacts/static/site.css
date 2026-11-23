@@ -14,7 +14,9 @@
   --hair: color-mix(in srgb, var(--fg) 12%, transparent);
   --tint: color-mix(in srgb, var(--blue) 8%, transparent);
   --tint-2: color-mix(in srgb, var(--blue) 12%, transparent);
-  --ink: color-mix(in srgb, var(--fg) 92%, transparent);
+  /* A literal, not a mix: the toast and labels on it must survive a
+     browser without color-mix(). It is --fg at 92%. */
+  --ink: rgb(28 28 30 / 0.92);
   /* Roles that take a different token in the dark. */
   --raised: var(--bg); --field: var(--surface); --pri: var(--fg); --seg-on: var(--bg); }
 /* The dark theme is a palette of its own, not an inversion: dark grey
@@ -352,7 +354,7 @@ body.commenting #image-box img { cursor: crosshair; }
   -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .toast-box:not(:has(#toast-undo:not([hidden]))) { padding-right: 16px; }
 /* The toast is dark in both themes: its Undo is the blue lightened. */
-.toast .btn { height: 30px; padding: 0 10px; color: color-mix(in srgb, var(--blue) 60%, var(--on-color)); background: transparent;
+.toast .btn { height: 30px; padding: 0 10px; color: var(--on-color); color: color-mix(in srgb, var(--blue) 60%, var(--on-color)); background: transparent;
   font-weight: 600; pointer-events: auto; }
 .toast.error .btn { color: var(--on-color); }
 

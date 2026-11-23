@@ -12,7 +12,7 @@
 
    No tokens reach a page, so the colours are written out: they mirror the
    light values of tokens.md (--blue, --orange, --purple, --faint, --red,
-   --shadow-1/2), in both themes, since a pin sits on the file's own canvas.
+   --shadow-2), in both themes, since a pin sits on the file's own canvas.
    The letters and the ring are white. Change them with the tokens. */
 .pin { --c: #e8890c; position: absolute; box-sizing: border-box; display: flex; align-items: center;
   justify-content: center; width: 30px; min-width: 30px; height: 30px; margin: 0; padding: 0;
