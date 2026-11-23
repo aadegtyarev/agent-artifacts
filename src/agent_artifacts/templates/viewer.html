@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% import "icons.html" as icon %}
 {% import "files.html" as files %}
+{% import "menu.html" as menu %}
 {% block body %}
 <header>
   <div class="name">
@@ -20,23 +21,20 @@
   </div>
 </header>
 {#- The menu of the header's ≡ and of the floating ≡ in full screen: square
-    buttons with labels, fanned out over the dimmed page. #}
+    buttons with labels, fanned out over the dimmed page, top to bottom. #}
 <div id="fan" class="fan" hidden>
   <div class="fan-scrim"></div>
   <div id="fan-list" class="fan-list" role="menu" aria-label="Menu">
-    <button type="button" role="menuitem" class="fan-item" data-act="exit" data-when="full"><span class="fan-label">Exit full screen</span><span class="fan-sq">{{ icon.shrink() }}</span></button>
+    {#- Full screen only: the header's buttons, in the header's order. #}
     <button type="button" role="menuitemcheckbox" aria-checked="false" class="fan-item" data-act="comment" data-when="full"><span class="fan-label"><span class="when-off">Comment</span><span class="when-on">Commenting</span></span><span class="fan-sq">{{ icon.bubble() }}</span></button>
+    <button type="button" role="menuitem" class="fan-item" data-act="exit" data-when="full"><span class="fan-label">Exit full screen</span><span class="fan-sq">{{ icon.shrink() }}</span></button>
     {%- if in_project %}
     <button type="button" role="menuitem" class="fan-item" data-act="files" data-when="full"><span class="fan-label">Project files</span><span class="fan-sq">{{ icon.files() }}</span></button>
     {%- endif %}
-    <a role="menuitem" class="fan-item" href="/a/{{ a.id }}/download" data-act="download"><span class="fan-label">Download</span><span class="fan-sq">{{ icon.download() }}</span></a>
-    <button type="button" role="menuitem" class="fan-item" data-act="copy" data-url="{{ url }}"><span class="fan-label">Copy link</span><span class="fan-sq">{{ icon.link() }}</span></button>
     {%- if separate %}
     <a role="menuitem" class="fan-item" href="{{ separate }}" target="_blank" rel="noopener" data-act="separate"><span class="fan-label">Open separately</span><span class="fan-sq">{{ icon.external() }}</span></a>
     {%- endif %}
-    {#- Theme and Text size stay open on a tap: each tap moves on to the next. #}
-    <button type="button" role="menuitem" class="fan-item" data-act="theme"><span class="fan-label" id="theme-label">Theme: Auto</span><span class="fan-sq">{{ icon.theme() }}</span></button>
-    <button type="button" role="menuitem" class="fan-item" data-act="text-size"><span class="fan-label" id="text-size-label">Text size: Large</span><span class="fan-sq">{{ icon.text_size() }}</span></button>
+    {{- menu.tail() }}
   </div>
 </div>
 {#- Full screen: this button takes the header's place. Dragged, it snaps
@@ -87,5 +85,6 @@
     <div class="buttons"><button type="button" id="name-skip" class="btn">No name</button><button type="submit" class="btn pri">Done</button></div>
   </form>
 </div>
+{{ menu.dialogs(url, "/a/" ~ a.id ~ "/download") }}
 <div id="toast" class="toast" role="status" aria-live="polite"><div class="toast-box"><span id="toast-text"></span><button type="button" id="toast-undo" class="btn" hidden>Undo</button></div></div>
 {% endblock %}

@@ -69,8 +69,10 @@ Ask the agent:
 It answers with a link like `https://art.example.org/a/dqzQi3GkThdt_QSnKh4Dkg`
 and says until when it works. Open it on your phone: you see the page under a
 one-line header with buttons for comments, full screen and the "≡" menu:
-download, copy link, open separately (where the service offers it), the theme
-(auto, light or dark) and the text size.
+open separately (where the service offers it), **Share…** (copy the link,
+download the file) and **Settings…**: the name your comments are signed
+with, the theme (auto, light or dark), the text size, larger pins, and
+whether whose a pin is shows by its shape as well as its colour.
 
 If the agent says there is no key, it did not run step 2 or 3: paste the text
 again.

@@ -79,75 +79,20 @@
     const item = e.target.closest(".fan-item");
     if (!item) return;
     const act = item.dataset.act;
-    if (act === "theme") {
-      nextTheme();
-      return;
-    }
-    if (act === "text-size") {
-      nextTextSize();
-      return;
-    }
-    // Download and Open separately are links and go on by themselves; the
-    // project's file list (project.js) takes the focus itself.
+    // Open separately is a link and goes on by itself; the project's file
+    // list (project.js) and the dialogs (menu-dialogs.js) take the focus
+    // themselves and give it back to the button the menu came from.
     const from = opener;
-    closeFan(act === "download" || act === "separate" || act === "copy");
+    closeFan(act === "separate");
     if (act === "exit") exitFull();
     else if (act === "files") {
       document.dispatchEvent(new CustomEvent("aa:files", { detail: { from } }));
     }
     else if (act === "comment") commentsToggle.click();
-    else if (act === "copy") copyLink(item.dataset.url);
+    else if (act === "share" || act === "settings") {
+      document.dispatchEvent(new CustomEvent("aa:dialog", { detail: { name: act, from } }));
+    }
   });
-
-  // Theme: Auto (the system's), Light, Dark, in turn; kept in this browser.
-  // theme.js applies it before the page is drawn.
-  const THEMES = ["auto", "light", "dark"];
-  const themeLabel = $("theme-label");
-  const theme = () => document.documentElement.dataset.theme || "auto";
-  const showTheme = () => {
-    const t = theme();
-    themeLabel.textContent = `Theme: ${t[0].toUpperCase()}${t.slice(1)}`;
-  };
-  function nextTheme() {
-    const t = THEMES[(THEMES.indexOf(theme()) + 1) % THEMES.length];
-    if (t === "auto") delete document.documentElement.dataset.theme;
-    else document.documentElement.dataset.theme = t;
-    try {
-      if (t === "auto") localStorage.removeItem("aa-theme");
-      else localStorage.setItem("aa-theme", t);
-    } catch {
-      // No storage: the theme lasts while the page is open.
-    }
-    showTheme();
-  }
-  showTheme();
-
-  // Text size: Normal, Large (the default), Larger, in turn; kept in this
-  // browser, applied by theme.js before the page is drawn. The menu grows
-  // with it, so it is placed again by its button, which grew too.
-  const SIZES = ["normal", "large", "larger"];
-  const SIZE_KEY = "agent-artifacts:text-size";
-  const textSizeLabel = $("text-size-label");
-  const textSize = () => document.documentElement.dataset.textSize || "large";
-  const showTextSize = () => {
-    const s = textSize();
-    textSizeLabel.textContent = `Text size: ${s[0].toUpperCase()}${s.slice(1)}`;
-  };
-  function nextTextSize() {
-    const s = SIZES[(SIZES.indexOf(textSize()) + 1) % SIZES.length];
-    document.documentElement.dataset.textSize = s;
-    try {
-      if (s === "large") localStorage.removeItem(SIZE_KEY);
-      else localStorage.setItem(SIZE_KEY, s);
-    } catch {
-      // No storage: the size lasts while the page is open.
-    }
-    showTextSize();
-    // The panel beside it got wider or narrower: the floating button moves.
-    if (!floatButton.hidden) applyPlace();
-    if (!fan.hidden) place(opener);
-  }
-  showTextSize();
 
   // Escape closes the menu before anything else on the page sees it.
   window.addEventListener("keydown", (e) => {
@@ -176,21 +121,10 @@
     if (e.relatedTarget && !fan.contains(e.relatedTarget) && e.relatedTarget !== opener) closeFan(false);
   });
 
-  // --- Copy link --------------------------------------------------------------
   // Shown by the comments script's toast (see comments.js), the page's one.
   const toast = (message, error = false) => document.dispatchEvent(
     new CustomEvent("aa:toast", { detail: { message, error } }),
   );
-
-  function copyLink(url) {
-    const copied = navigator.clipboard
-      ? navigator.clipboard.writeText(url)
-      : Promise.reject(new Error("no clipboard"));
-    copied.then(
-      () => toast("Link copied"),
-      () => toast(`Could not copy. The link: ${url}`, true),
-    );
-  }
 
   // --- Full screen ------------------------------------------------------------
   const root = document.documentElement;

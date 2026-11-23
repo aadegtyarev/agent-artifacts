@@ -1,0 +1,59 @@
+{#- The end of the ≡ menu and the two dialogs it opens, the same on the viewer
+    and the project page (menu-dialogs.js). The header's own buttons are not
+    repeated in the menu, except in full screen, where there is no header. #}
+{% import "icons.html" as icon %}
+
+{% macro tail() %}
+    <button type="button" role="menuitem" aria-haspopup="dialog" class="fan-item" data-act="share"><span class="fan-label">Share…</span><span class="fan-sq">{{ icon.share() }}</span></button>
+    <button type="button" role="menuitem" aria-haspopup="dialog" class="fan-item" data-act="settings"><span class="fan-label">Settings…</span><span class="fan-sq">{{ icon.settings() }}</span></button>
+{%- endmacro %}
+
+{#- One choice of the settings: a row of radio buttons drawn as segments. #}
+{% macro choice(name, label, options) %}
+  <div class="set-row" role="radiogroup" aria-labelledby="set-{{ name }}-label">
+    <span id="set-{{ name }}-label" class="set-label">{{ label }}</span>
+    <div class="set-seg">
+    {%- for value, text in options %}
+      <label><input type="radio" name="set-{{ name }}" value="{{ value }}"><span>{{ text }}</span></label>
+    {%- endfor %}
+    </div>
+  </div>
+{%- endmacro %}
+
+{#- `download`: the file's download address; the project page has none. #}
+{% macro dialogs(url, download=None) %}
+<div id="share-dialog" class="scrim mid" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="share-title" tabindex="-1">
+    <h2 id="share-title">Share</h2>
+    <div class="linkrow">
+      <input id="share-link" type="text" readonly value="{{ url }}" aria-label="Link">
+      <button type="button" id="share-copy" class="btn pri">Copy link</button>
+    </div>
+    <p id="share-note" class="set-note" role="status"></p>
+    {%- if download %}
+    <a id="share-download" class="btn row" href="{{ download }}">{{ icon.download() }}<span>Download file</span></a>
+    {%- endif %}
+    {#- Reserved: "Open on another device" (a short code and a QR) comes
+        here, below its divider, in the next change. Empty and hidden now. #}
+    <div id="share-device" class="share-device" hidden><hr></div>
+    <div class="buttons"><button type="button" class="btn" data-close>Done</button></div>
+  </div>
+</div>
+<div id="settings-dialog" class="scrim mid" hidden>
+  <form id="settings-form" class="modal settings" role="dialog" aria-modal="true" aria-labelledby="settings-title" tabindex="-1" novalidate>
+    <h2 id="settings-title">Settings</h2>
+    {#- The name comments are signed with; empty is No name. #}
+    <div class="set-row">
+      <label for="settings-name" class="set-label">Name</label>
+      <input id="settings-name" type="text" maxlength="64" autocomplete="name" placeholder="No name">
+    </div>
+    {{- choice("theme", "Theme", [("auto", "Auto"), ("light", "Light"), ("dark", "Dark")]) }}
+    {{- choice("text", "Text", [("normal", "Normal"), ("large", "Large"), ("larger", "Larger")]) }}
+    {{- choice("pins", "Pins", [("normal", "Normal"), ("large", "Large")]) }}
+    {{- choice("shapes", "Mine / others", [("color", "Color"), ("shape", "Color + shape")]) }}
+    <div class="set-preview" aria-hidden="true"><span class="pin mini own">A</span><span class="pin mini">B</span><span class="pin mini ag"><svg viewBox="0 0 12 12"><path d="M6 .6C6.45 4 8 5.55 11.4 6 8 6.45 6.45 8 6 11.4 5.55 8 4 6.45.6 6 4 5.55 5.55 4 6 .6z"/></svg></span><span class="set-note">mine · a colleague's · the agent's</span></div>
+    <p class="set-note">Saved in this browser.</p>
+    <div class="buttons"><button type="submit" class="btn pri">Done</button></div>
+  </form>
+</div>
+{%- endmacro %}

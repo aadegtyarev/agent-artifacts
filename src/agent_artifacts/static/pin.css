@@ -7,7 +7,8 @@
    Colour: whose (orange a colleague's, blue this browser's or accepted
    here, purple the agent's). Outline: not done yet; filled: done; grey:
    rejected. Inside: the author's first letter, or the agent's star. One
-   badge at the corner: the red dot, something new to read. */
+   badge at the corner: the red dot, something new to read. Settings can
+   make them larger, and show whose by shape as well (see the end). */
 .pin { --c: #e8890c; position: absolute; box-sizing: border-box; display: flex; align-items: center;
   justify-content: center; width: 30px; min-width: 30px; height: 30px; margin: 0; padding: 0;
   transform: translateY(-100%); color: #fff; background: var(--c); border: 0;
@@ -34,3 +35,21 @@
 .pin.left { transform: translate(-100%, -100%); border-radius: 50% 50% 4px 50%; }
 .pin.down { transform: none; border-radius: 4px 50% 50% 50%; }
 .pin.left.down { transform: translateX(-100%); border-radius: 50% 4px 50% 50%; }
+/* Settings' Pins: Large (class pins-big, on the viewer's root and on the
+   layer in a page): a quarter bigger. */
+.pins-big .pin { width: 38px; min-width: 38px; height: 38px; font-size: 17px; }
+.pins-big .pin > svg { width: 25px; height: 25px; }
+.pins-big .pin.lit { width: 45px; min-width: 45px; height: 45px; font-size: 20px; }
+.pins-big .pin.lit > svg { width: 29px; height: 29px; }
+/* Settings' Mine / others: Color + shape (class pins-shaped, the default),
+   for those who tell the colours apart with difficulty. Mine stay the
+   droplet; a colleague's has the opposite corner cut too; the agent's is a
+   rounded square. The sharp corner at the spot stays where it was. */
+.pins-shaped .pin:not(.own):not(.ag) { border-radius: 50% 4px 50% 4px; }
+.pins-shaped .pin.left:not(.own):not(.ag),
+.pins-shaped .pin.down:not(.own):not(.ag) { border-radius: 4px 50% 4px 50%; }
+.pins-shaped .pin.left.down:not(.own):not(.ag) { border-radius: 50% 4px 50% 4px; }
+.pins-shaped .pin.ag { border-radius: 6px 6px 6px 2px; }
+.pins-shaped .pin.ag.left { border-radius: 6px 6px 2px 6px; }
+.pins-shaped .pin.ag.down { border-radius: 2px 6px 6px 6px; }
+.pins-shaped .pin.ag.left.down { border-radius: 6px 2px 6px 6px; }

@@ -221,10 +221,6 @@ body > header, .sheet > *, .toast-box, .fan-item, .modal, .banner > *, .pj > * {
 .modal input { background: var(--field); }
 .modal .btn:not(.pri) { background: var(--field); }
 .modal .btn:not(.pri):active { filter: brightness(0.9); }
-/* The theme's and the text size's labels keep one width each, so repeated
-   taps stay on them. */
-.fan-item[data-act="theme"] .fan-label { min-width: 8.5em; text-align: center; }
-.fan-item[data-act="text-size"] .fan-label { min-width: 11.2em; text-align: center; }
 .sheet textarea:focus, .modal input:focus { background: var(--sheet-bg);
   box-shadow: 0 0 0 1px var(--hair), 0 0 0 4px rgb(10 132 255 / 0.15); }
 .pill { position: relative; }
@@ -273,6 +269,10 @@ body > header, .sheet > *, .toast-box, .fan-item, .modal, .banner > *, .pj > * {
 .pin.mini > svg { width: 18px; height: 18px; }
 .pin.mini::before { display: none; }
 .pin.mini .bdg { right: -3px; top: -3px; width: 11px; height: 11px; box-shadow: 0 0 0 1.5px var(--sheet-bg); }
+/* Settings' Pins: Large: the list's pins a quarter bigger too. */
+.pins-big .sbody .pin.mini, .pins-big .set-preview .pin.mini { width: 35px; min-width: 35px;
+  height: 35px; font-size: 16px; }
+.pins-big .sbody .pin.mini > svg, .pins-big .set-preview .pin.mini > svg { width: 22px; height: 22px; }
 /* The agent in a comment's chat. */
 .ai { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 28px;
   height: 28px; margin-top: 1px; border-radius: 50%; color: #fff; background: #5e5ce6; }
@@ -296,6 +296,39 @@ body.commenting #image-box img { cursor: crosshair; }
   border-radius: 16px; box-shadow: 0 12px 40px rgb(0 0 0 / 0.18); }
 .modal h2 { margin: 0 0 10px; font-size: 16px; font-weight: 600; }
 .modal .buttons { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+/* The menu's Share and Settings (menu-dialogs.js): in the middle. */
+.scrim.mid { align-items: flex-start; padding-top: 12px; overflow-y: auto; }
+/* In the middle, or from the top and scrolled when taller than the window. */
+.scrim.mid > .modal { margin: auto 0; }
+.modal:focus { outline: none; }
+.linkrow { display: flex; gap: 8px; align-items: center; }
+.linkrow input { flex: 1; min-width: 0; text-overflow: ellipsis; }
+.linkrow .btn { height: 40px; }
+.set-note { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+.set-note:empty { display: none; }
+.modal .btn.row { display: flex; justify-content: flex-start; gap: 10px; width: 100%; height: 44px;
+  margin-top: 10px; text-decoration: none; }
+.share-device hr { margin: 12px 0 0; border: 0; border-top: 1px solid var(--hair); }
+.set-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 10px; }
+.set-label { flex: 0 0 4.4em; color: var(--muted); font-size: 14px; line-height: 1.2; }
+.set-row > input { flex: 1 1 10em; width: auto; min-width: 0; }
+/* A choice: radio buttons drawn as segments, each 44 px to a finger. */
+.set-seg { flex: 1 1 9em; display: flex; min-width: 0; padding: 2px; background: var(--field);
+  border-radius: 10px; }
+.set-seg label { position: relative; flex: 1; min-width: 0; }
+.set-seg label::before { content: ""; position: absolute; inset: -2px 0; }
+.modal .set-seg input { position: absolute; width: 1px; height: 1px; min-height: 0; margin: 0;
+  padding: 0; opacity: 0; pointer-events: none; }
+.set-seg span { display: flex; align-items: center; justify-content: center; height: 40px;
+  padding: 0 3px; border-radius: 8px; font-size: 14px; text-align: center; cursor: pointer;
+  line-height: 1.1; }
+.set-seg input:checked + span { background: var(--seg-on, var(--raised)); font-weight: 600;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.18); }
+.set-seg input:focus-visible + span { outline: 2px solid var(--send); outline-offset: -2px; }
+.set-preview { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.set-preview .pin.mini { margin-top: 0; }
+.set-preview svg { fill: currentColor; }
+.set-preview .set-note { margin: 0 0 0 4px; }
 
 /* Brief messages, some with Undo: above the sheet, or at the bottom of the
    content beside the panel. */

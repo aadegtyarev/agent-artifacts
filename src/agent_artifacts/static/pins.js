@@ -200,9 +200,11 @@
       layer.append(b);
       drawn.set(key, b);
     }
-    // By the selected pin's size (36px), so a pin keeps its side when selected.
-    if (x + 36 > window.innerWidth) classes.push("left");
-    if (y < 36) classes.push("down");
+    // By the selected pin's size (36px, 45px large), so a pin keeps its
+    // side when selected.
+    const lit = layer.classList.contains("pins-big") ? 45 : 36;
+    if (x + lit > window.innerWidth) classes.push("left");
+    if (y < lit) classes.push("down");
     const className = ["pin", ...classes].filter(Boolean).join(" ");
     if (b.className !== className) b.className = className;
     if (b.dataset.label !== label || b.dataset.badge !== badgeName) {
@@ -391,6 +393,9 @@
           tone: Object.prototype.hasOwnProperty.call(TONES, p.tone) ? p.tone : "other",
           fill: FILLS.includes(p.fill) ? p.fill : "solid",
           badge: Object.prototype.hasOwnProperty.call(BADGES, p.badge) ? p.badge : "", lit: p.lit === true }));
+      // How they look (the viewer's Settings): large, and whose by shape too.
+      layer.classList.toggle("pins-big", m.big === true);
+      layer.classList.toggle("pins-shaped", m.shaped === true);
       schedule(true);
     } else if (m.type === "show" && isKey(m.key)) {
       const pin = pins.find((p) => p.key === m.key);

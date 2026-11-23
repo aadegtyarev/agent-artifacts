@@ -296,29 +296,49 @@ below), and three square buttons. The speech bubble switches comment mode
 (see [Comments](#comments)); while it is on, the bubble is blue and pressed.
 The next one enters **Full screen**. The "≡" button opens the menu: a column
 of square icon buttons with labels, fanned out downwards from it over the
-dimmed page:
+dimmed page. It holds only what the header does not, top to bottom:
 
-- **Download**, the same as `/a/{id}/download`;
-- **Copy link** to the viewer page, confirmed by a toast;
 - **Open separately**: the file at [the raw origin](#the-raw-origin) in a
   new tab, with `rel="noopener"`; shown only when `AA_RAW_URL` is set, and
-  not for archives.
-- **Theme: Auto / Light / Dark**: each tap moves on to the next and the
-  menu stays open; Auto follows the system. The choice is kept in this
-  browser (`localStorage` `aa-theme`) and applied before the page is drawn,
-  on every page of the service (the invite, key and message pages too). The
-  dark theme is a palette of its own for the viewer's header, menu, sheet,
-  dialog and toasts; the file itself is shown as its author made it.
-- **Text size: Normal / Large / Larger**: each tap moves on to the next and
-  the menu stays open; Large (+15 %) is the default, Larger is +30 %. Kept
-  in this browser (`localStorage` `agent-artifacts:text-size`, no value for
-  Large) and applied before the page is drawn, like the theme. It sizes the
-  service's own interface on the viewer and the project page: the header,
-  the menu, the comments sheet or panel (the panel widens with it), the
-  dialog, toasts and banners, the project's file list. The file and the pins
-  drawn on it keep their size.
+  not for archives;
+- **Share…**: a small dialog in the middle of the screen with the viewer
+  page's link in a read-only field and **Copy link** (the dialog says "Link
+  copied.", or where copying failed, to select the link and copy it), and
+  **Download file**, the same as `/a/{id}/download`. A place below a divider
+  is kept for opening the file on another device, empty for now;
+- **Settings…**: a small dialog with what this browser keeps for the
+  service, each applied at once:
+  - **Name**: the name comments are signed with, the one the name dialog
+    asks for (`localStorage` `agent-artifacts:name`). A change counts for the
+    next drafts; empty is "No name", as the dialog's button. Left untouched,
+    nothing is stored, so a browser never asked is still asked once;
+  - **Theme: Auto / Light / Dark**; Auto follows the system. Kept as
+    `aa-theme` and applied before the page is drawn, on every page of the
+    service (the invite, key and message pages too). The dark theme is a
+    palette of its own for the viewer's header, menu, sheet, dialogs and
+    toasts; the file itself is shown as its author made it;
+  - **Text: Normal / Large / Larger**: Large (+15 %) is the default, Larger
+    is +30 %. Kept as `agent-artifacts:text-size` (no value for Large) and
+    applied before the page is drawn, like the theme. It sizes the service's
+    own interface on the viewer and the project page: the header, the menu,
+    the comments sheet or panel (the panel widens with it), the dialogs,
+    toasts and banners, the project's file list. The file and the pins drawn
+    on it keep their size;
+  - **Pins: Normal / Large**: Large draws the pins on the content and in
+    the comments list a quarter bigger (`agent-artifacts:pin-size`
+    `large`);
+  - **Mine / others: Color / Color + shape**: Color + shape, the default,
+    shows whose a pin is by its shape too, see **Pins** under
+    [Comments](#comments) (`agent-artifacts:pin-shapes` `color` for colour
+    only).
 
-A tap outside the menu or Escape closes it.
+  It says "Saved in this browser."; **Done** closes it. Without storage
+  the settings last as long as the page.
+
+A tap outside the menu or Escape closes it. Both dialogs take the focus when
+they open (`role="dialog"`, `aria-modal`), keep Tab inside, and give it back
+to the menu's button when Done, Escape or a tap outside closes them; the
+choices are radio groups, each option 44 px high to a finger.
 
 **The project's file list.** In a file in a project, the header's second line
 is the project's title in blue with a small chevron, cut short when it does
@@ -338,9 +358,10 @@ Like the project page, the list is open to whoever has the file's link (see
 the Fullscreen API exists (not on an iPhone). A floating "≡" button takes the
 header's place: translucent, dragged anywhere, it snaps to the nearer side
 edge, and this browser keeps its position for every file. It opens the same
-menu, upwards or downwards where there is room, with **Exit full screen** and
-**Comment** added, and for a file in a project **Project files**, which opens
-the project's file list at the top of the screen. In comment mode the floating
+menu, upwards or downwards where there is room, with the header's buttons
+added on top in the header's order: **Comment**, **Exit full screen**, and for
+a file in a project **Project files**, which opens the project's file list at
+the top of the screen. In comment mode the floating
 button has a blue ring inside its edge and a small blue bubble in its corner,
 and **Comment** is a checked item reading **Commenting**; a tap turns the mode
 off. A long press (500 ms, still) on the floating button turns comment mode
@@ -366,8 +387,9 @@ its link; the page lists only its own files. Each line links to the file's
 viewer page and shows the type, the title, the size and when it was last
 updated ("2 h ago", then the date). An empty project says "No files yet". The
 header has the project's title, the number of files and "kept until
-deleted", **Full screen** and the "≡" menu with **Copy link**, **Theme** and
-**Text size**, as in the viewer (without comment mode). The page sends the
+deleted", **Full screen** and the "≡" menu with **Share…** (the project
+page's link to copy, no download) and **Settings…**, as in the viewer
+(without comment mode); in full screen **Exit full screen** comes first. The page sends the
 same headers as the viewer page (`noindex`, `no-referrer`, its own CSP with
 `frame-ancestors 'none'`). A missing or deleted project gives the `404`
 page.
@@ -563,8 +585,12 @@ with Undo in a toast and sends the `DELETE` when the Undo time ends, so Undo
 keeps the draft's id and order. **Finish review** and leaving the page send
 pending deletes first.
 
-**Pins.** One shape for every participant. Colour says whose: blue what was
-written from this browser, orange everything else. Fill says the stage: a
+**Pins.** Colour says whose: blue what was written from this browser,
+orange a colleague's, purple the agent's. With **Mine / others: Color +
+shape** in Settings (the default) the shape says it too: this browser's are
+the droplet, a colleague's have the opposite corner cut as well, the agent's
+are rounded squares; the sharp corner always marks the spot. With **Color**
+all are droplets. Fill says the stage: a
 draft is hollow with a dashed edge and a letter; someone else's comment
 awaiting approval is hollow with a solid edge; a comment in force is solid
 with its number; a rejected one is grey and stays. One badge at the corner
@@ -756,6 +782,8 @@ talk only through `postMessage`:
   anchor, whose (own or other's), the fill (draft, awaiting approval, in
   force, rejected), the badge (the agent's state, the person's unsent
   decision or an unseen reply) and whether it is lit, never texts or names;
+  with them, whether pins are large and shaped (Settings), each taken only
+  when it is `true`;
 - the script answers with the anchor of the tapped spot, or with the key of
   a tapped pin. While placing, it takes each click in the capture phase and
   cancels it, so a link or a button under it does not fire;

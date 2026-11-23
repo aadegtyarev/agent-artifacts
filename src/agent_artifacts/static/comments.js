@@ -808,6 +808,10 @@
     },
   });
 
+  // Settings (menu-dialogs.js) changed how pins look: drawn again, and the
+  // page's frame told.
+  document.addEventListener("aa:look", () => drawPins());
+
   // --- Navigation ------------------------------------------------------------------
   // ¼ is "as tall as its content, at most half".
   const DEFAULT_POS = { list: "h", item: "q", compose: "q", finish: "h" };
@@ -919,6 +923,13 @@
     closeName(nameInput.value);
   });
   $("name-skip").addEventListener("click", () => closeName(""));
+  // The name changed in Settings (menu-dialogs.js): for the next drafts.
+  document.addEventListener("aa:name", (e) => {
+    const value = e.detail && e.detail.name;
+    if (typeof value !== "string") return;
+    name = cleanName(value);
+    storage.set(NAME_KEY, name);
+  });
   dialog.addEventListener("click", (e) => { if (e.target === dialog) closeName(null); });
 
   function setMode(on, then = null) {

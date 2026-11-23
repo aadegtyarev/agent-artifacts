@@ -55,6 +55,7 @@ def test_upload_view_download(env):
     assert page.status_code == 200
     assert f'src="/a/{art["id"]}/raw"' in page.text and "sandbox=" in page.text
     assert f'href="/a/{art["id"]}/download"' in page.text and "Copy link" in page.text
+    assert "Download file" in page.text
 
     raw = client.get(f"/a/{art['id']}/raw")
     assert raw.content == b"<h1 id=x>Hi</h1>" + PINS_SCRIPT
@@ -520,7 +521,7 @@ def test_viewer_page_has_every_element_its_scripts_use(env):
     static = Path(__file__).parent.parent / "src" / "agent_artifacts" / "static"
     used = {
         name: set(re.findall(r'\$\("([\w-]+)"\)', (static / name).read_text()))
-        for name in ("comments.js", "viewer.js")
+        for name in ("comments.js", "viewer.js", "menu-dialogs.js")
     }
     # The data the comments script reads from the sheet.
     datasets = set(re.findall(r"sheet\.dataset\.(\w+)", (static / "comments.js").read_text()))
@@ -557,12 +558,9 @@ def test_viewer_page_has_every_element_its_scripts_use(env):
         # The theme is applied in <head>, before the body is drawn.
         head = page.split("</head>", 1)[0]
         assert re.search(r'<script src="/static/theme\.js\?v=\w+"></script>', head)
-        assert 'data-act="theme"' in page
-        # Next to Theme, Text size; theme.js applies it in <head> too.
-        assert re.search(r'data-act="theme".*?</button>\s*<button[^>]*data-act="text-size"', page, re.S)
-        assert ">Text size: Large<" in page
         assert re.search(r'role="menuitemcheckbox"[^>]*data-act="comment"', page)
-        assert f'data-url="https://art.example.org/a/{art["id"]}"' in page
+        link = f"https://art.example.org/a/{art['id']}"
+        assert f'id="share-link" type="text" readonly value="{link}"' in page
 
 
 def test_quota_per_agent_and_me(tmp_path):
