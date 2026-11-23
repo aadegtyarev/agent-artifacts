@@ -37,7 +37,7 @@
 /* The dot: --dot comes from site.css in the viewer and from pins.js in a
    page. */
 .bdg { position: absolute; right: -4px; top: -4px; width: 14px; height: 14px; border-radius: 50%;
-  background: var(--dot, #cf291d); box-shadow: 0 0 0 2px #fff; pointer-events: none; }
+  background: var(--dot, #de4f44); box-shadow: 0 0 0 2px #fff; pointer-events: none; }
 /* Near the right or top edge the pin turns to stay in sight. */
 .pin.left { transform: translate(-100%, -100%); border-radius: 50% 50% 4px 50%; }
 .pin.down { transform: none; border-radius: 4px 50% 50% 50%; }

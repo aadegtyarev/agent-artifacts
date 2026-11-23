@@ -73,7 +73,7 @@ open separately (where the service offers it), **Share…** (copy the link,
 download the file) and **Settings…**: the name your comments are signed
 with, the theme (auto, light or dark), the text size, larger pins,
 whether whose a pin is shows by its shape as well as its colour, and the
-colour of the dot that marks what needs you (red, blue or green).
+colour of the dot that marks what needs you (red, green or yellow).
 
 If the agent says there is no key, it did not run step 2 or 3: paste the text
 again.

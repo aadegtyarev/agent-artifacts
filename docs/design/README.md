@@ -19,6 +19,8 @@ look or the words updates them in the same pull request. Behaviour is in
 - One primary button per view: dark in the light theme, blue in the dark.
 - Every action gets feedback: a pressed state, a toast, a status line or a
   changed row.
+- Colours of one set share brightness and saturation (OKLCH L and C)
+  wherever that makes sense ([tokens.md](tokens.md#one-set-one-brightness)).
 
 ## Files
 

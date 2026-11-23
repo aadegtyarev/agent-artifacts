@@ -38,10 +38,10 @@ file's own canvas. Letters, marks and the ring are white.
 
 ## Badge
 
-One only: the dot, `--dot` (red `#cf291d` unless Settings → Dot chose blue
-or green, see [tokens.md](tokens.md#the-dot)), 14 px with a 2 px white ring
+One only: the dot, `--dot` (red `#de4f44` unless Settings → Dot chose green
+or yellow, see [tokens.md](tokens.md#the-dot)), 14 px with a 2 px white ring
 at the top right (11 px in the list). In a page the viewer sends the colour's
-name with the pins (`dot`); pins.js takes only `red`, `blue` or `green`,
+name with the pins (`dot`); pins.js takes only `red`, `green` or `yellow`,
 anything else is red, and sets it on its layer even when red, so the page's
 own `--dot` never reaches the badge. It shows for the agent's question (`asked`) and for a
 colleague's reply not yet seen in this browser.

@@ -4,7 +4,7 @@
 // ("normal", "large", "larger"; none is large), and the pins: large ones
 // (class pins-big), and whose told by shape as well as colour (class
 // pins-shaped, the default; "color" turns it off), and the colour of the
-// notification dot (data-dot "blue" or "green"; none is red).
+// notification dot (data-dot "green" or "yellow"; none is red).
 (() => {
   const root = document.documentElement;
   root.dataset.textSize = "large";
@@ -17,7 +17,7 @@
     if (localStorage.getItem("agent-artifacts:pin-size") === "large") root.classList.add("pins-big");
     shapes = localStorage.getItem("agent-artifacts:pin-shapes") !== "color";
     const d = localStorage.getItem("agent-artifacts:dot");
-    if (d === "blue" || d === "green") root.dataset.dot = d;
+    if (d === "green" || d === "yellow") root.dataset.dot = d;
   } catch {
     // No storage: the system's theme, large text, normal pins with shapes,
     // a red dot.

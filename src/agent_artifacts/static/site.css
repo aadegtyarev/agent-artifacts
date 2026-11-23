@@ -5,7 +5,7 @@
    and orange is only ever a fill. Everything else is mixed from these. */
 :root { color-scheme: light dark;
   --blue: #0a64d8; --blue-fill: #0a64d8; --orange: #e8890c; --purple: #5e5ce6;
-  --purple-fill: #5e5ce6; --green: #1e7d36; --green-fill: #1e7d36; --red: #cf291d;
+  --purple-fill: #5e5ce6; --green: #1e7d36; --red: #cf291d;
   --red-fill: #cf291d;
   --bg: #fff; --surface: #f2f2f7; --surface-2: #e5e5ea; --line: #d1d1d6;
   --faint: #8e8e93; --muted: #6e6e73; --fg: #1c1c1e; --on-color: #fff;
@@ -21,10 +21,12 @@
   /* Roles that take a different token in the dark. */
   --raised: var(--bg); --field: var(--surface); --pri: var(--fg); --seg-on: var(--bg);
   /* The notification dot, everywhere one shows: Settings' Dot (theme.js
-     sets data-dot on <html>; none is red). */
-  --dot: var(--red-fill); }
-:root[data-dot="blue"] { --dot: var(--blue-fill); }
-:root[data-dot="green"] { --dot: var(--green-fill); }
+     sets data-dot on <html>; none is red). The same in both themes: it
+     sits on a pin's white ring, as bright and saturated as the pins. */
+  --dot-red: #de4f44; --dot-green: #23a136; --dot-yellow: #b39600;
+  --dot: var(--dot-red); }
+:root[data-dot="green"] { --dot: var(--dot-green); }
+:root[data-dot="yellow"] { --dot: var(--dot-yellow); }
 /* The dark theme is a palette of its own, not an inversion: dark grey
    surfaces, raised ones lighter, light text, lighter hues. It follows the
    system unless the menu's Theme picked light or dark ([data-theme]). */
