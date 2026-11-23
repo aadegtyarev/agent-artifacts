@@ -386,7 +386,7 @@ def test_text_is_shown_with_fixed_colours_and_escaped(env):
     assert raw.headers["content-type"].startswith("text/html")
     assert raw.headers["content-security-policy"] == SANDBOX_CSP
     assert "<pre>&lt;b&gt;привет&lt;/b&gt;</pre>" in raw.text
-    assert "color:#1d1d1f;background:#fff" in raw.text
+    assert "color:#1c1c1e;background:#fff" in raw.text
 
 
 def test_image_opens_full_size_on_its_own(env):

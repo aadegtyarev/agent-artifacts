@@ -1,8 +1,45 @@
-:root { color-scheme: light dark; --fg: #1d1d1f; --bg: #fff; --muted: #6e6e73;
-  --line: #d2d2d7; --btn: #f2f2f4; --accent: #0a64d8; --error: #c4281c; }
+/* The palette (docs/design/tokens.md): one colour, one meaning. Blue is you
+   and actions, orange a colleague, purple the agent, green done, red what
+   needs you or went wrong; the rest is greys. A hue as text has its own
+   value per theme; under white text or a white mark it is the *-fill one,
+   and orange is only ever a fill. Everything else is mixed from these. */
+:root { color-scheme: light dark;
+  --blue: #0a64d8; --blue-fill: #0a64d8; --orange: #e8890c; --purple: #5e5ce6;
+  --purple-fill: #5e5ce6; --green: #1e7d36; --red: #cf291d; --red-fill: #cf291d;
+  --bg: #fff; --surface: #f2f2f7; --surface-2: #e5e5ea; --line: #d1d1d6;
+  --faint: #8e8e93; --muted: #6e6e73; --fg: #1c1c1e; --on-color: #fff;
+  --scrim: rgb(0 0 0 / 0.3); --shadow-1: rgb(0 0 0 / 0.12); --shadow-2: rgb(0 0 0 / 0.25);
+  --glass: rgb(28 28 30 / 0.55);
+  /* Mixed, not new colours; var() resolves per theme. */
+  --hair: color-mix(in srgb, var(--fg) 12%, transparent);
+  --tint: color-mix(in srgb, var(--blue) 8%, transparent);
+  --tint-2: color-mix(in srgb, var(--blue) 12%, transparent);
+  /* A literal, not a mix: the toast and labels on it must survive a
+     browser without color-mix(). It is --fg at 92%. */
+  --ink: rgb(28 28 30 / 0.92);
+  /* Roles that take a different token in the dark. */
+  --raised: var(--bg); --field: var(--surface); --pri: var(--fg); --seg-on: var(--bg); }
 /* The dark theme is a palette of its own, not an inversion: dark grey
-   surfaces, raised ones lighter, light text, a lighter blue. It follows the
+   surfaces, raised ones lighter, light text, lighter hues. It follows the
    system unless the menu's Theme picked light or dark ([data-theme]). */
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --blue: #4c9bff; --blue-fill: #0a6edc; --purple: #9d9bff;
+  --green: #30d158; --red: #ff6b5e;
+  --bg: #1c1c1e; --surface: #2c2c2e; --surface-2: #3a3a3c; --line: #48484a;
+  --faint: #636366; --muted: #a1a1a6; --fg: #f2f2f4;
+  --tint: color-mix(in srgb, var(--blue) 12%, transparent);
+  --tint-2: color-mix(in srgb, var(--blue) 18%, transparent);
+  --ink: var(--surface-2);
+  --raised: var(--surface); --field: var(--surface-2); --pri: var(--blue-fill); --seg-on: var(--faint); } }
+:root[data-theme="dark"] {
+  --blue: #4c9bff; --blue-fill: #0a6edc; --purple: #9d9bff;
+  --green: #30d158; --red: #ff6b5e;
+  --bg: #1c1c1e; --surface: #2c2c2e; --surface-2: #3a3a3c; --line: #48484a;
+  --faint: #636366; --muted: #a1a1a6; --fg: #f2f2f4;
+  --tint: color-mix(in srgb, var(--blue) 12%, transparent);
+  --tint-2: color-mix(in srgb, var(--blue) 18%, transparent);
+  --ink: var(--surface-2);
+  --raised: var(--surface); --field: var(--surface-2); --pri: var(--blue-fill); --seg-on: var(--faint); }
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
 * { box-sizing: border-box; }
@@ -21,7 +58,7 @@ h1 { font-size: 14px; }
 .actions { display: flex; gap: 12px; padding-right: 4px; }
 button { display: flex; align-items: center; justify-content: center; gap: 6px;
   min-width: 32px; height: 32px; padding: 0 6px; font: 13px system-ui, sans-serif;
-  color: inherit; background: var(--btn); border: 1px solid var(--line);
+  color: inherit; background: var(--surface); border: 1px solid var(--line);
   border-radius: 6px; cursor: pointer; }
 /* The line icons of icons.html and comments.js; a badge's mark is not one. */
 .icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2;
@@ -34,34 +71,6 @@ iframe { display: block; border: 0; width: 100%; height: 100%; background: #fff;
 .center { display: flex; align-items: center; justify-content: center;
   height: 100%; padding: 16px; text-align: center; }
 .center a { display: contents; }
-
-/* Comments. Calm and light: soft fills instead of outlines, hairline
-   separators, one dark primary button and blue for sending. Controls are
-   32px to the eye and 44px to a finger (an invisible ::before). Blue marks
-   what this browser wrote, orange everybody else's. */
-:root { --fill: #f2f2f7; --fill2: #e9e9ee; --hair: rgb(60 60 67 / 0.12);
-  --pri-bg: #1c1c1e; --pri-fg: #fff; --send: #0a84ff; --own: #0a84ff;
-  --other: #e8890c; --sheet-bg: #fff;
-  --draft-bg: rgb(10 132 255 / 0.08); --draft-bg2: rgb(10 132 255 / 0.16);
-  --raised: #fff; --field: #f2f2f7; --grip: #d1d1d6; --send-off: #c7c7cc;
-  --toast-bg: rgb(28 28 30 / 0.92); --fan-label: rgb(28 28 30 / 0.92); --fan-sq: #fff;
-  --float-open: #1c1c1e; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --fg: #f2f2f4; --bg: #1c1c1e;
-  --muted: #a1a1a6; --line: #3a3a3c; --btn: #2c2c2e; --accent: #4c9bff;
-  --error: #ff6b5e; --fill: #2c2c2e; --fill2: #3a3a3c;
-  --hair: rgb(235 235 245 / 0.16); --pri-bg: #0071e3; --pri-fg: #fff;
-  --sheet-bg: #1c1c1e; --raised: #2c2c2e; --field: #3a3a3c;
-  --grip: #545458; --send-off: #3a3a3c; --toast-bg: rgb(58 58 60 / 0.96);
-  --fan-label: #48484a; --fan-sq: #2c2c2e; --float-open: #3a3a3c;
-  --draft-bg: rgb(10 132 255 / 0.16); --draft-bg2: rgb(10 132 255 / 0.26); --seg-on: #636366; } }
-:root[data-theme="dark"] { --fg: #f2f2f4; --bg: #1c1c1e;
-  --muted: #a1a1a6; --line: #3a3a3c; --btn: #2c2c2e; --accent: #4c9bff;
-  --error: #ff6b5e; --fill: #2c2c2e; --fill2: #3a3a3c;
-  --hair: rgb(235 235 245 / 0.16); --pri-bg: #0071e3; --pri-fg: #fff;
-  --sheet-bg: #1c1c1e; --raised: #2c2c2e; --field: #3a3a3c;
-  --grip: #545458; --send-off: #3a3a3c; --toast-bg: rgb(58 58 60 / 0.96);
-  --fan-label: #48484a; --fan-sq: #2c2c2e; --float-open: #3a3a3c;
-  --draft-bg: rgb(10 132 255 / 0.16); --draft-bg2: rgb(10 132 255 / 0.26); --seg-on: #636366; }
 
 /* Text size (the menu's, theme.js): the service's own interface is zoomed,
    never the file nor the pins on it. Zoom goes on what the scripts neither
@@ -86,21 +95,25 @@ body > header, .sheet > *, .toast-box, .fan-item, .modal, .banner > *, .pj > * {
 .stage > main > iframe, .stage > main > .center { position: absolute;
   top: 0; left: 0; width: 100%; height: 100%; }
 
+/* Comments. Calm and light: soft fills instead of outlines, hairline
+   separators, one dark primary button and blue for sending. Controls are
+   32px to the eye and 44px to a finger (an invisible ::before). Blue marks
+   what this browser wrote, orange everybody else's. */
 .sheet, .modal, .toast { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Roboto,
   "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
 .sheet { flex: none; display: flex; flex-direction: column; min-height: 0;
-  background: var(--sheet-bg); font-size: 15px; line-height: 1.35;
+  background: var(--bg); font-size: 15px; line-height: 1.35;
   -webkit-tap-highlight-color: transparent; }
 .sheet .grip { flex: none; position: relative; height: 22px; display: flex;
   align-items: center; justify-content: center; touch-action: none; cursor: grab; }
 .sheet .grip::before { content: ""; width: 36px; height: 5px; border-radius: 3px;
-  background: var(--grip); }
+  background: var(--line); }
 /* A finger-sized grip upwards only: the row under it keeps its own taps. */
 .sheet .grip::after { content: ""; position: absolute; inset: -8px 0 0; }
 .sbody { flex: 1; min-height: 0; overflow: auto; padding: 0 14px 10px;
   overscroll-behavior: contain; }
 /* The sheet's title line is a grip too: it stays put and drags the sheet. */
-.sbody > .handle { position: sticky; top: 0; z-index: 1; background: var(--sheet-bg);
+.sbody > .handle { position: sticky; top: 0; z-index: 1; background: var(--bg);
   margin-left: -14px; margin-right: -14px; padding-left: 14px; padding-right: 14px;
   touch-action: none; cursor: grab; }
 .sbody > .ttl.handle { padding-bottom: 4px; }
@@ -131,19 +144,19 @@ body > header, .sheet > *, .toast-box, .fan-item, .modal, .banner > *, .pj > * {
 /* Buttons. */
 .sheet .btn, .modal .btn, .toast .btn { position: relative; flex: none; display: inline-flex;
   align-items: center; justify-content: center; gap: 4px; height: 32px; min-width: 32px;
-  padding: 0 12px; color: var(--fg); background: var(--fill); border: 0; border-radius: 10px;
+  padding: 0 12px; color: var(--fg); background: var(--surface); border: 0; border-radius: 10px;
   font-family: inherit; font-size: 14px; font-weight: 400; line-height: 1; white-space: nowrap; cursor: pointer;
   transition: background 0.15s, opacity 0.15s, transform 0.1s; }
 .sheet .btn::before, .modal .btn::before, .toast .btn::before { content: ""; position: absolute;
   inset: -7px -3px; }
-.sheet .btn:active, .modal .btn:active { transform: scale(0.97); background: var(--fill2); }
-.sheet .btn.pri, .modal .btn.pri { color: var(--pri-fg); background: var(--pri-bg); font-weight: 600; }
+.sheet .btn:active, .modal .btn:active { transform: scale(0.97); background: var(--surface-2); }
+.sheet .btn.pri, .modal .btn.pri { color: var(--on-color); background: var(--pri); font-weight: 600; }
 .sheet .btn:disabled { opacity: 0.35; cursor: default; transform: none; }
 .sheet .btn.big { height: 36px; padding: 0 16px; }
 .sheet .btn:focus-visible, .modal .btn:focus-visible, .toast .btn:focus-visible,
 .sheet .send:focus-visible, .sheet .chev:focus-visible, .sheet .it:focus-visible,
 .sheet .sec-fold:focus-visible {
-  outline: 2px solid var(--send); outline-offset: 2px; }
+  outline: 2px solid var(--blue); outline-offset: 2px; }
 
 /* Titles and the list: a row is a pin, the text on one line, its state. */
 .ttl { margin: 0 0 2px; font-size: 15px; font-weight: 600; }
@@ -154,34 +167,30 @@ body > header, .sheet > *, .toast-box, .fan-item, .modal, .banner > *, .pj > * {
   border: 0; border-radius: 10px; box-shadow: inset 0 -0.5px 0 var(--hair); text-align: left;
   font: inherit; cursor: pointer; transition: background 0.15s; }
 .it:last-of-type { box-shadow: none; }
-.it:active, .it.cur { background: var(--fill); }
+.it:active, .it.cur { background: var(--surface); }
 /* Drafts come first, on a light blue ground, their state in blue. */
-.it.dr { background: var(--draft-bg); box-shadow: none; }
+.it.dr { background: var(--tint); box-shadow: none; }
 .it.dr + .it.dr { margin-top: 2px; }
-.it.dr:active, .it.dr.cur { background: var(--draft-bg2); }
-.it.dr .st:not(.lost) { color: var(--accent); font-weight: 600; }
+.it.dr:active, .it.dr.cur { background: var(--tint-2); }
+.it.dr .st:not(.lost) { color: var(--blue); font-weight: 600; }
 .it.dr .st.away { color: var(--muted); font-weight: 400; }
 .it .tx { flex: 1; min-width: 0; font-size: 16px; line-height: 1.3; }
 .it .main { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .st { display: block; overflow: hidden; color: var(--muted); font-size: 14px;
   text-overflow: ellipsis; white-space: nowrap; }
-.st.lost { color: var(--error); }
+.st.lost { color: var(--red); }
 /* Under a comment: the person's decision, with a small Undo. */
 .dec { display: flex; align-items: baseline; gap: 6px; margin-top: 4px; color: var(--muted);
   font-size: 13px; }
-.dec b { font-weight: 600; color: var(--accent); white-space: nowrap; }
+.dec b { font-weight: 600; color: var(--blue); white-space: nowrap; }
 .dec b.no { color: var(--muted); }
-.dec .undo { position: relative; margin-left: auto; padding: 0; color: var(--accent);
+.dec .undo { position: relative; margin-left: auto; padding: 0; color: var(--blue);
   background: none; border: 0; font: inherit; cursor: pointer; }
 .dec .undo::before { content: ""; position: absolute; inset: -14px -10px; }
 .ref { display: block; margin-top: 3px; color: var(--muted); font-size: 13px; }
 .st b { font-weight: 600; }
-.st b.fin { color: #248a3d; } .st b.ask { color: #b25e00; } .st b.work { color: #5e5ce6; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .st b.fin { color: #30d158; }
-  :root:not([data-theme="light"]) .st b.ask { color: #ff9f0a; } :root:not([data-theme="light"]) .st b.work { color: #7d7aff; } }
-:root[data-theme="dark"] .st b.fin { color: #30d158; } :root[data-theme="dark"] .st b.ask { color: #ff9f0a; }
-:root[data-theme="dark"] .st b.work { color: #7d7aff; }
-.st b.mine { color: var(--accent); }
+.st b.fin { color: var(--green); } .st b.ask { color: var(--red); } .st b.work { color: var(--purple); }
+.st b.mine { color: var(--blue); }
 .addwhole { margin: 10px 0 2px; }
 .foot2 { display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
 .note { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
@@ -197,12 +206,12 @@ body > header, .sheet > *, .toast-box, .fan-item, .modal, .banner > *, .pj > * {
 .chev { position: relative; flex: none; width: 32px; min-width: 32px; height: 32px; padding: 0;
   color: var(--muted); background: none; border: 0; border-radius: 16px; cursor: pointer; }
 .chev::before { content: ""; position: absolute; inset: -6px; }
-.chev:active { background: var(--fill); }
+.chev:active { background: var(--surface); }
 .msg { display: flex; gap: 9px; align-items: flex-start; margin: 1px -8px; padding: 7px 8px;
   border-radius: 12px; }
-.msg.unsent { background: var(--draft-bg); }
-.msg.unsent .btn:not(.pri) { background: var(--sheet-bg); }
-.msg.unsent .btn:not(.pri):active { background: var(--fill2); }
+.msg.unsent { background: var(--tint); }
+.msg.unsent .btn:not(.pri) { background: var(--bg); }
+.msg.unsent .btn:not(.pri):active { background: var(--surface-2); }
 .msg .bd { flex: 1; min-width: 0; font-size: 16px; line-height: 1.32; overflow-wrap: anywhere; }
 .msg .text { white-space: pre-wrap; }
 .msg .who { font-size: 14px; font-weight: 600; }
@@ -212,45 +221,45 @@ body > header, .sheet > *, .toast-box, .fan-item, .modal, .banner > *, .pj > * {
 
 /* Fields: a pill with the send arrow inside, like a messenger's. */
 .sheet textarea, .modal input { display: block; width: 100%; min-height: 40px;
-  padding: 10px 12px; color: var(--fg); background: var(--fill); border: 0; border-radius: 10px;
+  padding: 10px 12px; color: var(--fg); background: var(--surface); border: 0; border-radius: 10px;
   font-family: inherit; font-size: 16px; line-height: 20px; resize: none; outline: none;
   overflow-wrap: anywhere; transition: box-shadow 0.15s, background 0.15s; }
-.sheet textarea::placeholder, .modal input::placeholder { color: #8e8e93; }
+.sheet textarea::placeholder, .modal input::placeholder { color: var(--muted); }
 .modal input { background: var(--field); }
 .modal .btn:not(.pri) { background: var(--field); }
 .modal .btn:not(.pri):active { filter: brightness(0.9); }
-.sheet textarea:focus, .modal input:focus { background: var(--sheet-bg);
-  box-shadow: 0 0 0 1px var(--hair), 0 0 0 4px rgb(10 132 255 / 0.15); }
+.sheet textarea:focus, .modal input:focus { background: var(--bg);
+  box-shadow: 0 0 0 1px var(--hair), 0 0 0 4px var(--tint-2); }
 .pill { position: relative; }
 .pill textarea { max-height: 120px; padding: 10px 44px 10px 14px; border-radius: 20px; }
 .send { position: absolute; right: 5px; bottom: 5px; width: 30px; min-width: 30px; height: 30px;
-  padding: 0; color: #fff; background: var(--send); border: 0; border-radius: 50%; cursor: pointer;
+  padding: 0; color: var(--on-color); background: var(--blue-fill); border: 0; border-radius: 50%; cursor: pointer;
   transition: background 0.15s, transform 0.15s; }
 .send::before { content: ""; position: absolute; inset: -7px; }
-.send:disabled { background: var(--send-off); cursor: default; }
+.send:disabled { background: var(--line); cursor: default; }
 .send:not(:disabled):active { transform: scale(0.92); }
 .send svg { stroke-width: 2.4; }
 .general { margin: 10px 0; }
 /* Finish review: to the agent or only published, a segmented control. */
 .towhom { margin: 0 0 12px; }
 /* Accept all that waits: a pill in a title line, a link by a section. */
-.all-pill { position: relative; flex: none; height: 28px; padding: 0 11px; color: var(--accent);
-  background: var(--draft-bg); border: 0; border-radius: 14px; font: inherit; font-size: 13px;
+.all-pill { position: relative; flex: none; height: 28px; padding: 0 11px; color: var(--blue);
+  background: var(--tint); border: 0; border-radius: 14px; font: inherit; font-size: 13px;
   font-weight: 600; cursor: pointer; }
 .all-pill::before { content: ""; position: absolute; inset: -8px -4px; }
-.all-pill:active { background: var(--draft-bg2); }
+.all-pill:active { background: var(--tint-2); }
 .sec-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.all-link { position: relative; padding: 0; color: var(--accent); background: none; border: 0;
+.all-link { position: relative; padding: 0; color: var(--blue); background: none; border: 0;
   font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
 .all-link::before { content: ""; position: absolute; inset: -12px -8px; }
-.seg { display: flex; padding: 2px; background: var(--fill); border-radius: 10px; }
+.seg { display: flex; padding: 2px; background: var(--surface); border-radius: 10px; }
 .seg .opt { position: relative; flex: 1; min-height: 36px; padding: 0 8px; color: var(--fg);
   background: none; border: 0; border-radius: 8px; font: inherit; font-size: 15px;
   cursor: pointer; transition: background 0.15s; }
 .seg .opt::before { content: ""; position: absolute; inset: -4px 0; }
-.seg .opt[aria-checked="true"] { background: var(--seg-on, var(--raised)); font-weight: 600;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12), 0 0 0 0.5px var(--hair); }
-.seg .opt:focus-visible { outline: 2px solid var(--send); outline-offset: 1px; }
+.seg .opt[aria-checked="true"] { background: var(--seg-on); font-weight: 600;
+  box-shadow: 0 1px 3px var(--shadow-1), 0 0 0 0.5px var(--hair); }
+.seg .opt:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 .towhom .note { margin-top: 6px; }
 .sfoot .towhom { margin: 0 0 10px; }
 /* By the buttons the labels say enough: no note under the choice. */
@@ -262,18 +271,18 @@ body > header, .sheet > *, .toast-box, .fan-item, .modal, .banner > *, .pj > * {
 /* In a list row, the item's pin, or ≡ for the whole file. */
 .pin.mini { position: relative; flex: none; width: 28px; min-width: 28px; height: 28px;
   margin-top: 1px; transform: none; font-family: inherit; font-size: 13px; cursor: inherit;
-  box-shadow: 0 0 0 1.5px #fff, 0 1px 3px rgb(0 0 0 / 0.2); }
+  box-shadow: 0 0 0 1.5px var(--on-color), 0 1px 3px var(--shadow-2); }
 .pin.mini.line { border-width: 1.5px; box-shadow: none; }
 .pin.mini > svg { width: 18px; height: 18px; }
 .pin.mini::before { display: none; }
-.pin.mini .bdg { right: -3px; top: -3px; width: 11px; height: 11px; box-shadow: 0 0 0 1.5px var(--sheet-bg); }
+.pin.mini .bdg { right: -3px; top: -3px; width: 11px; height: 11px; box-shadow: 0 0 0 1.5px var(--bg); }
 /* Settings' Pins: Large: the list's pins a quarter bigger too. */
 .pins-big .sbody .pin.mini, .pins-big .set-preview .pin.mini { width: 35px; min-width: 35px;
   height: 35px; font-size: 16px; }
 .pins-big .sbody .pin.mini > svg, .pins-big .set-preview .pin.mini > svg { width: 22px; height: 22px; }
 /* The agent in a comment's chat. */
 .ai { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 28px;
-  height: 28px; margin-top: 1px; border-radius: 50%; color: #fff; background: #5e5ce6; }
+  height: 28px; margin-top: 1px; border-radius: 50%; color: var(--on-color); background: var(--purple-fill); }
 .ai svg { width: 19px; height: 19px; display: block; }
 /* The layer over an image: the size of the image, pins placed in %,
    clipped so a pin at an edge never widens the page. */
@@ -288,10 +297,10 @@ body.commenting #image-box img { cursor: crosshair; }
 
 /* The name, asked once, near the top so a keyboard leaves it in sight. */
 .scrim { position: fixed; z-index: 70; inset: 0; display: flex; align-items: flex-start;
-  justify-content: center; padding: 60px 12px 12px; background: rgb(0 0 0 / 0.25);
+  justify-content: center; padding: 60px 12px 12px; background: var(--scrim);
   animation: fan-fade 0.18s ease; }
 .modal { width: 100%; max-width: 380px; padding: 16px; background: var(--raised);
-  border-radius: 16px; box-shadow: 0 12px 40px rgb(0 0 0 / 0.18); }
+  border-radius: 16px; box-shadow: 0 12px 40px var(--shadow-1); }
 .modal h2 { margin: 0 0 10px; font-size: 16px; font-weight: 600; }
 .modal .buttons { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
 /* The menu's Share and Settings (menu-dialogs.js): in the middle. */
@@ -320,9 +329,9 @@ body.commenting #image-box img { cursor: crosshair; }
 .set-seg span { display: flex; align-items: center; justify-content: center; height: 40px;
   padding: 0 3px; border-radius: 8px; font-size: 14px; text-align: center; cursor: pointer;
   line-height: 1.1; }
-.set-seg input:checked + span { background: var(--seg-on, var(--raised)); font-weight: 600;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.18); }
-.set-seg input:focus-visible + span { outline: 2px solid var(--send); outline-offset: -2px; }
+.set-seg input:checked + span { background: var(--seg-on); font-weight: 600;
+  box-shadow: 0 1px 3px var(--shadow-1); }
+.set-seg input:focus-visible + span { outline: 2px solid var(--blue); outline-offset: -2px; }
 .set-preview { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
 .set-preview .pin.mini { margin-top: 0; }
 .set-preview svg { fill: currentColor; }
@@ -337,23 +346,24 @@ body.commenting #image-box img { cursor: crosshair; }
   transition: opacity 0.2s, transform 0.2s, visibility 0.2s; }
 .toast.on { visibility: visible; opacity: 1; transform: none; transition: opacity 0.2s, transform 0.2s; }
 .toast-box { display: flex; gap: 8px; align-items: center; max-width: 440px; min-height: 36px;
-  padding: 0 4px 0 16px; color: #fff; background: var(--toast-bg); border-radius: 20px;
-  box-shadow: 0 4px 16px rgb(0 0 0 / 0.18); font-size: 13px; -webkit-backdrop-filter: blur(20px);
+  padding: 0 4px 0 16px; color: var(--on-color); background: var(--ink); border-radius: 20px;
+  box-shadow: 0 4px 16px var(--shadow-1); font-size: 13px; -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px); }
-.toast.error .toast-box { background: var(--error); }
+.toast.error .toast-box { background: var(--red-fill); }
 #toast-text { flex: 1; padding: 9px 0; overflow: hidden; display: -webkit-box;
   -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .toast-box:not(:has(#toast-undo:not([hidden]))) { padding-right: 16px; }
-.toast .btn { height: 30px; padding: 0 10px; color: #64b5ff; background: transparent;
+/* The toast is dark in both themes: its Undo is the blue lightened. */
+.toast .btn { height: 30px; padding: 0 10px; color: var(--on-color); color: color-mix(in srgb, var(--blue) 60%, var(--on-color)); background: transparent;
   font-weight: 600; pointer-events: auto; }
-.toast.error .btn { color: #fff; }
+.toast.error .btn { color: var(--on-color); }
 
 /* A phone or a narrow window: a bottom sheet under the content, which
    shrinks above it so a pin can always be shown over the sheet. */
 @media (max-width: 899px) {
   .stage { flex-direction: column; }
   .sheet { position: relative; z-index: 5; border-radius: 16px 16px 0 0;
-    box-shadow: 0 -6px 24px rgb(0 0 0 / 0.08), 0 -0.5px 0 var(--hair); }
+    box-shadow: 0 -6px 24px var(--shadow-1), 0 -0.5px 0 var(--hair); }
   .sheet[data-pos="strip"] { border-radius: 0; box-shadow: 0 -0.5px 0 var(--hair); }
   .sheet[data-pos="strip"] > :not(.strip), .sheet:not([data-pos="strip"]) > .strip { display: none; }
   /* The sheet's rounded top lies over the content's last pixels. */
@@ -383,20 +393,20 @@ body.full:not(.commenting) .sheet[data-pos="strip"] { display: none; }
 /* The header's square buttons: soft fills, no outlines; 32px to the eye,
    44px to a finger. On, the comment bubble is blue and pressed. */
 .actions .sq { position: relative; flex: none; width: 32px; min-width: 32px; height: 32px;
-  padding: 0; color: var(--fg); background: var(--btn); border: 0; border-radius: 9px;
+  padding: 0; color: var(--fg); background: var(--surface); border: 0; border-radius: 9px;
   -webkit-tap-highlight-color: transparent; transition: background 0.15s, box-shadow 0.15s; }
 .actions .sq::before { content: ""; position: absolute; inset: -6px; }
 .actions .sq svg { width: 19px; height: 19px; }
 .actions .sq:active { transform: scale(0.95); }
-.actions .sq[aria-pressed="true"] { color: #fff; background: #0a84ff;
-  box-shadow: inset 0 1.5px 3px rgb(0 0 0 / 0.28); }
+.actions .sq[aria-pressed="true"] { color: var(--on-color); background: var(--blue-fill);
+  box-shadow: inset 0 1.5px 3px var(--shadow-2); }
 .actions .sq[aria-expanded="true"]#menu-button { background: var(--line); }
-.actions .sq:focus-visible, .float-button:focus-visible { outline: 2px solid #0a84ff;
+.actions .sq:focus-visible, .float-button:focus-visible { outline: 2px solid var(--blue);
   outline-offset: 2px; }
 
 /* The menu: a column of square buttons with labels over the dimmed page. */
 .fan { position: fixed; z-index: 40; inset: 0; }
-.fan-scrim { position: absolute; inset: 0; background: rgb(0 0 0 / 0.28);
+.fan-scrim { position: absolute; inset: 0; background: var(--scrim);
   animation: fan-fade 0.18s ease; }
 .fan-list { position: fixed; display: flex; flex-direction: column; align-items: flex-end;
   gap: 10px; pointer-events: none; }
@@ -410,14 +420,14 @@ body.full:not(.commenting) .sheet[data-pos="strip"] { display: none; }
 .fan-item:nth-child(2) { animation-delay: 0.03s; }
 .fan-item:nth-child(3) { animation-delay: 0.06s; }
 .fan-item:nth-child(n+4) { animation-delay: 0.09s; }
-.fan-label { padding: 7px 11px; color: #fff; background: var(--fan-label);
-  border-radius: 10px; white-space: nowrap; box-shadow: 0 2px 10px rgb(0 0 0 / 0.18); }
+.fan-label { padding: 7px 11px; color: var(--on-color); background: var(--ink);
+  border-radius: 10px; white-space: nowrap; box-shadow: 0 2px 10px var(--shadow-1); }
 .fan-sq { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px;
-  color: var(--fg); background: var(--fan-sq); border-radius: 12px;
-  box-shadow: 0 2px 10px rgb(0 0 0 / 0.16); }
+  color: var(--fg); background: var(--raised); border-radius: 12px;
+  box-shadow: 0 2px 10px var(--shadow-1); }
 .fan-sq svg { width: 20px; height: 20px; }
-.fan-item:active .fan-sq { background: var(--btn); }
-.fan-item:focus-visible .fan-sq { outline: 2px solid #0a84ff; outline-offset: 2px; }
+.fan-item:active .fan-sq { background: var(--surface); }
+.fan-item:focus-visible .fan-sq { outline: 2px solid var(--blue); outline-offset: 2px; }
 body.full .fan-item[data-when="normal"], body:not(.full) .fan-item[data-when="full"] { display: none; }
 @keyframes fan-in { from { opacity: 0; transform: translateY(-8px) scale(0.96); } }
 @keyframes fan-fade { from { opacity: 0; } }
@@ -428,72 +438,67 @@ body.full .fan-item[data-when="normal"], body:not(.full) .fan-item[data-when="fu
    its menu is open. Dragged anywhere, it snaps to the nearer side edge. */
 body.full > header { display: none !important; }
 .float-button { position: fixed; z-index: 45; width: 44px; min-width: 44px; height: 44px;
-  padding: 0; color: #fff; background: rgb(28 28 30 / 0.55); border: 0; border-radius: 12px;
-  box-shadow: 0 2px 12px rgb(0 0 0 / 0.25); -webkit-backdrop-filter: blur(12px);
+  padding: 0; color: var(--on-color); background: var(--glass); border: 0; border-radius: 12px;
+  box-shadow: 0 2px 12px var(--shadow-2); -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px); touch-action: none; -webkit-tap-highlight-color: transparent;
   -webkit-user-select: none; user-select: none; transition: background 0.15s, transform 0.1s; }
 .float-button svg { width: 22px; height: 22px; }
 body.float-pressed iframe { pointer-events: none; }
-.float-button.dragging { transform: scale(1.08); background: rgb(28 28 30 / 0.75); }
-.float-button[aria-expanded="true"] { background: var(--float-open); }
+.float-button.dragging { transform: scale(1.08); background: var(--ink); }
+.float-button[aria-expanded="true"] { background: var(--ink); }
 /* In comment mode the floating button has a blue ring inside its edge and a
    small blue bubble in its corner. */
-body.commenting .float-button { box-shadow: inset 0 0 0 2px #0a84ff,
-  0 2px 12px rgb(0 0 0 / 0.25); }
+body.commenting .float-button { box-shadow: inset 0 0 0 2px var(--blue),
+  0 2px 12px var(--shadow-2); }
 .float-mode { display: none; position: absolute; top: 5px; right: 5px; line-height: 0; }
 /* A thin white edge keeps it apart from a grey or blue backdrop. */
-.float-button .float-mode svg { width: 12px; height: 12px; fill: #0a84ff; stroke: #fff;
+.float-button .float-mode svg { width: 12px; height: 12px; fill: var(--blue); stroke: var(--on-color);
   stroke-width: 2; overflow: visible; }
 body.commenting .float-mode { display: block; }
 .float-button { -webkit-touch-callout: none; }
 /* The menu's Comment is pressed in comment mode, like the header's bubble. */
 .fan-item .when-on, body.commenting .fan-item .when-off { display: none; }
 body.commenting .fan-item .when-on { display: inline; }
-body.commenting .fan-item[data-act="comment"] .fan-sq { color: #fff; background: #0a84ff;
-  box-shadow: inset 0 1.5px 3px rgb(0 0 0 / 0.28); }
+body.commenting .fan-item[data-act="comment"] .fan-sq { color: var(--on-color); background: var(--blue-fill);
+  box-shadow: inset 0 1.5px 3px var(--shadow-2); }
 .float-button > svg:last-child, .float-button[aria-expanded="true"] .menu-icon { display: none; }
 .float-button[aria-expanded="true"] > svg:last-child { display: block; }
 
 /* The project page: one row per file, a type square, the title, size and
    time; on the right the comment counters, the red pill of those waiting for
    this person and the agent's pin with the number it has. */
-.pj { flex: 1; min-height: 0; overflow: auto; background: var(--sheet-bg); padding: 6px 14px 24px; }
+.pj { flex: 1; min-height: 0; overflow: auto; background: var(--bg); padding: 6px 14px 24px; }
 .pj .sec { margin: 16px 0 4px; }
 .pj .empty { padding: 16px 0; }
 .pf { display: flex; gap: 14px; align-items: center; min-height: 60px; margin: 0 -6px;
   padding: 8px 6px; color: inherit; border-radius: 10px; text-decoration: none;
   box-shadow: inset 0 -0.5px 0 var(--hair); -webkit-tap-highlight-color: transparent; }
-.pf:active { background: var(--fill); }
-@media (hover: hover) { .pf:hover { background: var(--fill); } }
-.pf:focus-visible { outline: 2px solid var(--send); outline-offset: -2px; }
+.pf:active { background: var(--surface); }
+@media (hover: hover) { .pf:hover { background: var(--surface); } }
+.pf:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
 .ft { flex: none; display: flex; align-items: center; justify-content: center; width: 40px;
-  height: 40px; color: var(--muted); background: var(--fill); border-radius: 9px;
+  height: 40px; color: var(--muted); background: var(--surface); border-radius: 9px;
   font: 700 11px/1 system-ui, sans-serif; letter-spacing: 0.3px; }
 .pf .tx { flex: 1; min-width: 0; }
 .pf .main { display: block; overflow: hidden; font-size: 16px; line-height: 1.3;
   text-overflow: ellipsis; white-space: nowrap; }
 .cnts { flex: none; display: flex; gap: 6px; }
 .cnt { display: inline-flex; align-items: center; justify-content: center; gap: 3px;
-  min-width: 24px; height: 24px; padding: 0 7px; color: #fff; background: #ff3b30;
+  min-width: 24px; height: 24px; padding: 0 7px; color: var(--on-color); background: var(--red-fill);
   border-radius: 12px; font: 600 14px/1 system-ui, sans-serif; }
-.cnt.ag { gap: 6px; padding: 0; color: #5e5ce6; background: none; font-size: 15px; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .cnt.ag { color: #9d9bff; } }
-:root[data-theme="dark"] .cnt.ag { color: #9d9bff; }
+.cnt.ag { gap: 6px; padding: 0; color: var(--purple); background: none; font-size: 15px; }
 .cnt .pin.mini { position: relative; width: 26px; min-width: 26px; height: 26px; margin: 0;
   transform: none; }
 .cnt .pin.mini > svg { width: 14px; height: 14px; }
 
-.pf[aria-current="page"] { background: var(--fill); }
+.pf[aria-current="page"] { background: var(--surface); }
 
 /* A file in a project: the header's second line is the project's title, a
    button that drops the project's file list down under the header. Same
    height as the line it replaces; the title is cut, the chevron stays. */
-:root { --plink: var(--accent); }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --plink: #64b5ff; } }
-:root[data-theme="dark"] { --plink: #64b5ff; }
 .meta.pm { overflow: visible; }
 .pmeta { position: relative; display: flex; align-items: center; gap: 4px; max-width: 100%;
-  min-width: 0; height: auto; padding: 0; color: var(--plink); background: none; border: 0;
+  min-width: 0; height: auto; padding: 0; color: var(--blue); background: none; border: 0;
   border-radius: 0; font: 600 12px/1.4 system-ui, sans-serif;
   -webkit-tap-highlight-color: transparent; }
 /* 44px to a finger: over the file's title too. */
@@ -501,17 +506,17 @@ body.commenting .fan-item[data-act="comment"] .fan-sq { color: #fff; background:
 .pmeta .pt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pchev { flex: none; width: 10px; height: 10px; fill: none; stroke: currentColor;
   stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-.pmeta:focus-visible { outline: 2px solid #0a84ff; outline-offset: 2px; border-radius: 3px; }
+.pmeta:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 3px; }
 .drop { position: fixed; z-index: 46; left: 0; right: 0; bottom: 0; top: 0; }
-.drop-scrim { position: absolute; inset: 0; background: rgb(0 0 0 / 0.35);
+.drop-scrim { position: absolute; inset: 0; background: var(--scrim);
   animation: fan-fade 0.18s ease; }
 .drop-list { position: absolute; top: 0; left: 0; right: 0; max-height: 80%; padding: 2px 14px 10px;
-  border-radius: 0 0 16px 16px; box-shadow: 0 12px 30px rgb(0 0 0 / 0.35); outline: none; }
+  border-radius: 0 0 16px 16px; box-shadow: 0 12px 30px var(--shadow-2); outline: none; }
 .drop-list .sec { margin: 12px 0 2px; }
 @media (min-width: 641px) { .drop-list { right: auto; width: 440px; left: 8px; } }
 .drop-foot { display: flex; justify-content: flex-end; padding-top: 10px; }
 .drop-foot a { display: flex; align-items: center; min-height: 44px; padding: 0 4px;
-  color: var(--plink); font-size: 16px; font-weight: 600; text-decoration: none; }
+  color: var(--blue); font-size: 16px; font-weight: 600; text-decoration: none; }
 @media (prefers-reduced-motion: reduce) { .drop-scrim { animation: none; } }
 
 /* Invite pages. */
@@ -519,14 +524,14 @@ body.commenting .fan-item[data-act="comment"] .fan-sq { color: #fff; background:
 .join h1 { font-size: 20px; margin-bottom: 12px; white-space: normal; }
 .join button { height: auto; padding: 8px 16px; font-size: 15px; }
 .join textarea { width: 100%; height: 10em; word-break: break-all; color: inherit;
-  font: 13px ui-monospace, monospace; background: var(--btn);
+  font: 13px ui-monospace, monospace; background: var(--surface);
   border: 1px solid var(--line); border-radius: 6px; padding: 8px; resize: none; }
 
 /* A small chat in a comment: avatars of people and of the agent. */
 .av { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 28px;
-  height: 28px; margin-top: 1px; border-radius: 50%; color: #fff; background: var(--other);
+  height: 28px; margin-top: 1px; border-radius: 50%; color: var(--on-color); background: var(--orange);
   font-size: 13px; font-weight: 600; }
-.av.own { background: var(--own); }
+.av.own { background: var(--blue-fill); }
 .thread-acts { display: flex; gap: 8px; margin: 4px 0 2px 37px; }
 .sbody > .dec { margin: 0 0 4px 37px; }
 .sfoot .pill + .foot2 { margin-top: 10px; }
@@ -534,8 +539,8 @@ body.commenting .fan-item[data-act="comment"] .fan-sq { color: #fff; background:
    the header; in full screen, near the top. */
 .banner { position: fixed; z-index: 30; top: calc(15px + 45px * var(--ts)); left: 50%;
   display: flex; align-items: center; gap: 12px; max-width: calc(100% - 24px); padding: 8px 8px 8px 14px;
-  color: #fff; background: var(--toast-bg); border-radius: 14px; transform: translateX(-50%);
-  box-shadow: 0 6px 20px rgb(0 0 0 / 0.25); font-size: 14px; white-space: nowrap; }
-.banner .btn { position: relative; height: 32px; padding: 0 14px; color: #fff; background: #0a84ff;
+  color: var(--on-color); background: var(--ink); border-radius: 14px; transform: translateX(-50%);
+  box-shadow: 0 6px 20px var(--shadow-2); font-size: 14px; white-space: nowrap; }
+.banner .btn { position: relative; height: 32px; padding: 0 14px; color: var(--on-color); background: var(--blue-fill);
   border: 0; border-radius: 16px; font-weight: 600; }
 .banner .btn::before { content: ""; position: absolute; inset: -6px; }

@@ -19,10 +19,14 @@
   // The pins themselves are pin.css, the same as on an image in the viewer:
   // pages.py puts its text before this script as `pinCss`. Here only the
   // outline of the element under the pointer and of a new draft's element.
+  // No tokens reach a page: BLUE and TINT mirror --blue and --tint of
+  // tokens.md (light values, as pin.css does).
+  const BLUE = "#0a64d8";
+  const TINT = `color-mix(in srgb,${BLUE} 8%,transparent)`;
   root.innerHTML = "<style>" + pinCss
     + ".box{position:absolute;display:none;box-sizing:border-box;border-radius:4px;pointer-events:none}"
-    + ".hover{border:2px dashed #0a84ff;background:rgb(10 132 255/.07)}"
-    + ".fresh{border:1.5px dashed #0a84ff;background:rgb(10 132 255/.05)}"
+    + `.hover{border:2px dashed ${BLUE};background:${TINT}}`
+    + `.fresh{border:1.5px dashed ${BLUE};background:${TINT}}`
     + "</style><div class='box hover'></div><div class='box fresh'></div><div class='pins'></div>";
   const hoverBox = root.querySelector(".hover");
   const draftBox = root.querySelector(".fresh");

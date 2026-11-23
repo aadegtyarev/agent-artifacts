@@ -8,13 +8,17 @@ the content and the small pins in the comments list; the state comes from
 A pin has a tone (whose), a fill (how far along), a mark inside and at most
 one badge.
 
+Pins take the light values of the tokens in both themes ([tokens.md](tokens.md#where-tokens-do-not-reach)):
+they are drawn inside a page's sandbox, where no tokens reach, and sit on the
+file's own canvas. Letters, marks and the ring are white.
+
 ## Tone: whose
 
 | Tone | Class | Colour | Means |
 | --- | --- | --- | --- |
-| own | `.own` | `#0a84ff` blue | written from this browser, approved, or decided by this person in the current review |
-| colleague | (none) | `#e8890c` orange | someone else's |
-| agent | `.ag` | `#5e5ce6` purple | sent to the agent and not decided yet |
+| own | `.own` | `#0a64d8` blue (`--blue-fill`) | written from this browser, approved, or decided by this person in the current review |
+| colleague | (none) | `#e8890c` orange (`--orange`) | someone else's |
+| agent | `.ag` | `#5e5ce6` purple (`--purple-fill`) | sent to the agent and not decided yet |
 
 ## Fill: how far along
 
@@ -22,7 +26,7 @@ one badge.
 | --- | --- | --- | --- |
 | line | `.line` | white with a 2 px edge and mark in the tone | not done: a draft, awaiting approval, `waiting`/`working`/`asked`, or answered and replied to by this person |
 | solid | (none) | the tone, white mark, 2 px white ring | done: in force, `done`/`wrote` |
-| rejected | `.rej` | grey `#8e8e93` | rejected, or a reject decision in this review |
+| rejected | `.rej` | grey `#8e8e93` (`--faint`) | rejected, or a reject decision in this review |
 
 ## Mark inside
 
@@ -34,7 +38,7 @@ one badge.
 
 ## Badge
 
-One only: the red dot `#ff3b30`, 14 px with a 2 px white ring at the top right
+One only: the red dot `#cf291d` (`--red-fill`), 14 px with a 2 px white ring at the top right
 (11 px in the list). It shows for the agent's question (`asked`) and for a
 colleague's reply not yet seen in this browser.
 
@@ -61,7 +65,7 @@ colleague's reply not yet seen in this browser.
 | Pin | Normal | Large (Settings) |
 | --- | --- | --- |
 | on the content | 30 × 30, mark 20, letter 14/600 | 38 × 38, mark 25, letter 17 |
-| selected (`.lit`) | 36 × 36, mark 23, letter 16, 6 px grey halo | 45 × 45, mark 29, letter 20 |
+| selected (`.lit`) | 36 × 36, mark 23, letter 16, 6 px `--shadow-2` halo | 45 × 45, mark 29, letter 20 |
 | in the list | 28 × 28, mark 18, letter 13 | 35 × 35, mark 22, letter 16 |
 | on the project page counter | 26 × 26, mark 14 | — |
 
@@ -87,7 +91,7 @@ Settings shows a preview: A (own), B (colleague), the agent's star, with
 
 | Where | Look |
 | --- | --- |
-| Agent avatar in a comment's chat | 28 px purple circle, white star 19 |
-| Person avatar | 28 px circle, initial 13/600 white; orange (`--other`), blue for this browser (`--own`); "↩" on an unsent reply |
-| Project page | agent counter: line agent pin 26 px + number in purple (`#9d9bff` dark) |
-| Floating ≡ in comment mode | 12 px blue bubble at the top right |
+| Agent avatar in a comment's chat | 28 px circle in `--purple-fill`, white star 19 |
+| Person avatar | 28 px circle, initial 13/600 white; `--orange`, `--blue-fill` for this browser; "↩" on an unsent reply |
+| Project page | agent counter: line agent pin 26 px + number in `--purple` |
+| Floating ≡ in comment mode | 12 px `--blue` bubble at the top right |
