@@ -810,11 +810,12 @@ talk only through `postMessage`:
   (`blank`): not one that moved or was held, not a double click, one with a
   modifier key or one begun over selected text, not on a pin, and not on
   anything the page may act on (a link, a control, a canvas, an element
-  with a role other than `presentation` or `none`, an editable element, one
-  in the tab order, one with an `onclick` or a pointer cursor). A click the
-  page's own script cancelled or stopped before it reached the window is
-  not reported. The viewer takes it only outside comment mode and while it has
-  a user activation from that tap.
+  with a widget role such as `button`, `tab` or `textbox` but not a
+  landmark or structure role, an editable element, one in the tab order,
+  one with an `onclick` or a pointer cursor). A click the page's own script
+  cancelled or stopped before it reached the window is not reported. The
+  viewer takes it only outside comment mode and while it has a user
+  activation from that tap.
 
 A pin is placed by its selector; if that matches nothing, by the first
 element whose visible text starts with the anchor's `text`; if neither, it is

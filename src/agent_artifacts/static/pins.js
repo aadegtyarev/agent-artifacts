@@ -351,10 +351,14 @@
   // moved (a scroll or a drag) or was held, not a double click, one with a
   // modifier key or one begun over selected text (those handle text), and
   // not on anything the page may act on: a control, a canvas, an element
-  // with a role, an editable element, one in the tab order, one with an
-  // onclick or a pointer cursor. A click the page's own script cancelled
-  // is left alone; one it stopped never gets here.
-  const ACTS = `${INTERACTIVE},area[href],canvas,[role]:not([role=presentation]):not([role=none]),`
+  // with a widget role, an editable element, one in the tab order, one
+  // with an onclick or a pointer cursor. A click the page's own script
+  // cancelled is left alone; one it stopped never gets here.
+  // Widget roles only: a landmark or a structure role (main, region,
+  // article…) often wraps the whole page.
+  const WIDGETS = "button link tab menuitem menuitemcheckbox menuitemradio checkbox radio switch option"
+    + " slider spinbutton textbox searchbox combobox treeitem gridcell scrollbar";
+  const ACTS = `${INTERACTIVE},area[href],canvas,${WIDGETS.split(" ").map((r) => `[role=${r}]`).join(",")},`
     + "[contenteditable]:not([contenteditable=false]),[tabindex]:not([tabindex=\"-1\"]),[onclick],video,audio,iframe,embed,object";
   // A press is a tap when it lifts within 500 ms and 10 px of where it
   // began; told by the pointer's own events, as a click's point is not

@@ -918,7 +918,7 @@ def test_a_tap_on_an_empty_spot_lets_go_only_outside_comment_mode():
     pins = (static / "pins.js").read_text()
     assert "if (picking || !tapped || e.defaultPrevented" in pins
     assert "e.detail !== 1 || fromLayer(e)\n      || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;" in pins
-    assert "canvas,[role]:not([role=presentation]):not([role=none])" in pins
+    assert "area[href],canvas,${WIDGETS" in pins and '"button link tab menuitem' in pins
     assert 'x.matches(ACTS) || getComputedStyle(x).cursor === "pointer"' in pins
     assert "press.y) <= 10 && performance.now() - press.at <= 500;" in pins
     viewer_pins = (static / "comments-pins.js").read_text()
