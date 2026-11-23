@@ -43,7 +43,10 @@ const commentsPins = ({
         frameKeys.set(key, pin.key);
         return { ...pin, key };
       });
-      tell({ type: "pins", pins: shown });
+      // How they look, from Settings (menu-dialogs.js): large, and whose
+      // told by shape too.
+      const look = document.documentElement.classList;
+      tell({ type: "pins", pins: shown, big: look.contains("pins-big"), shaped: look.contains("pins-shaped") });
       return;
     }
     if (pinType !== "point") return;
@@ -80,12 +83,14 @@ const commentsPins = ({
       const x = parseFloat(pin.style.left) / 100;
       const y = parseFloat(pin.style.top) / 100;
       // By the selected pin's size, so a pin keeps its side when selected.
-      pin.classList.toggle("left", x * width + LIT > width && x * width >= LIT);
-      pin.classList.toggle("down", y * height < LIT);
+      const lit = document.documentElement.classList.contains("pins-big") ? LIT_BIG : LIT;
+      pin.classList.toggle("left", x * width + lit > width && x * width >= lit);
+      pin.classList.toggle("down", y * height < lit);
     }
   }
 
-  const LIT = 32;
+  const LIT = 36;
+  const LIT_BIG = 45; // large pins, Settings' Pins: Large
 
   // Brings a pin into the middle of what is visible of the content.
   function reveal(key) {

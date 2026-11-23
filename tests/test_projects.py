@@ -1,3 +1,4 @@
+import re
 import sqlite3
 import threading
 
@@ -371,9 +372,9 @@ def test_the_project_page_lists_files_by_section(env):
     assert order == sorted(order)
     assert page.count('class="sec"') == 2 and page.count('class="pf"') == 5
     assert f'href="/a/{ids["Main"]}"' in page and ">MD<" in page and "3 B · " in page
-    # The viewer's menu: Copy link, Theme and Text size.
-    assert 'data-act="theme"' in page and 'data-act="text-size"' in page
-    assert ">Text size: Large<" in page
+    # The viewer's menu: Share and Settings; no file to download.
+    assert 'data-act="share"' in page and 'data-act="settings"' in page
+    assert "Copy link" in page and "Download file" not in page and "/download" not in page
 
 
 def test_the_project_page_of_a_missing_or_deleted_project_is_404(env):
@@ -504,3 +505,64 @@ def test_a_file_outside_a_project_has_no_list(env):
     assert "files-button" not in page and "files-drop" not in page
     assert 'data-act="files"' not in page and "project.js" not in page
     assert "expires " in page
+
+
+def _menu(page):
+    """The ≡ menu's items top to bottom, as (act, shown only in full screen)."""
+    fan = re.search(r'<div id="fan-list".*?</div>', page, re.S).group(0)
+    return [
+        (act, when == "full")
+        for act, when in re.findall(r'data-act="([\w-]+)"(?: data-when="(\w+)")?', fan)
+    ]
+
+
+def test_the_menu_holds_what_the_header_does_not(tmp_path):
+    config = Config(
+        data_dir=tmp_path, public_url="https://art.example.org", raw_url="https://raw.example.net"
+    )
+    store = Store(tmp_path, max_total_bytes=10**6, ttl_seconds=TTL)
+    key = store.add_agent("alice")
+    with TestClient(create_app(config, store)) as client:
+        p = new_project(client, key).json()["id"]
+        plain = upload(client, key, "a.html", b"<p>x").json()["id"]
+        inside = upload(client, key, "b.html", b"<p>y", project=p).json()["id"]
+        pages = {
+            "plain": client.get(f"/a/{plain}").text,
+            "inside": client.get(f"/a/{inside}").text,
+            "project": client.get(f"/p/{p}").text,
+        }
+    # Normal: what the header lacks, and the project's files, whose title in
+    # the header is easy to miss. Full screen: the header's buttons in its
+    # order on top (bubble, full screen).
+    tail = [("separate", False), ("share", False), ("settings", False)]
+    assert _menu(pages["plain"]) == [("comment", True), ("exit", True), *tail]
+    assert _menu(pages["inside"]) == [("comment", True), ("exit", True), ("files", False), *tail]
+    assert _menu(pages["project"]) == [("exit", True), ("share", False), ("settings", False)]
+    for name, page in pages.items():
+        # The header keeps its buttons; the old items are gone from the menu.
+        assert 'id="full-button"' in page and 'id="menu-button"' in page
+        for gone in ("copy", "download", "theme", "text-size"):
+            assert f'data-act="{gone}"' not in page, (name, gone)
+        # Share: the page's link to copy, the file to download on a file only,
+        # and the empty place for another device's code.
+        share = re.search(r'<div id="share-dialog".*?</div>\s*</div>\s*</div>', page, re.S).group(0)
+        assert 'role="dialog" aria-modal="true" aria-labelledby="share-title"' in share
+        own = {"plain": f"a/{plain}", "inside": f"a/{inside}", "project": f"p/{p}"}[name]
+        link = re.search(r'id="share-link" type="text" readonly value="([^"]+)"', share).group(1)
+        assert link == f"https://art.example.org/{own}"
+        assert ">Copy link<" in share and 'id="share-device" class="share-device" hidden' in share
+        assert ("Download file" in share) is (name != "project")
+        # Settings: the name and four choices, each a radio group.
+        settings = re.search(r'<div id="settings-dialog".*?</form>', page, re.S).group(0)
+        assert 'role="dialog" aria-modal="true" aria-labelledby="settings-title"' in settings
+        assert 'id="settings-name"' in settings and 'placeholder="No name"' in settings
+        names = re.findall(r'role="radiogroup" aria-labelledby="set-(\w+)-label"', settings)
+        groups = {g: re.findall(rf'name="set-{g}" value="(\w+)"', settings) for g in names}
+        assert groups == {
+            "theme": ["auto", "light", "dark"],
+            "text": ["normal", "large", "larger"],
+            "pins": ["normal", "large"],
+            "shapes": ["color", "shape"],
+        }
+        assert "Saved in this browser." in settings
+        assert "/static/menu-dialogs.js" in page

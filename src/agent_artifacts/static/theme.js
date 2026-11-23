@@ -1,16 +1,22 @@
-// The theme chosen in this browser ("light" or "dark"; none follows the
-// system), and the size of the service's own text ("normal", "large",
-// "larger"; none is large). Loaded in <head>, before the page is drawn, so
-// neither ever flashes.
+// What Settings (menu-dialogs.js) keeps in this browser, applied in <head>
+// before the page is drawn, so none of it ever flashes: the theme ("light"
+// or "dark"; none follows the system), the size of the service's own text
+// ("normal", "large", "larger"; none is large), and the pins: large ones
+// (class pins-big), and whose told by shape as well as colour (class
+// pins-shaped, the default; "color" turns it off).
 (() => {
   const root = document.documentElement;
   root.dataset.textSize = "large";
+  let shapes = true;
   try {
     const t = localStorage.getItem("aa-theme");
     if (t === "light" || t === "dark") root.dataset.theme = t;
     const s = localStorage.getItem("agent-artifacts:text-size");
     if (s === "normal" || s === "larger") root.dataset.textSize = s;
+    if (localStorage.getItem("agent-artifacts:pin-size") === "large") root.classList.add("pins-big");
+    shapes = localStorage.getItem("agent-artifacts:pin-shapes") !== "color";
   } catch {
-    // No storage: the system's theme, large text.
+    // No storage: the system's theme, large text, normal pins with shapes.
   }
+  root.classList.toggle("pins-shaped", shapes);
 })();
