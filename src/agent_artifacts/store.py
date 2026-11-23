@@ -992,9 +992,14 @@ class Store:
                 "WHERE d.artifact_id = c.artifact_id AND d.author_key_hash = :key "
                 "AND d.of_n = c.n AND d.kind != 'comment' "
                 "AND d.updated_at > :stale))), 0), "
-                # Without a key, = NULL matches no draft.
+                # Without a key, = NULL matches no draft. A reply or decision
+                # about a comment since closed is not counted: the viewer
+                # hides it, so it is nothing to finish.
                 "(SELECT COUNT(*) FROM drafts d WHERE d.artifact_id = a.id "
-                "AND d.author_key_hash = :key AND d.updated_at > :stale) "
+                "AND d.author_key_hash = :key AND d.updated_at > :stale "
+                "AND (d.kind = 'comment' OR EXISTS (SELECT 1 FROM comments c2 "
+                "WHERE c2.artifact_id = d.artifact_id AND c2.n = d.of_n "
+                "AND c2.resolved_at IS NULL))) "
                 "FROM artifacts a LEFT JOIN comments c "
                 "ON c.artifact_id = a.id AND c.resolved_at IS NULL "
                 "WHERE a.project = :p AND (a.expires_at IS NULL OR a.expires_at > :now) "

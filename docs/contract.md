@@ -416,8 +416,8 @@ fails, there are none.
 `asked`), or a comment awaits approval (not this key's, no agent state,
 neither approved nor rejected); less those this key already decided or
 replied to in a draft. `drafts`: this key's drafts on the file that are not
-stale (changed in the last 7 days, see [Comments](#comments)), of any
-kind. Without a key (or with a malformed one) the counts are as for a
+stale (changed in the last 7 days, see [Comments](#comments)): new
+comments, and replies and decisions about comments still open. Without a key (or with a malformed one) the counts are as for a
 stranger, and `drafts` is 0. It is a read: the reverse proxy counts it with viewing, not with
 comment writes. Its answers are JSON with `Cache-Control: no-store`.
 

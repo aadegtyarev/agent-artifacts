@@ -486,6 +486,22 @@ def test_the_summary_counts_this_keys_live_drafts(env):
     assert drafts()[a] == 1
     later(store, 3600)
     assert drafts()[a] == 0
+    # A reply drafted to a comment the agent then closes is not counted:
+    # the viewer hides it, so there is nothing to finish.
+    client.post(f"/a/{c}/drafts", headers={"X-Author-Key": MARIA}, json={"text": "c"})
+    client.post(f"/a/{c}/review", headers={"X-Author-Key": MARIA}, json=review)
+    n = client.get(f"/a/{c}/comments").json()[-1]["n"]
+    r = client.post(
+        f"/a/{c}/drafts",
+        headers={"X-Author-Key": ME},
+        json={"author": "x", "kind": "reply", "of": n, "text": "ok"},
+    )
+    assert r.status_code == 201, r.text
+    assert drafts()[c] == 1
+    client.patch(
+        f"/api/v1/artifacts/{c}/comments/{n}", headers=auth(keys["alice"]), json={"resolved": True}
+    )
+    assert drafts()[c] == 0
     # A deleted file is not in the summary, nor are its drafts.
     draft(b, ME)
     assert client.delete(f"/api/v1/artifacts/{b}", headers=auth(keys["alice"])).status_code == 204
