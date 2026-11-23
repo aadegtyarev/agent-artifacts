@@ -99,6 +99,7 @@ image", "“Send”", "on the page".
 | Finish review | "Finish review · N", "Not decided yet · N", "In this review" |
 | Dialogs | "Share", "Settings", "What should we call you?" |
 | Project page header | "3 files · kept until deleted" |
+| Project row's dot (title, `aria-label`) | "Needs you" (the file needs you) |
 | Viewer header | "12.3 KB · expires 2026-11-24 10:00 UTC" |
 
 ## Patterns

@@ -38,8 +38,12 @@ file's own canvas. Letters, marks and the ring are white.
 
 ## Badge
 
-One only: the red dot `#cf291d` (`--red-fill`), 14 px with a 2 px white ring at the top right
-(11 px in the list). It shows for the agent's question (`asked`) and for a
+One only: the dot, `--dot` (red `#cf291d` unless Settings → Dot chose blue
+or green, see [tokens.md](tokens.md#the-dot)), 14 px with a 2 px white ring
+at the top right (11 px in the list). In a page the viewer sends the colour's
+name with the pins (`dot`); pins.js takes only `red`, `blue` or `green`,
+anything else is red, and sets it on its layer even when red, so the page's
+own `--dot` never reaches the badge. It shows for the agent's question (`asked`) and for a
 colleague's reply not yet seen in this browser.
 
 ## States
@@ -51,14 +55,14 @@ colleague's reply not yet seen in this browser.
 | a colleague's, awaiting approval | colleague | line | letter | — |
 | mine or approved, no agent state | own | solid | letter | — |
 | `waiting`, `working` | agent | line | star | — |
-| `asked` | agent | line | star | red dot |
+| `asked` | agent | line | star | dot |
 | `done`, `wrote` | agent | solid | star | — |
 | answered, with my reply draft | own | line | star | — |
 | rejected | own if mine or approved, else colleague | rejected | letter | — |
 | my approve draft | own | solid | letter | — |
 | my reject draft | own if mine or approved, else colleague | rejected | letter | — |
 | my accept draft | own | solid | star | — |
-| any, with an unseen colleague reply | unchanged | unchanged | unchanged | red dot |
+| any, with an unseen colleague reply | unchanged | unchanged | unchanged | dot |
 
 ## Sizes
 
@@ -67,7 +71,6 @@ colleague's reply not yet seen in this browser.
 | on the content | 30 × 30, mark 20, letter 14/600 | 38 × 38, mark 25, letter 17 |
 | selected (`.lit`) | 36 × 36, mark 23, letter 16, 6 px `--shadow-2` halo | 45 × 45, mark 29, letter 20 |
 | in the list | 28 × 28, mark 18, letter 13 | 35 × 35, mark 22, letter 16 |
-| on the project page counter | 26 × 26, mark 14 | — |
 
 Every pin on the content has a 44 px+ touch area (`::before`, 10 px around).
 
@@ -84,8 +87,9 @@ The sharp 4 px corner marks the spot. Near the right or top edge a pin turns
 The setting is kept as `agent-artifacts:pin-shapes` (`color`, or no value for
 Color + shape) and applied as the class `pins-shaped` on `<html>`. Settings →
 Pins: Large is the class `pins-big` (`agent-artifacts:pin-size` `large`).
-Settings shows a preview: A (own), B (colleague), the agent's star, with
-"mine · a colleague's · the agent's".
+Settings shows a preview: A (own), B (colleague), the agent's star with
+the dot, so a change of Dot shows there too, with "mine · a colleague's ·
+the agent's".
 
 ## Elsewhere
 
@@ -93,5 +97,5 @@ Settings shows a preview: A (own), B (colleague), the agent's star, with
 | --- | --- |
 | Agent avatar in a comment's chat | 28 px circle in `--purple-fill`, white star 19 |
 | Person avatar | 28 px circle, initial 13/600 white; `--orange`, `--blue-fill` for this browser; "↩" on an unsent reply |
-| Project page | agent counter: line agent pin 26 px + number in `--purple` |
+| Project page | no pins: a row has only the dot, see [components.md](components.md#project-page) |
 | Floating ≡ in comment mode | 12 px `--blue` bubble at the top right |

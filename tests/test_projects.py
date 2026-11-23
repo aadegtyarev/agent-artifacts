@@ -428,15 +428,15 @@ def test_the_summary_counts_what_waits_for_this_person(env):
         assert r.status_code == 200 and r.headers["cache-control"] == "no-store"
         return r.json()
 
-    zero = {"waiting_you": 0, "with_agent": 0}
+    zero = {"waiting_you": 0, "drafts": 0}
     # 1 done, 2 working, 3 resolved; on b, Maria's two wait for me.
     assert summary(ME) == {
-        a: {"waiting_you": 1, "with_agent": 1},
-        b: {"waiting_you": 2, "with_agent": 0},
+        a: {"waiting_you": 1, "drafts": 0},
+        b: {"waiting_you": 2, "drafts": 0},
         quiet: zero,
     }
     # A stranger: my comment on b awaits approval too.
-    assert summary()[b] == {"waiting_you": 3, "with_agent": 0}
+    assert summary()[b] == {"waiting_you": 3, "drafts": 0}
     assert summary("bad")[b] == summary()[b]
     # Decided or replied to in my drafts: no longer waiting for me.
     client.post(f"/a/{a}/drafts", headers={"X-Author-Key": ME}, json={"kind": "accept", "of": 1})
@@ -449,6 +449,47 @@ def test_the_summary_counts_what_waits_for_this_person(env):
     assert (got[a]["waiting_you"], got[b]["waiting_you"]) == (0, 1)
     assert summary(MARIA)[a]["waiting_you"] == 1
     assert elsewhere not in got
+    # Those drafts are my review, not finished yet: they count for me only.
+    assert (got[a]["drafts"], got[b]["drafts"], got[quiet]["drafts"]) == (1, 1, 0)
+    assert summary(MARIA)[a]["drafts"] == 0 and summary()[a]["drafts"] == 0
+
+
+def test_the_summary_counts_this_keys_live_drafts(env):
+    client, store, keys = env
+    p = new_project(client, keys["alice"]).json()["id"]
+    a, b, c = (
+        upload(client, keys["alice"], f"{n}.md", b"# x", project=p).json()["id"] for n in "abc"
+    )
+
+    def draft(art, key, text="x"):
+        r = client.post(f"/a/{art}/drafts", headers={"X-Author-Key": key}, json={"text": text})
+        assert r.status_code == 201, r.text
+        return r.json()["id"]
+
+    def drafts(key=ME):
+        got = client.get(f"/p/{p}/summary", headers={"X-Author-Key": key}).json()
+        return {art: s["drafts"] for art, s in got.items()}
+
+    draft(a, ME)
+    later(store, 3600)
+    draft(a, ME)
+    draft(b, MARIA)  # a colleague's review: not mine
+    draft(c, ME)
+    assert drafts() == {a: 2, b: 0, c: 1}
+    assert drafts(MARIA) == {a: 0, b: 1, c: 0}
+    # Sent: no longer a draft.
+    review = {"author": "x", "agent": False}
+    client.post(f"/a/{c}/review", headers={"X-Author-Key": ME}, json=review)
+    assert drafts()[c] == 0
+    # Stale: the first draft on a is past its time, the second is not yet.
+    later(store, store_module.DRAFT_TTL_SECONDS - 1800)
+    assert drafts()[a] == 1
+    later(store, 3600)
+    assert drafts()[a] == 0
+    # A deleted file is not in the summary, nor are its drafts.
+    draft(b, ME)
+    assert client.delete(f"/api/v1/artifacts/{b}", headers=auth(keys["alice"])).status_code == 204
+    assert b not in drafts()
 
 
 def test_a_project_files_header_lists_the_project(env):
@@ -552,7 +593,7 @@ def test_the_menu_holds_what_the_header_does_not(tmp_path):
         assert link == f"https://art.example.org/{own}"
         assert ">Copy link<" in share and 'id="share-device" class="share-device" hidden' in share
         assert ("Download file" in share) is (name != "project")
-        # Settings: the name and four choices, each a radio group.
+        # Settings: the name and five choices, each a radio group.
         settings = re.search(r'<div id="settings-dialog".*?</form>', page, re.S).group(0)
         assert 'role="dialog" aria-modal="true" aria-labelledby="settings-title"' in settings
         assert 'id="settings-name"' in settings and 'placeholder="No name"' in settings
@@ -563,6 +604,7 @@ def test_the_menu_holds_what_the_header_does_not(tmp_path):
             "text": ["normal", "large", "larger"],
             "pins": ["normal", "large"],
             "shapes": ["color", "shape"],
+            "dot": ["red", "blue", "green"],
         }
         assert "Saved in this browser." in settings
         assert "/static/menu-dialogs.js" in page

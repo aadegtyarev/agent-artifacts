@@ -28,11 +28,29 @@ holds white at 4.5:1 or more. Orange is only ever a fill.
 | `--blue` | `#0a64d8` | `#4c9bff` | you and actions: links, link buttons, draft status, decision line, Accept all, project title and "Project page ›", focus outlines, comment-mode ring on the floating ≡ |
 | `--blue-fill` | `#0a64d8` | `#0a6edc` | blue under white: send arrow, primary button (dark theme), pressed comment bubble and menu Comment, banner Show, own avatar (the own pin keeps the light value, see below) |
 | `--orange` | `#e8890c` | — | a colleague: their pins and avatars |
-| `--purple` | `#5e5ce6` | `#9d9bff` | the agent as text: "Agent is working", agent counter on the project page |
+| `--purple` | `#5e5ce6` | `#9d9bff` | the agent as text: "Agent is working" |
 | `--purple-fill` | `#5e5ce6` | — | the agent under white: its avatar, its pins |
 | `--green` | `#1e7d36` | `#30d158` | done: "Done · check it", "Done, wrote" |
+| `--green-fill` | `#1e7d36` | — | green under white: the dot when Settings → Dot is Green (white on the dark `--green` is 2.0, too little for the pin's white ring) |
 | `--red` | `#cf291d` | `#ff6b5e` | needs you or went wrong, as text: "Asks you", "spot not found" |
-| `--red-fill` | `#cf291d` | — | red under white: error toast, "waiting for you" pill on the project page; the red dot |
+| `--red-fill` | `#cf291d` | — | red under white: error toast; the dot by default |
+
+### The dot
+
+One notification dot, one colour everywhere it shows: the badge of a pin (on
+the content, in a page, in the list, in the Settings preview) and the dot of
+a project row. Settings → Dot picks it; theme.js sets `data-dot` on `<html>`
+before the page is drawn (`localStorage` `agent-artifacts:dot`: `blue` or
+`green`; no value is Red).
+
+| Token | Red (default) | Blue (`data-dot="blue"`) | Green (`data-dot="green"`) |
+| --- | --- | --- | --- |
+| `--dot` | `--red-fill` | `--blue-fill` | `--green-fill` |
+
+Against the page: 5.3 / 5.5 / 5.2 on the light `--bg`, 3.2 / 3.5 / 3.3 on
+the dark one (non-text, 3:1 needed). On the dark `--surface` (the current
+file in the drop-down) it is 2.6 / 2.8 / 2.7, short of 3:1. In a page,
+where no tokens reach, pin-marks.js writes the light values out.
 
 ### Neutrals
 
@@ -78,7 +96,8 @@ theme.
 Pins (`pin.css`, also drawn inside a page's sandbox), the outline of a
 pointed element (`pins.js`) and the plain-text and Markdown pages get no
 tokens: they write the **light** values out (`--blue-fill`, `--orange`,
-`--purple-fill`, `--faint`, `--red-fill`, `--shadow-2`, `--fg`,
+`--purple-fill`, `--faint`, `--red-fill`, `--green-fill` (the dot, in
+pin-marks.js), `--shadow-2`, `--fg`,
 `--surface`, `--line`, `--muted`, `--tint`) in both themes, since they sit
 on the file's own white canvas. Change them together with the tokens.
 
@@ -111,9 +130,9 @@ Sizes in use, in CSS px before [text size](#text-size):
 | 16 | 400 | row text, message text, text fields, project row title, "Project page ›" (600) |
 | 16 | 600 | dialog title |
 | 15 | 600 | sheet title line (`.ttl`) |
-| 15 | 400 | segmented options in Finish review, menu labels at ≤640 px; agent counter (600) |
+| 15 | 400 | segmented options in Finish review, menu labels at ≤640 px |
 | 14 | bold | header title (h1) |
-| 14 | 600 | author in a message, "waiting for you" counter |
+| 14 | 600 | author in a message |
 | 14 | 400 | sheet buttons, strip line, status line, empty text, menu labels, Settings labels and segments, banner |
 | 13 | 600 | section titles (uppercase, letter-spacing 0.02em), Accept all pill and link |
 | 13 | 400 | plain buttons, strip hint, caption, decision line, "Approved by" line, time in a message, item navigation label, toast, notes; avatar letter and list pin letter (600) |
@@ -160,11 +179,11 @@ key and message pages. A browser without `zoom` keeps `--ts: 1`.
 
 | Radius | Where |
 | --- | --- |
-| 50% | send button, avatars, red dot |
+| 50% | send button, avatars, the dot |
 | 20 | toast, reply and comment field (pill) |
 | 16 | sheet top corners, dialogs, file list bottom corners, banner button, ‹ › and fold buttons |
 | 14 | banner, Accept all pill |
-| 12 | menu squares, floating ≡, message, project counter pill |
+| 12 | menu squares, floating ≡, message |
 | 10 | sheet buttons, rows, fields, segmented track, menu labels |
 | 9 | header square buttons, file type square |
 | 8 | selected segment |

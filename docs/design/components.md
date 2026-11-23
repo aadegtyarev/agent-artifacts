@@ -75,7 +75,7 @@ Inputs and plain buttons use `--field`. A tap on the scrim or Escape closes.
 | Dialog | Content | Buttons |
 | --- | --- | --- |
 | Share | read-only link field + **Copy link** (primary, h 40); status line ("Link copied." or the failure); **Download file** row button with icon, 44 high (viewer only) | Done (plain) |
-| Settings | rows: label (muted 14, 4.4em) + control. Name (text field, placeholder "No name"); Theme: Auto / Light / Dark; Text: Normal / Large / Larger; Pins: Normal / Large; Mine / others: Color / Color + shape; pin preview; "Saved in this browser." | Done (primary) |
+| Settings | rows: label (muted 14, 4.4em) + control. Name (text field, placeholder "No name"); Theme: Auto / Light / Dark; Text: Normal / Large / Larger; Pins: Normal / Large; Mine / others: Color / Color + shape; Dot: Red / Blue / Green (the colour of every notification dot, [tokens.md](tokens.md#the-dot)); pin preview, the agent's pin with the dot; "Saved in this browser." | Done (primary) |
 | Name | near the top (padding-top 60, so the keyboard leaves it in sight): "What should we call you?", field "Name" | No name (plain), Done (primary) |
 
 Settings controls apply at once; there is no Cancel.
@@ -241,11 +241,12 @@ The project's files in its order, on `--bg`, zoomed by text size.
 | Type square | 40 × 40, radius 9, `--surface`, muted 11/700 type ("HTML", "MD", "PNG"…) |
 | Title | 16, one line, ellipsis |
 | Detail | 14 muted, "12.3 KB · 2 h ago" |
-| Counters, right | red pill (h 24, radius 12, white 14/600 on `--red-fill`): waiting for this person, title "N waiting for you"; agent pin (line, 26) + number in `--purple` 15/600, title "N in progress" |
+| Dot, right | 12 × 12 circle in `--dot`, no number, no icon, vertically centred, 4 from the right edge of the row's padding; title and `aria-label` "Needs you" (`role="img"`, so the link reads "… Needs you"). Shown when a comment on the file waits for this person's decision or they have drafts there, their review not finished; nothing else on the row |
 | Current file (in the drop-down) | `--surface` (`aria-current="page"`) |
 
-Counters appear only after the summary call answers; none while it loads or
-when it fails.
+The dots appear only after the summary call answers; none while it loads or
+when it fails. 12 px zoomed by the default Large text is about the pin
+badge's 14.
 
 ## File list drop-down
 

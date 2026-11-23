@@ -43,10 +43,11 @@ const commentsPins = ({
         frameKeys.set(key, pin.key);
         return { ...pin, key };
       });
-      // How they look, from Settings (menu-dialogs.js): large, and whose
-      // told by shape too.
+      // How they look, from Settings (menu-dialogs.js): large, whose told
+      // by shape too, and the dot's colour.
       const look = document.documentElement.classList;
-      tell({ type: "pins", pins: shown, big: look.contains("pins-big"), shaped: look.contains("pins-shaped") });
+      tell({ type: "pins", pins: shown, big: look.contains("pins-big"), shaped: look.contains("pins-shaped"),
+        dot: document.documentElement.dataset.dot || "red" });
       return;
     }
     if (pinType !== "point") return;

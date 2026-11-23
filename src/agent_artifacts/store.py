@@ -971,12 +971,12 @@ class Store:
         return project, loose + [a for s in order for a in sections[s]]
 
     def project_summary(self, project_id: str, key_hash: str | None) -> dict | None:
-        """For the project page: per file of the project, the open comments
-        waiting for the person with ``key_hash`` (None: a stranger) and
-        those with the agent; None if there is no such project. Waiting: the
-        agent answered (done, wrote, asked), or a colleague's comment awaits
-        approval; less those this key already decided or replied to in a
-        live draft."""
+        """For the project page's dot: per file of the project, the open
+        comments waiting for the person with ``key_hash`` (None: a stranger)
+        and that key's live drafts, its unfinished review; None if there is
+        no such project. Waiting: the agent answered (done, wrote, asked), or
+        a colleague's comment awaits approval; less those this key already
+        decided or replied to in a live draft."""
         now = self.clock()
         args = {"p": project_id, "key": key_hash, "now": now, "stale": now - DRAFT_TTL_SECONDS}
         with self._conn() as db:
@@ -992,14 +992,16 @@ class Store:
                 "WHERE d.artifact_id = c.artifact_id AND d.author_key_hash = :key "
                 "AND d.of_n = c.n AND d.kind != 'comment' "
                 "AND d.updated_at > :stale))), 0), "
-                "COALESCE(SUM(c.agent IN ('waiting', 'working')), 0) "
+                # Without a key, = NULL matches no draft.
+                "(SELECT COUNT(*) FROM drafts d WHERE d.artifact_id = a.id "
+                "AND d.author_key_hash = :key AND d.updated_at > :stale) "
                 "FROM artifacts a LEFT JOIN comments c "
                 "ON c.artifact_id = a.id AND c.resolved_at IS NULL "
                 "WHERE a.project = :p AND (a.expires_at IS NULL OR a.expires_at > :now) "
                 "GROUP BY a.id",
                 args,
             ).fetchall()
-        return {r[0]: {"waiting_you": r[1], "with_agent": r[2]} for r in rows}
+        return {r[0]: {"waiting_you": r[1], "drafts": r[2]} for r in rows}
 
     def rename_project(self, project_id: str, *, owner: str, title: str) -> Project | None:
         with self._conn(write=True) as db:

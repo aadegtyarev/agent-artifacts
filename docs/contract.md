@@ -330,7 +330,13 @@ dimmed page. It holds only what the header does not, top to bottom:
   - **Mine / others: Color / Color + shape**: Color + shape, the default,
     shows whose a pin is by its shape too, see **Pins** under
     [Comments](#comments) (`agent-artifacts:pin-shapes` `color` for colour
-    only).
+    only);
+  - **Dot: Red / Blue / Green**: the colour of the notification dot,
+    one colour everywhere it shows: a pin's badge (on the content and in the
+    list) and a line's dot on the project page and in the project's file
+    list. Red is the default. Kept as `agent-artifacts:dot` (`blue` or
+    `green`, no value for Red) and applied before the page is drawn; the
+    preview's agent pin carries the dot.
 
   It says "Saved in this browser."; **Done** closes it. Without storage
   the settings last as long as the page.
@@ -346,7 +352,7 @@ not fit while the chevron stays; "kept until deleted" is on the project page.
 It is a button (`aria-expanded`, `aria-controls`): a tap drops the project's
 file list down under the header over the dimmed page. It is the project
 page's list, rendered on the server with the page (sections, rows, the
-counters from `GET /p/{id}/summary` added after), with the current file
+dots from `GET /p/{id}/summary` added after), with the current file
 marked (`aria-current="page"`) and **Project page ›** at the bottom linking
 to `/p/{id}`. The focus moves into the list, on the current file. A tap on
 the dimmed page, Escape or the title again closes it, and the focus goes back
@@ -394,22 +400,25 @@ same headers as the viewer page (`noindex`, `no-referrer`, its own CSP with
 `frame-ancestors 'none'`). A missing or deleted project gives the `404`
 page.
 
-On the right of a line, the file's comment counters: a red pill with the
-number waiting for this person, and the agent's pin with the number the
-agent has. The page's script asks for them once it is loaded, sending this
-browser's author key (see [Comments](#comments)) if it has one; until the
-answer, or if the call fails, there are none.
+On the right of a line, one dot ("Needs you", no number) when something
+on that file needs this person: a comment waiting for their decision
+(`waiting_you`), or their own review not finished yet (`drafts`, their
+drafts there). Its colour is Settings → Dot. The page's script asks for
+them once it is loaded, sending this browser's author key (see
+[Comments](#comments)) if it has one; until the answer, or if the call
+fails, there are none.
 
 | Call | Answer |
 | --- | --- |
-| `GET /p/{id}/summary`, optional `X-Author-Key` | `200` + `{"<artifact id>": {"waiting_you": n, "with_agent": m}}` for every file of the project; `404 not_found` for a missing project |
+| `GET /p/{id}/summary`, optional `X-Author-Key` | `200` + `{"<artifact id>": {"waiting_you": n, "drafts": m}}` for every file of the project; `404 not_found` for a missing project |
 
-Only open comments count. `with_agent`: the agent's state is `waiting` or
-`working`. `waiting_you`: the agent answered (`done`, `wrote`, `asked`), or
-a comment awaits approval (not this key's, no agent state, neither approved
-nor rejected); less those this key already decided or replied to in a
-draft. Without a key (or with a malformed one) the counts are as for a
-stranger. It is a read: the reverse proxy counts it with viewing, not with
+`waiting_you` counts open comments: the agent answered (`done`, `wrote`,
+`asked`), or a comment awaits approval (not this key's, no agent state,
+neither approved nor rejected); less those this key already decided or
+replied to in a draft. `drafts`: this key's drafts on the file that are not
+stale (changed in the last 7 days, see [Comments](#comments)), of any
+kind. Without a key (or with a malformed one) the counts are as for a
+stranger, and `drafts` is 0. It is a read: the reverse proxy counts it with viewing, not with
 comment writes. Its answers are JSON with `Cache-Control: no-store`.
 
 ### Links between files
@@ -597,7 +606,8 @@ with its number; a rejected one is grey and stays. One badge at the corner
 says what is next: the agent's state (grey ✦ waiting, purple ✦ working,
 green ✦ done, green "?" done and wrote, orange "?" asked), or the person's
 decision not yet sent (blue ✓ approve or accept, blue ↩ reply, grey ✕
-reject), or a red dot for a colleague's reply not yet seen in this browser.
+reject), or a dot (red unless Settings → Dot chose blue or green) for a
+colleague's reply not yet seen in this browser.
 In the list drafts come first, on a light blue ground. A comment that is
 accepted or that the agent resolved leaves the content and the list. The selected
 item's pin is drawn bigger and is scrolled into view (see the sheet for what a
@@ -783,7 +793,9 @@ talk only through `postMessage`:
   force, rejected), the badge (the agent's state, the person's unsent
   decision or an unseen reply) and whether it is lit, never texts or names;
   with them, whether pins are large and shaped (Settings), each taken only
-  when it is `true`;
+  when it is `true`, and the dot's colour by name (Settings → Dot), taken
+  only when it is the string `red`, `blue` or `green` (anything else is red)
+  and set on the script's own layer, so the page's styles do not reach it;
 - the script answers with the anchor of the tapped spot, or with the key of
   a tapped pin. While placing, it takes each click in the capture phase and
   cancels it, so a link or a button under it does not fire;
@@ -811,7 +823,7 @@ text, which the person types into the viewer outside the sandbox. They can
 see where the person's drafts point and each comment's state and the
 person's unsent decisions, though not texts or names. The viewer keeps, per
 browser, how many replies of others it has shown for each comment
-(`localStorage` key `aa-seen:{id}`), for the red dot.
+(`localStorage` key `aa-seen:{id}`), for the dot.
 
 ## Security
 

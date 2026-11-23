@@ -1,9 +1,10 @@
 // A project's file list: the project page's, and the one that drops down
 // under the header of a file in the project (or from the floating menu's
-// Project files in full screen). The comment counters on its rows come from
+// Project files in full screen). A row's dot, "needs you", comes from
 // /p/{id}/summary, asked with this browser's author key (the one comments.js
-// keeps), so comments this person already decided or replied to are not
-// counted. Until it answers, and if it fails, the rows show none.
+// keeps): a comment waiting for this person's decision, or their own review
+// not finished yet (live drafts). Until it answers, and if it fails, the
+// rows show none.
 (() => {
   const list = document.getElementById("files");
   if (!list) return;
@@ -26,56 +27,39 @@
     });
   }
 
-  // --- The counters -----------------------------------------------------------
+  // --- The dots ---------------------------------------------------------------
   let key = null;
   try {
     key = localStorage.getItem("agent-artifacts:author-key");
-  } catch { /* no storage: counted as for a stranger */ }
+  } catch { /* no storage: asked as a stranger */ }
   const headers = /^[A-Za-z0-9_-]{22}$/.test(key || "") ? { "X-Author-Key": key } : {};
 
-  const count = (n) => (Number.isInteger(n) && n > 0 ? n : 0);
-  function counters(waiting, withAgent) {
-    const box = document.createElement("span");
-    box.className = "cnts";
-    if (waiting) {
-      const pill = document.createElement("span");
-      pill.className = "cnt";
-      pill.textContent = String(waiting);
-      pill.title = `${waiting} waiting for you`;
-      box.append(pill);
-    }
-    if (withAgent) {
-      const agent = document.createElement("span");
-      agent.className = "cnt ag";
-      agent.title = `${withAgent} in progress`;
-      const pin = document.createElement("span");
-      pin.className = "pin mini ag line";
-      pin.append(pinMarks.mark("star"));
-      agent.append(pin, String(withAgent));
-      box.append(agent);
-    }
-    return box;
+  const some = (n) => Number.isInteger(n) && n > 0;
+  function dot() {
+    const el = document.createElement("span");
+    el.className = "dot";
+    el.setAttribute("role", "img");
+    el.setAttribute("aria-label", "Needs you");
+    el.title = "Needs you";
+    return el;
   }
 
   // On the project page at once; under a file's header when first opened,
   // so a file's page does not ask for them on every load.
-  let counted = false;
-  function loadCounters() {
-    if (counted) return;
-    counted = true;
+  let asked = false;
+  function loadDots() {
+    if (asked) return;
+    asked = true;
     fetch(`/p/${list.dataset.project}/summary`, { headers, cache: "no-store" })
     .then((r) => (r.ok ? r.json() : null))
     .then((summary) => {
       if (!summary || typeof summary !== "object") return;
       for (const row of list.querySelectorAll(".pf[data-id]")) {
         const s = summary[row.dataset.id];
-        if (!s) continue;
-        const waiting = count(s.waiting_you);
-        const withAgent = count(s.with_agent);
-        if (waiting || withAgent) row.append(counters(waiting, withAgent));
+        if (s && (some(s.waiting_you) || some(s.drafts))) row.append(dot());
       }
     })
-    .catch(() => { /* no counters */ });
+    .catch(() => { /* no dots */ });
   }
 
   // --- The list under a file's header -----------------------------------------
@@ -84,7 +68,7 @@
   // scrim, Escape or the title again closes it; focus goes back to what
   // opened it. Its rows are plain links: the next file opens in this tab.
   if (!drop) {
-    loadCounters();
+    loadDots();
     return;
   }
   const button = document.getElementById("files-button");
@@ -99,7 +83,7 @@
 
   function open(from) {
     opener = from;
-    loadCounters();
+    loadDots();
     place();
     drop.hidden = false;
     button.setAttribute("aria-expanded", "true");
