@@ -546,7 +546,7 @@ def test_viewer_page_has_every_element_its_scripts_use(env):
     }
     # The data the comments script reads from the sheet.
     datasets = set(re.findall(r"sheet\.dataset\.(\w+)", (static / "comments.js").read_text()))
-    assert datasets == {"artifact", "kind", "pin", "pos"}
+    assert datasets == {"artifact", "count", "kind", "pin", "pos"}
     # Shown only for images, or only for pages in a frame.
     image_only = {"image", "image-box", "image-link", "pins"}
     for filename, data, missing in (
@@ -840,7 +840,7 @@ def test_viewer_page_has_comments_on_every_type(env):
         page = client.get(f"/a/{art['id']}")
         assert 'id="comments-toggle"' in page.text and 'aria-pressed="false"' in page.text, name
         # The strip counts the comments the viewer shows: open ones.
-        assert '<span id="strip-text" class="strip-text">Comments · 1</span>' in page.text, name
+        assert '<span id="strip-text" class="strip-text">1 comment</span>' in page.text, name
         assert not re.search(r'<aside id="comments"[^>]* hidden>', page.text), name
         assert 'id="name-dialog" class="scrim" hidden' in page.text, name
         assert 'id="toast" class="toast" role="status"' in page.text, name

@@ -316,7 +316,9 @@ below), and three square buttons. The speech bubble switches comment mode
 (see [Comments](#comments)); while it is on, the bubble is blue and pressed.
 The next one enters **Full screen**. The "≡" button opens the menu: a column
 of square icon buttons with labels, fanned out downwards from it over the
-dimmed page. It holds only what the header does not, top to bottom:
+dimmed page. It holds, top to bottom:
+
+- **Project files** on a file in a project, opening its file list;
 
 - **Open separately**: the file at [the raw origin](#the-raw-origin) in a
   new tab, with `rel="noopener"`; shown only when `AA_RAW_URL` is set, and
@@ -388,8 +390,8 @@ the Fullscreen API exists (not on an iPhone). A floating "≡" button takes the
 header's place: translucent, dragged anywhere, it snaps to the nearer side
 edge, and this browser keeps its position for every file. It opens the same
 menu, upwards or downwards where there is room, with the header's buttons
-added on top in the header's order: **Comment**, **Exit full screen**, and for
-a file in a project **Project files**, which opens the project's file list at
+added on top in the header's order: **Comment** and **Exit full screen**.
+**Project files** remains available for a project file and opens its list at
 the top of the screen. In comment mode the floating
 button has a blue ring inside its edge and a small blue bubble in its corner,
 and **Comment** is a checked item reading **Commenting**; a tap turns the mode
@@ -592,7 +594,7 @@ bottom sheet with three heights:
 
 | Height | Holds |
 | --- | --- |
-| strip | one line of words, no icons, its parts joined by " · " and zeros left out: "**N need you**" in bold (the agent's answers, `done`, `wrote` or `asked`, and colleagues' comments awaiting approval, without a decision or reply draft of the person's), "N drafts" (the comments the person's drafts add, decide or reply to) with **Finish review** at the right, and, without drafts, "N in progress" (`waiting` and `working`); with none of these, "N comments"; "›" at the end on a phone when there is no **Finish review**; in comment mode the hint "tap a spot to add" beside "N comments" (alone when there are no comments) |
+| strip | one line of words, no icons, its parts joined by " · " and zeros left out: "**N need you**" in bold (the agent's answers, `done`, `wrote` or `asked`, and colleagues' comments awaiting approval, without a decision or reply draft of the person's), "N drafts" (the comments the person's drafts add, decide or reply to) with **Finish review** at the right, and, without drafts, "N in progress" (`waiting` and `working`); with none of these, "N comments"; "›" at the end on a phone when there is no **Finish review**; in comment mode, when a spot can be pinned and the strip has a plain comment count, the hint "Tap a spot to comment." beside the count (alone when there are no comments) |
 | middle | list, selected item, compose or Finish review, as tall as its content up to 60% of the visible viewport and the available stage; the body scrolls when capped |
 | full | the same view filling the stage; an item also shows Others below its thread |
 
@@ -645,7 +647,7 @@ person's yes with no decision or reply of theirs: the agent's answers
 the person's new drafts and one row for each comment
 decided or replied to, a field for a general comment
 (optional, about the whole file), a choice **Send to agent** (the default) or
-**Only publish** with a line saying what follows, and **Back** / **Finish
+**Only publish**, and **Back** / **Finish
 review**. Sent to the agent,
 the comments wait for the agent (`agent` `waiting`): it takes them to work on; only
 published, they are there for everyone to read. Finishing
@@ -663,8 +665,10 @@ highlighting does not. This does not change decisions or project summary counts.
 **Live.** While the page is in sight the viewer fetches the comments again
 every few seconds, so the badges follow the agent without a reload. When
 `X-Artifact-Updated` changes, the file was replaced: a banner "The file was
-updated" offers **Show**, which reloads the page; the file is not swapped
-under the person's finger.
+updated" offers **Show**, which swaps the content in place when the file kind
+is unchanged; if the viewer or replaceable content is unavailable or the kind
+changed, it reloads the page. On a network error the old content and banner
+remain. The file is not swapped under the person's finger.
 
 **Failures.** Comment errors use local, action-specific copy, never the server
 message. Network failures, rate limits, known limits and missing objects include
@@ -678,17 +682,18 @@ orange a colleague's, purple the agent's. With **Mine / others: Color +
 shape** in Settings (the default) the shape says it too: this browser's are
 the droplet, a colleague's have the opposite corner cut as well, the agent's
 are rounded squares; the sharp corner always marks the spot. With **Color**
-all are droplets. Fill says the stage: a
-draft is hollow with a dashed edge and a letter; someone else's comment
-awaiting approval is hollow with a solid edge; a comment in force is solid
-with its number; a rejected one is grey and stays. One badge at the corner
-says what is next: the agent's state (grey ✦ waiting, purple ✦ working,
-green ✦ done, green "?" done and wrote, orange "?" asked), or the person's
-decision not yet sent (blue ✓ approve or accept, blue ↩ reply, grey ✕
-reject), or a dot (red unless Settings → Dot chose green or yellow) for a
-colleague's reply not yet seen in this browser.
-In the list drafts come first, on a light blue ground. A comment that is
-accepted or that the agent resolved leaves the content and the list. The selected
+all are droplets. Fill says the stage: drafts and work not yet done have a white fill and a
+solid coloured edge; done or approved comments have a solid fill, and rejected
+ones are grey. A person's pin shows their initial; agent work shows a star.
+The only badge is a dot (red unless Settings → Dot chose green or yellow) for
+an agent question or an unseen colleague reply. See [Pins](design/pins.md)
+for the complete state mapping.
+
+In the list Need you precedes Your drafts; drafts have a light blue ground.
+Accepting finished agent work or an agent resolution removes the comment from
+the viewer. Approving a colleague's comment leaves it visible; rejected
+comments appear in Closed unless a personal draft moves them to Your drafts.
+The selected
 item's pin is drawn bigger and is scrolled into view (see the sheet for what a
 tap on a pin does).
 Pins and cards show texts and names as text nodes, never as HTML.

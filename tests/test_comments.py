@@ -1593,3 +1593,14 @@ def test_batch_accepts_provisional_author_and_resolves_it_on_publish(env):
     assert review(client, art, {"author": "Alice"}, OTHER).status_code == 201
     comments = client.get(f"/a/{art}/comments", headers=as_author(OTHER)).json()
     assert comments[0]["approved_by"] == "Alice"
+
+@pytest.mark.parametrize("count", [1, 2])
+def test_viewer_initial_strip_count(env, count):
+    client, _, keys = env
+    art = upload(client, keys["alice"], "a.html", b"<p>Hi</p>")
+    for i in range(count):
+        comment(client, art["id"], text=f"comment {i}")
+    html = client.get(f'/a/{art["id"]}').text
+    label = f'{count} comment' + ('s' if count != 1 else '')
+    assert f'data-count="{count}"' in html
+    assert f'id="strip-text" class="strip-text">{label}</span>' in html
