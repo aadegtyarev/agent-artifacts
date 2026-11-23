@@ -188,6 +188,13 @@ What works with people reviewing on a phone:
     version never happened, delete its file and renumber the rest — do not
     leave a gap in the story. Watch the project, not one file: the person
     comments on any of them.
+11. **Keep the watcher alive.** `wait` returns after the first event and
+    exits — that is one answer, not a watch. Run it in a loop, so it
+    re-arms itself when the person writes the next comment:
+    `while true; do artifacts_cli.py wait <project> --every 10 --timeout 21600; sleep 3; done`
+    A watcher that exited is a person who writes a comment into the void.
+    Check that it still runs after every replace, every delete and every
+    new file: a stale watcher on a deleted file watches nothing.
 
 Reports, presentations and other documents are not interfaces: no design
 system by default. With the first one of a kind, offer once, in a line, to
