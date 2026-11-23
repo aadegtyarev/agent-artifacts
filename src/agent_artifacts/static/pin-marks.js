@@ -14,7 +14,7 @@ const pinMarks = (() => {
   // The dot's colour by its name in Settings' Dot; any other name is red.
   // The values of tokens.md (--dot-red, --dot-green, --dot-yellow):
   // inside a page no tokens reach.
-  const DOTS = { red: "#de4f44", green: "#23a136", yellow: "#b39600" };
+  const DOTS = { red: "#de4f44", green: "#23a136", yellow: "#c9a100" };
   const dotColour = (name) => DOTS[typeof name === "string"
     && Object.prototype.hasOwnProperty.call(DOTS, name) ? name : "red"];
 

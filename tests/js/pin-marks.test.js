@@ -12,7 +12,7 @@ const pinMarks = new Function(`${source}\nreturn pinMarks;`)();
 test("the dot's colour is one of the list, by its name", () => {
   assert.equal(pinMarks.dotColour("red"), "#de4f44");
   assert.equal(pinMarks.dotColour("green"), "#23a136");
-  assert.equal(pinMarks.dotColour("yellow"), "#b39600");
+  assert.equal(pinMarks.dotColour("yellow"), "#c9a100");
 });
 
 test("anything else from the viewer's message is red", () => {

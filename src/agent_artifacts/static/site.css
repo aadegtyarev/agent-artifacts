@@ -23,7 +23,7 @@
   /* The notification dot, everywhere one shows: Settings' Dot (theme.js
      sets data-dot on <html>; none is red). The same in both themes: it
      sits on a pin's white ring, as bright and saturated as the pins. */
-  --dot-red: #de4f44; --dot-green: #23a136; --dot-yellow: #b39600;
+  --dot-red: #de4f44; --dot-green: #23a136; --dot-yellow: #c9a100;
   --dot: var(--dot-red); }
 :root[data-dot="green"] { --dot: var(--dot-green); }
 :root[data-dot="yellow"] { --dot: var(--dot-yellow); }
@@ -283,7 +283,7 @@ body > header, .sheet > *, .toast-box, .fan-item, .modal, .banner > *, .pj > * {
 .pin.mini.line { border-width: 1.5px; box-shadow: none; }
 .pin.mini > svg { width: 18px; height: 18px; }
 .pin.mini::before { display: none; }
-.pin.mini .bdg { right: -3px; top: -3px; width: 11px; height: 11px; box-shadow: 0 0 0 1.5px var(--bg); }
+.pin.mini .bdg { right: -3px; top: -3px; width: 11px; height: 11px; box-shadow: 0 0 0 1.5px var(--on-color); }
 /* Settings' Pins: Large: the list's pins a quarter bigger too. */
 .pins-big .sbody .pin.mini, .pins-big .set-preview .pin.mini { width: 35px; min-width: 35px;
   height: 35px; font-size: 16px; }

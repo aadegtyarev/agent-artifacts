@@ -60,7 +60,7 @@ nearest L that keeps it.
 | | `--purple-fill` (agent) | `#5e5ce6` | 0.56 | 0.20 | 278 |
 | the dot | `--dot-red` | `#de4f44` | 0.62 | 0.18 | 28 |
 | | `--dot-green` | `#23a136` | 0.62 | 0.18 | 145 |
-| | `--dot-yellow` | `#b39600` | 0.68 | 0.14 | 95 |
+| | `--dot-yellow` | `#c9a100` | 0.73 | 0.15 | 91 |
 
 ### The dot
 
@@ -75,13 +75,13 @@ No blue: blue is you, and a blue dot would vanish on the own pin.
 | --- | --- | --- |
 | `--dot-red` | `#de4f44` | Red, the default |
 | `--dot-green` | `#23a136` | `data-dot="green"` |
-| `--dot-yellow` | `#b39600` | `data-dot="yellow"` |
+| `--dot-yellow` | `#c9a100` | `data-dot="yellow"` |
 | `--dot` | one of the three | `:root[data-dot]` |
 
 The same in both themes: the dot sits on a pin's white ring (2 px) and is
 matched to the pins, not to the text hues (see
 [One set, one brightness](#one-set-one-brightness)). Against the page,
-ring aside: 4.0 / 3.4 / 2.9 on the light `--bg`, 4.3 / 5.0 / 5.9 on the
+ring aside: 4.0 / 3.4 / 2.5 on the light `--bg`, 4.3 / 5.0 / 7.0 on the
 dark one, 3.5 / 4.1 / 4.8 on the dark `--surface` (non-text, 3:1 needed);
 the yellow on white leans on its white ring. In a page, where no tokens
 reach, pin-marks.js writes the values out.
