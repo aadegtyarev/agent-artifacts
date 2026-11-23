@@ -60,7 +60,7 @@ nearest L that keeps it.
 | | `--purple-fill` (agent) | `#5e5ce6` | 0.56 | 0.20 | 278 |
 | the dot | `--dot-red` | `#de4f44` | 0.62 | 0.18 | 28 |
 | | `--dot-green` | `#23a136` | 0.62 | 0.18 | 145 |
-| | `--dot-yellow` | `#c9a100` | 0.73 | 0.15 | 91 |
+| | `--dot-yellow` | `#c9a100` | 0.72 | 0.15 | 91 |
 
 ### The dot
 
@@ -83,7 +83,10 @@ matched to the pins, not to the text hues (see
 [One set, one brightness](#one-set-one-brightness)). Against the page,
 ring aside: 4.0 / 3.4 / 2.5 on the light `--bg`, 4.3 / 5.0 / 7.0 on the
 dark one, 3.5 / 4.1 / 4.8 on the dark `--surface` (non-text, 3:1 needed);
-the yellow on white leans on its white ring. In a page, where no tokens
+the yellow on white leans on its white ring. The project row's dot has no
+ring: yellow there is 2.5 on the light `--bg` and 2.2 on the light `--surface`
+(the current row), below 3:1 — an accepted exception, the colour the
+operator chose; the row says "Needs you" to screen readers either way. In a page, where no tokens
 reach, pin-marks.js writes the values out.
 
 ### Neutrals
