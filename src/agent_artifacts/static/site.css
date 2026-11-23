@@ -96,6 +96,12 @@ body > header, .sheet > *, .toast-box, .fan-item, .modal, .banner > *, .pj > * {
   zoom: var(--ts); }
 
 .stage { flex: 1; min-height: 0; display: flex; }
+/* The viewer of a page or an image is never zoomed by the browser: a pinch
+   over the file zooms the file alone (zoom.js), text size enlarges the
+   rest. Its viewport meta says so; this is for browsers that ignore it
+   (Safari on an iPhone), on the page and on what scrolls in it. */
+html:has(> body > .stage.zooms) { touch-action: pan-x pan-y; }
+.stage.zooms .sbody { touch-action: pan-x pan-y; }
 /* The content fills main by absolute position, not height: 100%, which
    older WebViews (Telegram's, for one) leave at the 150 px iframe default
    inside a flex item. */
@@ -293,7 +299,8 @@ body > header, .sheet > *, .toast-box, .fan-item, .modal, .banner > *, .pj > * {
 /* The layer over an image: the size of the image, pins placed in %,
    clipped so a pin at an edge never widens the page. */
 .pins { position: absolute; pointer-events: none; overflow: hidden; }
-#image-box { overflow: auto; align-items: flex-start; justify-content: flex-start; }
+#image-box { overflow: auto; align-items: flex-start; justify-content: flex-start;
+  touch-action: pan-x pan-y; }
 #image-box:focus { outline: none; }
 #image-box img { max-width: 100%; max-height: 100%; margin: auto; cursor: default; }
 body.commenting #image-box img { cursor: crosshair; }

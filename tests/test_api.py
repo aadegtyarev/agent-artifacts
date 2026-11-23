@@ -168,6 +168,27 @@ def test_pages_tell_links_to_other_files_by_one_copy_of_links_js():
     assert "pageLinks.target(link.getAttribute(\"href\"), location.href)" in script
 
 
+def test_a_pinch_zooms_the_file_not_the_viewer(env):
+    client, _, keys = env
+    # The pages and images zoom.js zooms: the browser does not zoom the viewer.
+    no_zoom = "initial-scale=1, maximum-scale=1, user-scalable=no, interactive"
+    for name, data, zooms in (
+        ("a.html", b"<p>x", True),
+        ("b.png", PNG, True),
+        ("c.svg", b"<svg xmlns='http://www.w3.org/2000/svg'/>", False),
+        ("d.zip", b"PK\x03\x04", False),
+    ):
+        art = upload(client, keys["alice"], name, data).json()
+        page = client.get(f"/a/{art['id']}").text
+        assert (no_zoom in page) is zooms, name
+        assert ('<div class="stage zooms">' in page) is zooms, name
+    # In the frame, zoom.js comes in the pin script's block before pins.js.
+    script = PINS_SCRIPT.decode()
+    zoom = (STATIC_DIR / "zoom.js").read_text()
+    assert script.index(zoom) < script.index("// Pins on a page.")
+    assert "pageZoom.attach(window, {" in script
+
+
 def test_markdown_keeps_links_to_other_files_in_its_tab(env):
     client, _, keys = env
     art = upload(client, keys["alice"], "n.md", b"[next](/a/x)").json()
@@ -828,6 +849,7 @@ def test_viewer_page_has_comments_on_every_type(env):
             r'<script src="/static/comments-model\.js\?v=[0-9a-f]{12}"></script>\n'
             r'<script src="/static/sheet-drag\.js\?v=[0-9a-f]{12}"></script>\n'
             r'<script src="/static/links\.js\?v=[0-9a-f]{12}"></script>\n'
+            r'<script src="/static/zoom\.js\?v=[0-9a-f]{12}"></script>\n'
             r'<script src="/static/comments-pins\.js\?v=[0-9a-f]{12}"></script>\n'
             r'<script src="/static/comments\.js\?v=[0-9a-f]{12}"></script>',
             page.text,

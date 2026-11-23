@@ -52,7 +52,8 @@
   </nav>
 </div>
 {%- endif %}
-<div class="stage">
+{#- zooms: a pinch zooms the file alone (zoom.js), not the page. #}
+<div class="stage{% if kind.pin %} zooms{% endif %}">
 <main>
 {%- if kind.sandboxed %}
   <iframe id="frame" sandbox="{{ sandbox }}" src="{{ raw }}" title="content"></iframe>

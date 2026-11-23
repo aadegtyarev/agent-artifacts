@@ -533,7 +533,7 @@ def test_a_project_files_header_lists_the_project(env):
     assert 'aria-controls="files-drop"' in header and 'aria-expanded="false"' in header
     assert ">Landing &lt;b&gt;</span>" in header and "<b>" not in page and "<i>" not in page
     assert "expires" not in header and "kept until deleted" not in header
-    drop = page[page.index('id="files-drop"') : page.index('<div class="stage">')]
+    drop = page[page.index('id="files-drop"') : page.index('<div class="stage')]
     order = [
         drop.index(x)
         for x in (

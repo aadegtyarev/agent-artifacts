@@ -44,8 +44,8 @@ _env.globals["static"] = {
     n: _static_url(n)
     for n in (
         "pin.css", "site.css", "theme.js", "copy.js",
-        "pin-marks.js", "comments-model.js", "sheet-drag.js", "links.js", "comments-pins.js",
-        "comments.js", "viewer.js", "menu-dialogs.js", "project.js",
+        "pin-marks.js", "comments-model.js", "sheet-drag.js", "links.js", "zoom.js",
+        "comments-pins.js", "comments.js", "viewer.js", "menu-dialogs.js", "project.js",
     )
 }
 
@@ -93,7 +93,7 @@ _MARKED_JS = Markup((STATIC_DIR / "marked.umd.js").read_text(encoding="utf-8")) 
 # Which links open another page of the service, see static/links.js.
 _LINKS_JS = (STATIC_DIR / "links.js").read_text(encoding="utf-8")
 # The script that draws pins inside a sandboxed page, see static/pins.js,
-# after the badge marks, the links and the pin styles it shares with the
+# after the badge marks, the links, the zoom and the pin styles it shares with the
 # viewer. One block around all, so their names are local to it and cannot
 # clash with the page's own. The styles go in as a JS string; "<" escaped, so
 # no "</script>" can end the block early.
@@ -102,6 +102,7 @@ _PINS = Markup(  # noqa: S704
     "<script>{\n"
     + (STATIC_DIR / "pin-marks.js").read_text(encoding="utf-8")
     + _LINKS_JS
+    + (STATIC_DIR / "zoom.js").read_text(encoding="utf-8")
     + f"const pinCss = {_PIN_CSS};\n"
     + (STATIC_DIR / "pins.js").read_text(encoding="utf-8")
     + "}</script>"

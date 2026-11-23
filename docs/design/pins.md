@@ -74,6 +74,7 @@ colleague's reply not yet seen in this browser.
 | in the list | 28 × 28, mark 18, letter 13 | 35 × 35, mark 22, letter 16 |
 
 Every pin on the content has a 44 px+ touch area (`::before`, 10 px around).
+Pins keep these sizes when the file is zoomed; only their places follow it.
 
 ## Shape
 

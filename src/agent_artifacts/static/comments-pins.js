@@ -177,6 +177,51 @@ const commentsPins = ({
       if (e.target instanceof Element && e.target.closest(".pin")) return;
       onBlank();
     });
+    // Zoom of the image alone, see zoom.js: the image is drawn larger and
+    // its box scrolls; the pins' layer takes the image's size (fitPins).
+    // Its size at 1x is measured whenever it can change (the image loaded,
+    // the window resized or turned), never before it has one.
+    let zoom = 1;
+    let base = null;
+    const SIZES = ["width", "height", "maxWidth", "maxHeight", "flex"];
+    const loaded = () => image.complete && image.naturalWidth > 0;
+    function drawAt(s) {
+      if (s !== 1 && !base) {
+        for (const p of SIZES) image.style[p] = "";
+        if (loaded() && image.offsetWidth && image.offsetHeight) {
+          base = { w: image.offsetWidth, h: image.offsetHeight };
+        }
+      }
+      if (s === 1 || !base) {
+        base = null;
+        for (const p of SIZES) image.style[p] = "";
+        zoom = 1;
+      } else {
+        Object.assign(image.style, { width: `${base.w * s}px`, height: `${base.h * s}px`,
+          maxWidth: "none", maxHeight: "none", flex: "none" });
+        zoom = s;
+      }
+      fitPins();
+    }
+    const measureAgain = () => {
+      if (zoom === 1) return;
+      base = null;
+      drawAt(zoom);
+    };
+    image.addEventListener("load", measureAgain);
+    window.addEventListener("resize", measureAgain);
+    pageZoom.attach(imageBox, {
+      max: 8,
+      scale: () => zoom,
+      setScale: drawAt,
+      box: () => {
+        const r = image.getBoundingClientRect();
+        return { left: r.left, top: r.top };
+      },
+      scrollBy: (x, y) => imageBox.scrollBy({ left: x, top: y, behavior: "instant" }),
+      // Not in comment mode, nor on a pin: a pin tapped twice is the pin's.
+      doubleTap: (e) => !picking() && !(e.target instanceof Element && e.target.closest(".pin")),
+    });
     image.addEventListener("load", fitPins);
     // As the sheet grows or shrinks, the image moves in its box.
     if (window.ResizeObserver) {
