@@ -79,8 +79,9 @@ the person.
 
 What works with people reviewing on a phone:
 
-1. **A design system and a tone-of-voice reference before any screen.**
-   For a new interface write them first: colours, type sizes, spacing,
+1. **A design system and a tone-of-voice reference before any screen** —
+   always for an interface, unless the person says no. For a new interface
+   write them first: colours, type sizes, spacing,
    components and their states; and how the interface speaks — words for
    actions and states, length, form of address, what is never said. For an
    existing interface describe what it already is in them first,
@@ -131,8 +132,16 @@ What works with people reviewing on a phone:
    in the same commit or pull request as the code; your reply to their
    comment says what changed in the design files. Run `design_check.py`
    before saying it is done and fix what it reports. Whoever reviews the
-   change checks that `docs/design/` matches it.
+   change checks that `docs/design/` matches it. In a repository without
+   it in its tests, offer once to add it there (a test that runs it, or a
+   CI step) so it holds after you are gone; add it only on their yes.
 9. Nothing goes live before the person's explicit yes on the mockup.
+
+Not every file is an interface. For reports, presentations and other
+documents a design system is optional: when you share the first one of a
+kind, offer once, in a line, to keep its look and words as a small
+`docs/design/` (colours, type, tone) so the next ones match; drop it if
+they don't want it.
 
 Beyond screens: when you design a process, a workflow or
 an architecture with the person, keep the agreed result in their project
