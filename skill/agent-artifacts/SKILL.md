@@ -192,9 +192,15 @@ What works with people reviewing on a phone:
     exits — that is one answer, not a watch. Run it in a loop, so it
     re-arms itself when the person writes the next comment:
     `while true; do artifacts_cli.py wait <project> --every 10 --timeout 21600; sleep 3; done`
-    A watcher that exited is a person who writes a comment into the void.
-    Check that it still runs after every replace, every delete and every
-    new file: a stale watcher on a deleted file watches nothing.
+    A polling process is not enough: its events must reach the agent's
+    session, not only a process log. Connect a wake/notification path and
+    verify delivery to the current session before saying you are watching.
+    In Pi, process logs alone do not wake the agent; use an available
+    notification bridge (for example, pi-intercom CLI from the watcher to
+    this session). Handle the event, then re-arm the watcher; deduplicate
+    repeated outstanding events. A watcher that exited is a person who
+    writes a comment into the void. Check it after every replace, delete
+    and new file. When the session changes, rebind the notification target.
 
 Reports, presentations and other documents are not interfaces: no design
 system by default. With the first one of a kind, offer once, in a line, to
