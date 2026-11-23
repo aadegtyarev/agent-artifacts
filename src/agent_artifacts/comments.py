@@ -98,7 +98,7 @@ def comment_routes(store: Store) -> list[Route]:
                 raise _no_artifact()
             return _answer([_draft_json(d) for d in found])
         data = await json_body(request, {"author", "kind", "of", "text", "anchor"})
-        author = _author(data)
+        author = _draft_author(data)
         kind = data.get("kind", "comment")
         if kind not in DRAFT_KINDS:
             raise ApiError(400, "bad_request", f"kind must be one of {', '.join(DRAFT_KINDS)}")
@@ -135,7 +135,7 @@ def comment_routes(store: Store) -> list[Route]:
         # does it, and either all are made or none.
         artifact_id, key = request.path_params["id"], _author_key(request)
         data = await json_body(request, {"author", "decisions"}, {"decisions"})
-        author = _author(data)
+        author = _draft_author(data)
         decisions = _list(data["decisions"], "decisions")
         made = []
         for d in decisions:
@@ -353,7 +353,7 @@ def _draft_json(d: Draft) -> dict:
         "id": d.id,
         "kind": d.kind,
         "of": d.of_n,
-        "author": d.author,
+        "author": d.author or None,
         # A decision has no text.
         "text": d.text if d.kind in ("comment", "reply") else None,
         "anchor": json.loads(d.anchor) if d.anchor else None,
@@ -438,6 +438,11 @@ def one_line(v: object, field: str, at_most: int) -> str:
     if isinstance(v, str) and _LINE_BREAKS.search(v):
         raise ApiError(400, "bad_request", f"{field} must be one line")
     return _string(v, field, at_most)
+
+
+def _draft_author(data: dict) -> str:
+    # Explicit null is a provisional author; omission remains anonymous.
+    return "" if "author" in data and data["author"] is None else _author(data)
 
 
 def _author(data: dict) -> str:

@@ -30,10 +30,12 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
   const othersReplies = (c) => c.replies.filter((r) => !r.mine && !r.agent).length;
   // True when it changed, so the caller keeps it.
   function markSeen(c) {
-    if (othersReplies(c) === (seen[c.n] || 0)) return false;
+    if (othersReplies(c) <= (seen[c.n] || 0)) return false;
     seen[c.n] = othersReplies(c);
     return true;
   }
+
+  const unseen = (c) => othersReplies(c) > (seen[c.n] || 0);
 
   // A comment's pin. The tone says whose it is: "own" (blue: written or
   // accepted here), "other" (orange: a colleague's), "agent" (purple: the
@@ -69,7 +71,7 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
       if (c.agent !== "done" && c.agent !== "wrote") fill = "line";
       if (c.agent === "asked") badge = "new";
     } else if (pend) fill = "line";
-    if (othersReplies(c) > (seen[c.n] || 0)) badge = "new";
+    if (unseen(c)) badge = "new";
     return { tone, fill, label, badge, pend };
   }
 
@@ -120,8 +122,9 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
     const dec = decisionOn(c.n);
     const mine = repliesOn(c.n).length;
     let lead = null;
-    if (dec) lead = ["mine", { approve: "✓ Approve", reject: "✕ Reject", accept: "✓ Accept" }[dec.kind]];
+    if (dec) lead = ["mine", { approve: "✓ Accept", reject: "✕ Reject", accept: "✓ Accept" }[dec.kind]];
     else if (mine) lead = ["mine", "↩ Your reply"];
+    else if (!c.rejected_by && c.mine === true && unseen(c)) lead = ["ask", "New reply"];
     else if (c.rejected_by) lead = [null, "rejected"];
     else if (it.pend) lead = [null, "awaiting approval"];
     else if (LEADS[c.agent]) lead = LEADS[c.agent];
@@ -166,7 +169,8 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
     // A reply drafted on a rejected comment is part of the review.
     if (actsOn(c.n).length) return "drafts";
     if (c.rejected_by) return "closed";
-    if (c.agent === "done" || c.agent === "wrote" || c.agent === "asked" || it.pend) return "need";
+    if (c.agent === "done" || c.agent === "wrote" || c.agent === "asked" || it.pend
+      || (c.mine === true && unseen(c))) return "need";
     if (c.agent === "waiting" || c.agent === "working") return "agent";
     return "talk";
   }

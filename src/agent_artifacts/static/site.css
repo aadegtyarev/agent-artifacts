@@ -24,7 +24,8 @@
      sets data-dot on <html>; none is red). The same in both themes: it
      sits on a pin's white ring, as bright and saturated as the pins. */
   --dot-red: #de4f44; --dot-green: #23a136; --dot-yellow: #c9a100;
-  --dot: var(--dot-red); }
+  --dot: var(--dot-red); --viewport-height: 100vh; }
+@supports (height: 100dvh) { :root { --viewport-height: 100dvh; } }
 :root[data-dot="green"] { --dot: var(--dot-green); }
 :root[data-dot="yellow"] { --dot: var(--dot-yellow); }
 /* The dark theme is a palette of its own, not an inversion: dark grey
@@ -53,8 +54,7 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body { margin: 0; font: 15px/1.4 system-ui, sans-serif; color: var(--fg);
-  background: var(--bg); display: flex; flex-direction: column; height: 100vh;
-  height: 100dvh; }  /* the visible height: mobile browser bars and keyboards excluded */
+  background: var(--bg); display: flex; flex-direction: column; height: var(--viewport-height); }
 
 /* The viewer: one compact header row, the name and details cut to one line. */
 header { display: flex; gap: 8px; align-items: center; padding: 4px 8px 4px 12px;
@@ -374,19 +374,29 @@ body.commenting #image-box img { cursor: crosshair; }
 /* A phone or a narrow window: a bottom sheet under the content, which
    shrinks above it so a pin can always be shown over the sheet. */
 @media (max-width: 899px) {
+  body { height: var(--visual-height, var(--viewport-height)); }
   .stage { flex-direction: column; }
   .sheet { position: relative; z-index: 5; border-radius: 16px 16px 0 0;
     box-shadow: 0 -6px 24px var(--shadow-1), 0 -0.5px 0 var(--hair); }
   .sheet[data-pos="strip"] { border-radius: 0; box-shadow: 0 -0.5px 0 var(--hair); }
   .sheet[data-pos="strip"] > :not(.strip), .sheet:not([data-pos="strip"]) > .strip { display: none; }
   /* The sheet's rounded top lies over the content's last pixels. */
-  .sheet[data-pos="q"], .sheet[data-pos="h"] { margin-top: -16px; }
-  .sheet[data-pos="q"] { max-height: 52%; }
+  .sheet[data-pos="m"] { margin-top: -16px; max-height: min(60vh, 100%); max-height: min(calc(var(--visual-height, var(--viewport-height)) * 0.6), 100%); }
+  .sheet[data-pos="m"] .full-only { display: none; }
+  .sheet[data-pos="m"] .sbody, .sheet[data-pos="f"] .sbody { min-height: 32px; }
+  .sheet[data-pos="m"] .sfoot, .sheet[data-pos="f"] .sfoot { flex: 0 1 auto; min-height: 0; max-height: 65%; overflow: auto; }
+  .sheet[data-pos="m"] .pill textarea, .sheet[data-pos="f"] .pill textarea {
+    max-height: max(40px, calc(15vh / var(--ts))); max-height: max(40px, calc(var(--visual-height, var(--viewport-height)) * 0.15 / var(--ts))); }
   /* A row scrolled into view clears the sticky title line. */
   .sbody { scroll-padding-top: 40px; }
-  .sheet[data-pos="h"] { height: 52%; }
   .sheet[data-pos="f"] { height: 100%; border-radius: 0; box-shadow: none; }
   .sheet.dragging { max-height: none; }
+}
+@media (max-width: 899px) and (max-height: 400px) {
+  .sbody > .handle { position: static; }
+}
+@media (max-width: 899px) {
+  body.visual-compact .sbody > .handle { position: static; }
 }
 @media (min-width: 900px) {
   /* The panel widens with the text, so its lines hold as many words. */

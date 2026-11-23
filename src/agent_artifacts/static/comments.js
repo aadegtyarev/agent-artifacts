@@ -2,7 +2,7 @@
 // off; in comment mode a tap on the content places a draft pin and opens the
 // sheet with a field. Drafts stay on the server, seen only by this browser's
 // author key, until Finish review publishes them all. On a phone the sheet
-// has four heights (strip, a quarter, half, full); on a computer the same
+// has three heights (strip, content, full); on a computer the same
 // views sit in a panel at the right. Names and texts come from anyone with
 // the link, so they go in as text nodes only, never as HTML.
 (() => {
@@ -71,7 +71,7 @@
     mode: false,
     // list, item (the one `sel`), compose (a new draft), finish
     view: "list",
-    // the sheet's height on a phone: strip, q (¼), h (½), f (full)
+    // the sheet's height on a phone: strip, m (content), f (full)
     pos: "strip",
     sel: null,
     // the new draft: {anchor, whole}; its text is in `fields.compose`
@@ -167,8 +167,33 @@
   // What to show is derived in comments-model.js; the browser's part (the
   // seen replies kept in storage, a pin's spot on the page) stays here.
   const seenKey = `aa-seen:${artifact}`;
-  let seen = {};
-  try { seen = JSON.parse(localStorage.getItem(seenKey) || "{}") || {}; } catch { /* none */ }
+  const seenPrefix = `${seenKey}:`;
+  const seen = {};
+  const validCount = (value) => Number.isSafeInteger(value) && value >= 0;
+  function mergeSeen(n, count) {
+    if (!/^\d+$/.test(n) || !validCount(count) || count <= (seen[n] || 0)) return false;
+    seen[n] = count;
+    return true;
+  }
+  // Acknowledgements are append-only by comment and count: concurrent tabs
+  // cannot overwrite a newer count, even when acknowledging the same thread.
+  function mergeSeenKey(key) {
+    if (typeof key !== "string" || !key.startsWith(seenPrefix)) return false;
+    const match = /^(\d+):(\d+)$/.exec(key.slice(seenPrefix.length));
+    return match ? mergeSeen(match[1], Number(match[2])) : false;
+  }
+  try {
+    const legacy = JSON.parse(localStorage.getItem(seenKey) || "{}");
+    if (legacy && typeof legacy === "object" && !Array.isArray(legacy)) {
+      for (const [n, count] of Object.entries(legacy)) mergeSeen(n, count);
+    }
+  } catch { /* unavailable or invalid legacy storage */ }
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(seenPrefix) && localStorage.getItem(key) === "1") mergeSeenKey(key);
+    }
+  } catch { /* unavailable storage; keep what was read */ }
   const model = commentsModel(S, { pending, seen });
   const {
     liveDrafts, draftById, isComment, actsOn, decisionOn, repliesOn,
@@ -176,8 +201,13 @@
   } = model;
   function markSeen(c) {
     if (!model.markSeen(c)) return;
-    try { localStorage.setItem(seenKey, JSON.stringify(seen)); } catch { /* kept for the page */ }
+    try { localStorage.setItem(`${seenPrefix}${c.n}:${seen[c.n]}`, "1"); } catch { /* kept for the page */ }
   }
+  window.addEventListener("storage", (event) => {
+    try { if (event.storageArea !== localStorage || event.newValue !== "1") return; }
+    catch { return; }
+    if (mergeSeenKey(event.key)) render();
+  });
 
   // An item's pin is drawn when its anchor fits this content.
   const pinnable = (anchor) => Boolean(anchor && pinType && anchor.type === pinType);
@@ -222,7 +252,7 @@
   // On a phone every view's title line ends with a fold button, at the
   // far right and far from Finish review at the bottom.
   function foldButton() {
-    const b = button("", () => fold(), "chev fold");
+    const b = button("", () => fold(true), "chev fold");
     b.append(icon("down"));
     b.setAttribute("aria-label", "Fold the sheet");
     b.title = "Fold";
@@ -365,6 +395,7 @@
     const active = document.activeElement;
     const kept = Object.values(fields).includes(active) ? active : null;
     const keptGroup = active && active.classList.contains("sec-fold") ? active.dataset.group : null;
+    const keptHeading = active && active.matches(".sbody > .handle");
     const caret = kept ? [kept.selectionStart, kept.selectionEnd] : null;
 
     const shown = S.mode || S.comments.length > 0 || liveDrafts().length > 0;
@@ -391,6 +422,10 @@
     if (kept && kept.isConnected) {
       kept.focus({ preventScroll: true });
       kept.setSelectionRange(...caret);
+    }
+    if (keptHeading) {
+      const heading = body.querySelector(".handle");
+      if (heading) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); }
     }
     if (keptGroup) {
       const head = body.querySelector(`.sec-fold[data-group="${keptGroup}"]`);
@@ -427,7 +462,7 @@
     else if (S.mode && canPin()) line.push(`Tap a spot on the ${pinType === "point" ? "image" : "page"} to comment`);
     else line.push("No comments yet");
     stripText.replaceChildren(...line);
-    strip.replaceChildren(stripText);
+    for (const child of [...strip.children]) if (child !== stripText) child.remove();
     // In comment mode, with comments to list, the hint goes to the right.
     if (plain && S.comments.length && S.mode && canPin()) {
       strip.append(el("span", "strip-hint", "tap a spot to add"));
@@ -493,7 +528,7 @@
       const nav = el("div", "nav handle");
       nav.append(
         button("‹ All", () => go("list"), "btn all"),
-        button(`${at + 1} of ${all.length} · ${where(it)}`, () => go("list", "h"), "lbl"),
+        button(`${at + 1} of ${all.length} · ${where(it)}`, () => go("list", "m"), "lbl"),
       );
       const prev = button("", () => step(-1), "chev");
       prev.append(icon("left"));
@@ -505,11 +540,18 @@
       if (!desk.matches) nav.append(foldButton());
 
       const out = [nav, ...(it.draft ? [draftMsg(it)] : thread(it))];
-      // Pulled up to half or full on a phone: the others under it.
-      if (!desk.matches && (S.pos === "h" || S.pos === "f")) {
+      // Only full height includes the other items.
+      if (!desk.matches && S.pos === "f") {
         const others = all.filter((o) => o.key !== it.key);
-        if (others.length) out.push(el("p", "sec", "Others"));
-        for (const o of others) out.push(row(o, status(o)));
+        if (others.length) {
+          const heading = el("p", "sec full-only", "Others");
+          out.push(heading);
+        }
+        for (const o of others) {
+          const other = row(o, status(o));
+          other.classList.add("full-only");
+          out.push(other);
+        }
       }
       // The strip is hidden while the sheet is open: Finish review is here,
       // as in the list (on a computer it heads the panel).
@@ -563,10 +605,10 @@
       general.append(fields.general);
       out.push(general);
       const bar = el("div", "foot2");
-      const done = button("Finish review", () => finish(done), "btn pri big");
+      const done = button("Finish review", () => finish(), "btn pri big");
       finishButton = done;
       done.disabled = sending || (!count && !fields.general.value.trim());
-      bar.append(button("Back", () => go("list", "h")), done);
+      bar.append(button("Back", () => go("list", "m")), done);
       // The choice stays in sight next to the button it changes.
       return [out, [toWhom(), bar]];
     },
@@ -638,7 +680,6 @@
   // person's decision and unsent replies, and what can be done next.
   function thread(it) {
     const c = it.c;
-    markSeen(c);
     const out = [];
     const head = el("div", "msg");
     const bd = el("div", "bd");
@@ -656,7 +697,7 @@
     head.append(miniPin(it), bd);
     out.push(head);
     for (const r of c.replies) {
-      const m = el("div", "msg");
+      const m = el("div", `msg${!r.mine && !r.agent ? " colleague-reply" : ""}`);
       const rb = el("div", "bd");
       const rw = el("span", "who", r.agent ? "Agent" : r.mine ? "You" : r.author);
       rw.append(el("span", "when", when(r.created_at)));
@@ -669,7 +710,7 @@
     const dec = decisionOn(c.n);
     if (dec) {
       const line = el("div", "dec");
-      const said = { approve: ["✓ Approved", "goes with your review"], reject: ["✕ Rejected", "goes with your review"],
+      const said = { approve: ["✓ Accepted", "goes with your review"], reject: ["✕ Rejected", "goes with your review"],
         accept: ["✓ Accepted", "closes with your review"] }[dec.kind];
       line.append(el("b", dec.kind === "reject" ? "no" : "", said[0]), el("span", "", said[1]),
         button("Undo", () => undoDecision(dec), "undo"));
@@ -696,7 +737,7 @@
     if (!dec && !c.rejected_by) {
       const acts = el("div", "acts thread-acts");
       if (it.pend) {
-        acts.append(button("✓ Approve", () => decide(c, "approve"), "btn pri"),
+        acts.append(button("✓ Accept", () => decide(c, "approve"), "btn pri"),
           button("✕ Reject", () => decide(c, "reject")));
       } else if ((c.agent === "done" || c.agent === "wrote") && !repliesOn(c.n).length) {
         acts.append(button("✓ Accept", () => decide(c, "accept"), "btn pri"));
@@ -764,7 +805,7 @@
   function tapPin(key) {
     if (key === "new") {
       if (S.compose) {
-        if (S.view !== "compose" || S.pos === "strip") go("compose", "q");
+        if (S.view !== "compose" || S.pos === "strip") go("compose", "m");
         fields.compose.focus({ preventScroll: true });
       }
       return;
@@ -811,8 +852,8 @@
   document.addEventListener("aa:look", () => drawPins());
 
   // --- Navigation ------------------------------------------------------------------
-  // ¼ is "as tall as its content, at most half".
-  const DEFAULT_POS = { list: "h", item: "q", compose: "q", finish: "h" };
+  // Every view opens at its intrinsic middle height.
+  const DEFAULT_POS = { list: "m", item: "m", compose: "m", finish: "m" };
 
   function go(view, pos) {
     S.view = view;
@@ -851,21 +892,21 @@
     // Entering one item: the list's order is kept while stepping.
     if (S.view !== "item" || !S.order) S.order = ordered().map((i) => i.key);
     const opened = itemOf(key);
-    if (opened && opened.c) markSeen(opened.c);
+    if (document.visibilityState === "visible" && opened && opened.c) markSeen(opened.c);
     // One comment: the sheet fits it. Pulled up with the others under it,
     // it keeps its height and the chosen one comes to the top.
-    const keep = S.view === "item" && (S.pos === "h" || S.pos === "f");
-    go("item", keep ? S.pos : "q");
+    const keep = S.view === "item" && (S.pos === "f");
+    go("item", keep ? S.pos : "m");
     if (keep) body.scrollTop = 0;
     else toChatEnd();
     revealSoon(key);
   }
 
-  // At ¼ a comment's chat shows its end: the message being answered sits
+  // At middle height a comment's chat shows its end: the message being answered sits
   // right above the reply field.
   function toChatEnd() {
     const it = itemOf(S.sel);
-    if (!desk.matches && S.view === "item" && S.pos === "q" && it && !it.draft) body.scrollTop = body.scrollHeight;
+    if (!desk.matches && S.view === "item" && S.pos === "m" && it && !it.draft) body.scrollTop = body.scrollHeight;
   }
 
   // The items in the order kept for one item, or the list's.
@@ -879,7 +920,7 @@
   }
 
   // Back to the strip on a phone, to the list on a computer.
-  function fold() {
+  function fold(explicit = false) {
     // A typed reply would be left without its comment, and the next item
     // would refuse to open: it is sent or cleared first.
     const editing = S.edit && draftById(S.edit);
@@ -889,11 +930,18 @@
       render();
       return;
     }
+    const restoreFocus = sheet.contains(document.activeElement);
     S.sel = null;
     S.edit = null;
     S.view = "list";
     S.pos = "strip";
     render();
+    if ((explicit || restoreFocus) && !desk.matches) focusFoldTarget();
+  }
+
+  function focusFoldTarget() {
+    const target = stripText.getClientRects().length ? stripText : $("float-button");
+    if (target && target.getClientRects().length) target.focus({ preventScroll: true });
   }
 
   // A typed reply or a changed edit keeps the selected comment.
@@ -914,10 +962,8 @@
 
   // --- Comment mode and the name ---------------------------------------------------
   let afterName = null;
-
   function askName(then) {
     afterName = then;
-    nameInput.value = "";
     dialog.hidden = false;
     syncPicking();
     nameInput.focus();
@@ -928,12 +974,16 @@
     const then = afterName;
     afterName = null;
     if (value === null) {
-      toggle.focus({ preventScroll: true });
+      const target = finishButton && finishButton.isConnected && !finishButton.disabled
+        ? finishButton : body.querySelector(".handle") || stripText;
+      if (!target.hasAttribute("tabindex") && target !== finishButton) target.tabIndex = -1;
+      target.focus({ preventScroll: true });
       syncPicking();
       return;
     }
     name = cleanName(value);
     storage.set(NAME_KEY, name);
+    syncPicking();
     if (then) then();
   }
 
@@ -952,10 +1002,6 @@
   dialog.addEventListener("click", (e) => { if (e.target === dialog) closeName(null); });
 
   function setMode(on, then = null) {
-    if (on && name === null) {
-      askName(() => setMode(true, then));
-      return;
-    }
     S.mode = on;
     if (!on) {
       if (S.compose) dropCompose(false);
@@ -964,12 +1010,12 @@
         S.sel = null;
         S.edit = null;
         S.view = "list";
-        if (S.pos !== "h") S.pos = "strip";
+        if (S.pos !== "m") S.pos = "strip";
       }
     } else if (!canPin() && !desk.matches && S.pos === "strip") {
       // Nothing to tap on: the list, with "About the whole file".
       S.view = "list";
-      S.pos = "h";
+      S.pos = "m";
     }
     render();
     if (then) then();
@@ -983,13 +1029,13 @@
     if (S.compose && S.compose.anchor) {
       // Moving the spot keeps what is typed.
       S.compose.anchor = anchor;
-      if (S.view !== "compose" || S.pos === "strip") go("compose", "q");
+      if (S.view !== "compose" || S.pos === "strip") go("compose", "m");
       else drawPins();
     } else {
       if (S.compose) dropCompose(true);
       S.compose = { anchor };
       S.sel = null;
-      go("compose", "q");
+      go("compose", "m");
     }
     fields.compose.focus({ preventScroll: true });
     revealSoon("new");
@@ -999,7 +1045,7 @@
     if (S.compose) dropCompose(true);
     S.compose = { anchor: null };
     S.sel = null;
-    go("compose", "q");
+    go("compose", "m");
     fields.compose.focus({ preventScroll: true });
   }
 
@@ -1014,7 +1060,7 @@
         if (!S.mode) return;
         S.compose = kept.compose;
         fields.compose.value = kept.text;
-        go("compose", "q");
+        go("compose", "m");
         fields.compose.focus({ preventScroll: true });
       },
     });
@@ -1024,10 +1070,10 @@
   // is forgotten and asked again; the text stays where it is.
   function nameRefused(e) {
     if (e.status !== 400 || !/^author\b/i.test(e.message)) return false;
+    nameInput.value = name || nameInput.value;
     name = null;
     try { localStorage.removeItem(NAME_KEY); } catch { /* not kept anyway */ }
     toast("That name cannot be used. Give another one.", { error: true, ms: 6000 });
-    askName(null);
     return true;
   }
 
@@ -1037,7 +1083,7 @@
     if (!c || !text.trim() || sendButton.disabled) return false;
     sendButton.disabled = true;
     try {
-      const draft = await call("POST", "/drafts", { author: name || "", text, anchor: c.anchor });
+      const draft = await call("POST", "/drafts", { author: name, text, anchor: c.anchor });
       changed();
       S.drafts.push(draft);
       if (S.compose === c) {
@@ -1066,13 +1112,9 @@
   let deciding = false;
   async function decide(c, kind) {
     if (deciding) return;
-    if (name === null) {
-      askName(() => decide(c, kind));
-      return;
-    }
     deciding = true;
     try {
-      const draft = await call("POST", "/drafts", { author: name || "", kind, of: c.n });
+      const draft = await call("POST", "/drafts", { author: name, kind, of: c.n });
       changed();
       S.drafts = S.drafts.filter((d) => isComment(d) || d.of !== c.n || d.kind === "reply");
       S.drafts.push(draft);
@@ -1097,10 +1139,6 @@
   // the server makes all of them or none. One Undo takes them all back.
   async function acceptAll() {
     if (deciding || sending) return;
-    if (name === null) {
-      askName(() => acceptAll());
-      return;
-    }
     const decisions = acceptable().map(([c, kind]) => ({ kind, of: c.n }));
     if (!decisions.length) return;
     deciding = true;
@@ -1108,7 +1146,7 @@
     changed();
     let made;
     try {
-      made = await call("POST", "/drafts/batch", { author: name || "", decisions });
+      made = await call("POST", "/drafts/batch", { author: name, decisions });
     } catch (e) {
       if (!nameRefused(e)) toast(`Nothing accepted. ${e.message}`, { error: true, ms: 8000 });
       return;
@@ -1165,13 +1203,9 @@
     const n = replyFor;
     const text = fields.reply.value;
     if (n === null || !text.trim() || replyButton.disabled) return;
-    if (name === null) {
-      askName(() => addReply());
-      return;
-    }
     replyButton.disabled = true;
     try {
-      const draft = await call("POST", "/drafts", { author: name || "", kind: "reply", of: n, text });
+      const draft = await call("POST", "/drafts", { author: name, kind: "reply", of: n, text });
       changed();
       S.drafts.push(draft);
       fields.reply.value = "";
@@ -1289,21 +1323,26 @@
       } else if (S.compose) {
         dropCompose(true);
       }
-      go("finish", "h");
+      go("finish", "m");
     };
     if (S.mode) show();
     else setMode(true, show);
   }
 
-  async function finish(done) {
+  async function finish() {
     if (sending) return;
     // Not while a decision is on its way: the review would go without it.
     if (deciding) {
       toast("Still saving your decisions. Try again.");
       return;
     }
+    if (!reviewCount() && !fields.general.value.trim()) return;
+    if (name === null) {
+      if (dialog.hidden) askName(() => finish());
+      return;
+    }
     sending = true;
-    done.disabled = true;
+    if (finishButton && finishButton.isConnected) finishButton.disabled = true;
     try {
       if (!(await flushDeletes())) {
         // A draft meant to go would be published: nothing goes, the text stays.
@@ -1343,7 +1382,7 @@
       load();
     } finally {
       sending = false;
-      if (done.isConnected) done.disabled = !reviewCount() && !fields.general.value.trim();
+      if (finishButton && finishButton.isConnected) finishButton.disabled = !reviewCount() && !fields.general.value.trim();
     }
   }
 
@@ -1412,7 +1451,7 @@
   // A tap on the strip opens the list. The drag itself is in sheet-drag.js;
   // here is what a height or a tap means for what the sheet shows.
   function openList() {
-    go("list", "h");
+    go("list", "m");
   }
 
   const drag = sheetDrag({
@@ -1420,7 +1459,7 @@
     pos: () => S.pos,
     // From the strip the sheet opens on the list as it is pulled.
     open() {
-      S.pos = "h";
+      S.pos = "m";
       S.view = "list";
       render();
     },
@@ -1429,8 +1468,6 @@
       if (best === "strip") {
         if (S.compose) dropCompose(false);
         fold();
-      } else if (best === "q" && S.view !== "item" && S.view !== "compose") {
-        go(S.view, "h");
       } else go(S.view, best);
     },
     // A tap on the grip steps the height and keeps the view. A tap on the
@@ -1438,17 +1475,35 @@
     // the list; on a new draft's caption or the Finish title it does nothing.
     tap(onGrip) {
       if (!onGrip) {
-        if (S.view === "item") { go("list", "h"); return; }
+        if (S.view === "item") { go("list", "m"); return; }
         if (S.view !== "list") return;
       }
-      go(S.view, S.pos === "h" ? "f" : "h");
+      go(S.view, S.pos === "m" ? "f" : "m");
     },
   });
 
+  stripText.setAttribute("role", "button");
+  stripText.tabIndex = 0;
+  stripText.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      stripText.click();
+    }
+  });
+  grip.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      go(S.view, S.pos === "m" ? "f" : "m");
+    }
+  });
   strip.addEventListener("click", (e) => {
     if (e.target.closest("button") || drag.dragged()) return;
     if (desk.matches) go("list");
     else openList();
+    if (e.detail === 0) {
+      const target = desk.matches ? body.querySelector(".handle") : grip;
+      if (target) { if (desk.matches) target.tabIndex = -1; target.focus({ preventScroll: true }); }
+    }
   });
 
   // --- Keys, resizes, coming back ---------------------------------------------------
@@ -1466,12 +1521,45 @@
       render();
     } else if (desk.matches ? S.view !== "list" : S.pos !== "strip") {
       if (desk.matches) go("list");
-      else fold();
+      else {
+        fold();
+        if (S.pos === "strip") focusFoldTarget();
+      }
     }
   }
   document.addEventListener("keydown", (e) => {
+    if (!dialog.hidden && e.key === "Tab") {
+      const controls = [...dialog.querySelectorAll("input, button")].filter((el) => !el.disabled);
+      const i = controls.indexOf(document.activeElement);
+      if (i < 0 || (e.shiftKey && i === 0) || (!e.shiftKey && i === controls.length - 1)) {
+        e.preventDefault();
+        controls[e.shiftKey ? controls.length - 1 : 0].focus();
+      }
+    }
     if (e.key === "Escape" && !e.defaultPrevented) escape();
   });
+
+  if (typeof ResizeObserver !== "undefined") {
+    new ResizeObserver(() => {
+      dockToast();
+      document.dispatchEvent(new CustomEvent("aa:sheet"));
+    }).observe(sheet);
+  }
+
+  // Some mobile browsers resize only the visual viewport for the keyboard.
+  // Ignore pinch zoom, and remove the override when returning to desktop.
+  const visual = window.visualViewport;
+  function syncVisualHeight() {
+    const usable = visual && !desk.matches && Math.abs(visual.scale - 1) < 0.01;
+    const height = usable ? Math.round(visual.height) : 0;
+    if (height > 0) document.body.style.setProperty("--visual-height", `${height}px`);
+    else document.body.style.removeProperty("--visual-height");
+    document.body.classList.toggle("visual-compact", height > 0 && height <= 400);
+  }
+  if (visual) visual.addEventListener("resize", syncVisualHeight);
+  window.addEventListener("resize", syncVisualHeight);
+  desk.addEventListener("change", syncVisualHeight);
+  syncVisualHeight();
 
   // The keyboard or a turned phone resizes the page: the pin being written
   // about stays in sight above the sheet.

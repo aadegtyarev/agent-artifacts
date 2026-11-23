@@ -393,8 +393,7 @@ button has a blue ring inside its edge and a small blue bubble in its corner,
 and **Comment** is a checked item reading **Commenting**; a tap turns the mode
 off. A long press (500 ms, still) on the floating button turns comment mode
 on or off, with a short vibration where the device has one and a toast
-("Commenting on" / "off"); with no name yet it asks for one first, and the
-mode comes on after it. The click of that press's release is dropped. A
+("Commenting on" / "off"). The click of that press's release is dropped. A
 double tap on the floating button (the second press within 300 ms and 20 px
 of the first tap) leaves full screen: the first tap opens the menu at once
 as usual, the second closes it, and its click is dropped, so a menu item
@@ -575,8 +574,8 @@ other key, nor the owner agent, sees or changes it. Without browser storage
 the key lives as long as the page, and the viewer says that drafts will not
 outlast it. The name the person gives is kept by the browser too.
 
-**Comment mode.** The bubble turns it on and off. The first time, the viewer
-asks for a name once ("No name" leaves it `anonymous`). While it is on, a tap
+**Comment mode.** The bubble turns it on and off. At the first nonempty Finish review submission, the viewer asks for a name once
+("No name" leaves it `anonymous`). While comment mode is on, a tap
 on the content places a draft pin where a pin is possible (a link or a button
 under it does not fire) and opens the sheet with a field and **Add**. Add
 keeps the draft on the server; the mode stays on for the next spot. "+ About
@@ -587,23 +586,22 @@ element is on the page but not shown reads "on another screen"; one whose
 element is gone reads "spot not found".
 
 **The sheet.** On a phone or a window under 900 px wide, comments live in a
-bottom sheet with four heights:
+bottom sheet with three heights:
 
 | Height | Holds |
 | --- | --- |
 | strip | one line of words, no icons, its parts joined by " · " and zeros left out: "**N need you**" in bold (the agent's answers, `done`, `wrote` or `asked`, and colleagues' comments awaiting approval, without a decision or reply draft of the person's), "N drafts" (the comments the person's drafts add, decide or reply to) with **Finish review** at the right, and, without drafts, "N in progress" (`waiting` and `working`); with none of these, "N comments"; "›" at the end on a phone when there is no **Finish review**; in comment mode the hint "tap a spot to add" beside "N comments" (alone when there are no comments) |
-| ¼ | one item, the sheet as tall as its content and at most half: the field of a new draft, or the selected comment or draft, with ‹ › to its neighbours |
-| ½ | the list (text and state only, in groups, each under "Title · N" and empty ones left out — Need you (the agent's finished work, then its questions, then colleagues' comments awaiting approval), Your drafts (new comments and comments decided or replied to, a rejected one replied to too), In progress, Discussion (nothing waits for the person) and Closed (rejected; an accepted comment leaves the viewer); Discussion and Closed start folded and their title opens them; ‹ › on one item keep the order the list had when it was opened) or **Finish review**; an item dragged up stays first, whole, with the other comments listed under it (a tap on one brings it to the top at the same height); a new draft dragged up stays itself |
-| full | the same as ½, taller |
+| middle | list, selected item, compose or Finish review, as tall as its content up to 60% of the visible viewport and the available stage; the body scrolls when capped |
+| full | the same view filling the stage; an item also shows Others below its thread |
 
 A drag changes the height only; what the sheet shows stays. A tap changes
 what it shows and the height follows. A tap on the strip opens the list at
-½. A tap on a row opens that item at ¼. A tap on a pin with the list open
+middle height. A tap on a row opens that item at middle height. A tap on a pin with the list open
 lights its row and brings it into view, the sheet stays; otherwise it opens
-the item at ¼. With one item pulled up to ½ or full, a tap on a row under it,
+the item at middle height. With one item pulled up to full, a tap on a row under it,
 on a pin or on ‹ › brings that item to the top at the same height. The selected pin is drawn bigger. Dragging the grip or the
 sheet's title line (its buttons too) snaps to the nearest height; a tap on
-the grip steps ½ and full, a tap on one item's title goes back to the list.
+the grip steps middle and full, a tap on one item's title goes back to the list.
 On a phone each title line ends with a fold button (⌄) at the far right that
 folds the sheet to the strip, away from **Finish review** at the bottom; with a
 reply typed it does not fold and says to send or clear it first.
@@ -620,11 +618,11 @@ selected comment without a lit pin on the page lets go on a tap on an empty
 spot of the file only. With a reply typed or an edit changed the comment
 stays and taps reach the page; a tap on an empty spot does nothing. With
 nothing selected, a tap is the page's as always.
-**Finish review** opens at ½. Folding a new draft to the strip drops it, with Undo if text was typed. The keyboard pushes the sheet up and
+**Finish review** opens at middle height. Folding a new draft to the strip drops it, with Undo if text was typed. The keyboard pushes the sheet up and
 the pin stays in sight above it. Buttons show only on the selected item:
 **Edit** and **Delete** on the person's own draft or reply; on a published
 comment, as a small chat with its replies (the agent's marked as the agent),
-**✓ Approve** and **✕ Reject** while it is someone else's awaiting approval,
+**✓ Accept** and **✕ Reject** while it is someone else's awaiting approval,
 **✓ Accept** when the agent is done (`done` or `wrote`), and a reply field.
 A decision shows as one line under the comment with a small **Undo**.
 With two or more waiting, **✓ Accept all · N** (in the list's Need you
@@ -654,6 +652,11 @@ transaction: each becomes a comment with the next number, in the order the
 drafts were made, the general comment last. If they do not all fit under the
 limit, none is published. A draft whose anchor no longer fits the file's
 type after a replace is published as a comment about the whole file.
+
+A colleague's unseen reply on your own comment promotes it to Need you with
+“New reply”. Draft and Closed precedence and the existing agent order remain;
+opening the thread acknowledges the reply count in this browser. Pin-only row
+highlighting does not. This does not change decisions or project summary counts.
 
 **Live.** While the page is in sight the viewer fetches the comments again
 every few seconds, so the badges follow the agent without a reload. When
@@ -741,6 +744,10 @@ the file was replaced while it was open.
   U+2028, U+2029; `text` keeps line breaks and tabs, while `author`, the
   anchor's `selector` and `text` refuse them too. An empty author becomes
   `anonymous`; an empty text is refused. A comment's author is the draft's.
+  On either draft-create route only, explicit `author: null` is provisional:
+  private draft responses return null, and the review author signs that draft
+  atomically on publication (including replies and decisions). Omission or an
+  empty string still means explicit anonymous; named drafts are unchanged.
 - `anchor` is `null` for a comment about the whole file. On an image it is
   `{"type": "point", "x", "y"}`, the point as fractions (0 to 1) of the
   image's width and height. On a page it is `{"type": "element", "selector",
