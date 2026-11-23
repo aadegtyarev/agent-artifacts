@@ -22,6 +22,7 @@ from __future__ import annotations
 import http.client
 import ipaddress
 import json
+import math
 import mimetypes
 import os
 import re
@@ -31,6 +32,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import NoReturn
 
@@ -70,17 +72,14 @@ USAGE = """usage: artifacts_cli.py <command> [args]
                             with a remark or question (--wrote), or not done
                             until the person answers (--asked); the option
                             goes after TEXT or before ID
-  wait ID [--every S] [--timeout S]
-                            poll every S seconds (10 by default, 5 at least)
-                            and print, then exit, on the first of: comments
-                            waiting for you {"event": "waiting", "comments"},
-                            comments accepted since the start {"event":
-                            "accepted", "comments"}, the file gone {"event":
-                            "gone"}, or after --timeout (6 hours by default,
-                            0 for none) {"event": "timeout"}; ID a project:
-                            the same for any file in it, files added later
-                            too, naming them {"event", "project", "files":
-                            [{"id", "title", "waiting" or "accepted": N}]}
+  wait ID [--once] [--every S] [--timeout S]
+                            subscribe to a file or project (including new files)
+                            and flush one JSON line per waiting/accepted event;
+                            only IDs, comment numbers or counts, no comment text.
+                            Poll every S seconds (default 10, minimum 5).
+                            Stop on gone, Ctrl+C, or --timeout (default 0: none).
+                            --once: return the first event with the full legacy
+                            payload and exit (default timeout: 6 hours).
   resolve ID N              mark comment N done
   reopen ID N               mark comment N open again
   delete-comment ID N       delete comment N; the other numbers stay
@@ -374,6 +373,178 @@ def wait_project(
     return None if maybe_file and not seen and event["event"] == "gone" else event
 
 
+def _watch_file(c: Client, artifact_id: str) -> tuple[dict[int, int], set[int]]:
+    """Each waiting number and its reply count, and resolved numbers."""
+    rows = json.loads(c.send("GET", f"/api/v1/artifacts/{artifact_id}/comments"))
+    if not isinstance(rows, list):
+        raise ValueError("not a comments list")
+    waiting, resolved = {}, set()
+    for row in rows:
+        if not isinstance(row, dict) or type(row.get("n")) is not int:
+            raise ValueError("no comment number")
+        n = row["n"]
+        if row.get("resolved") is True:
+            resolved.add(n)
+        elif row.get("agent") == "waiting":
+            replies = row.get("replies")
+            if not isinstance(replies, list):
+                raise ValueError("no reply list")
+            waiting[n] = len(replies)
+    return waiting, resolved
+
+
+def _new_waiting(before: dict[int, int], now: dict[int, int]) -> list[int]:
+    return [n for n, reply_count in now.items() if before.get(n) != reply_count]
+
+
+# The shipped proxy allows 2 API requests/s per IP, with a burst of 10.
+# Keep each detail batch below the burst and space requests within it.
+_PROJECT_DETAIL_COUNT = 6
+_PROJECT_DETAIL_DELAY = 0.6
+
+
+class _Subscription:
+    def __init__(self, client: Client, target: str, kind: str | None) -> None:
+        self.client, self.target, self.kind = client, target, kind
+        self.waiting: dict[str, dict[int, int]] = {}
+        self.resolved: set[int] | None = None
+        self.since: float | None = None
+        self.accepted: dict[str, int] = {}
+        self.next_detail: str | None = None
+
+    def poll(self, deadline: float | None = None) -> list[dict]:
+        if self.kind != "a":
+            # Only a bare ID may fall back to a file; not an explicit or
+            # previously identified project that just disappeared.
+            try:
+                data = self.project_updates(deadline)
+            except urllib.error.HTTPError as e:
+                if e.code != 404 or self.kind is not None:
+                    raise
+                if deadline is not None and time.monotonic() >= deadline:
+                    return []
+            else:
+                self.kind = "p"
+                return data
+        self.kind = "a"
+        waiting, resolved = _watch_file(self.client, self.target)
+        news = _new_waiting(self.waiting.get(self.target, {}), waiting)
+        closed = sorted(resolved - self.resolved) if self.resolved is not None else []
+        self.waiting, self.resolved = {self.target: waiting}, resolved
+        return [
+            {"event": event, "comments": [{"n": n} for n in numbers]}
+            for event, numbers in (("waiting", news), ("accepted", closed))
+            if numbers
+        ]
+
+    def project_updates(self, deadline: float | None) -> list[dict]:
+        # Keep the first server timestamp as the baseline. Advancing to the
+        # response's `now` can report the same concurrent approval twice.
+        suffix = "" if self.since is None else f"?since={self.since!r}"
+        path = f"/api/v1/projects/{self.target}/summary{suffix}"
+        summary = json.loads(self.client.send("GET", path))
+        if not isinstance(summary, dict) or not isinstance(summary.get("files"), list):
+            raise ValueError("not a project summary")
+        now = summary.get("now")
+        if type(now) not in (int, float) or not math.isfinite(now):
+            raise ValueError("no server clock")
+        pending, accepted = [], self.accepted.copy()
+        news = {"waiting": [], "accepted": []}
+        for row in summary["files"]:
+            if not isinstance(row, dict) or not isinstance(fid := row.get("id"), str):
+                raise ValueError("no file ID")
+            if not ID_RE.fullmatch(fid) or any(
+                type(row.get(k)) is not int or row[k] < 0 for k in news
+            ):
+                raise ValueError("bad project file summary")
+            if row["waiting"]:
+                pending.append(fid)
+            if self.since is not None:
+                additional = row["accepted"] - accepted.get(fid, 0)
+                if additional > 0:
+                    news["accepted"].append({"id": fid, "accepted": additional})
+                # Keep positive counts for files that leave and rejoin.
+                if row["accepted"]:
+                    accepted[fid] = row["accepted"]
+                else:
+                    accepted.pop(fid, None)
+        if self.since is None:
+            self.since = float(now)
+        self.accepted = accepted
+        news["waiting"] = self.project_waiting(pending, deadline)
+        return [
+            {"event": event, "project": self.target, "files": files}
+            for event, files in news.items()
+            if files
+        ]
+
+    def project_waiting(self, pending: list[str], deadline: float | None) -> list[dict]:
+        # A count alone misses different threads at the same queue size.
+        # Keep snapshots we cannot refresh in this poll and rotate the batch.
+        waiting = {fid: self.waiting[fid] for fid in pending if fid in self.waiting}
+        if self.next_detail in pending:
+            start = pending.index(self.next_detail)
+            pending = pending[start:] + pending[:start]
+        self.next_detail = None
+        news = []
+        for index, fid in enumerate(pending):
+            if index == _PROJECT_DETAIL_COUNT or (
+                deadline is not None and time.monotonic() + _PROJECT_DETAIL_DELAY >= deadline
+            ):
+                self.next_detail = fid
+                break
+            time.sleep(_PROJECT_DETAIL_DELAY)
+            try:
+                snapshot, _ = _watch_file(self.client, fid)
+            except urllib.error.HTTPError as e:
+                if e.code == 404:
+                    waiting.pop(fid, None)
+                elif e.code == 429:
+                    # Return partial updates and retry from here next poll.
+                    self.next_detail = fid
+                    break
+                elif e.code < 500:
+                    raise
+                continue
+            except (OSError, ValueError, http.client.HTTPException):
+                continue
+            if fresh := _new_waiting(waiting.get(fid, {}), snapshot):
+                news.append({"id": fid, "waiting": len(fresh)})
+            waiting[fid] = snapshot
+        self.waiting = waiting
+        return news
+
+
+def subscribe(
+    c: Client, target: str, kind: str | None, every: float, timeout: float
+) -> Iterator[dict]:
+    state = _Subscription(c, target, kind)
+    end = time.monotonic() + timeout if timeout else None
+    while end is None or time.monotonic() < end:
+        try:
+            events = state.poll(end)
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                yield {"event": "gone"}
+                return
+            if e.code != 429 and e.code < 500:
+                # Don't inject an untrusted server error body into a monitor.
+                sys.exit(f"artifacts wait: HTTP {e.code}")
+        except (OSError, ValueError, http.client.HTTPException):
+            pass
+        else:
+            yield from events
+        left = end - time.monotonic() if end is not None else every
+        if left <= 0:
+            break
+        time.sleep(min(every, left))
+    yield {"event": "timeout"}
+
+
+def event_line(event: dict) -> None:
+    print(json.dumps(event), flush=True)
+
+
 def _is_local(host: str | None) -> bool:
     """The same rule the server uses for a plain-HTTP public URL."""
     if not host:
@@ -407,7 +578,7 @@ def _quote(name: str) -> str:
     return name.replace("\\", "\\\\").replace('"', "%22").replace("\r", "").replace("\n", "")
 
 
-def run(argv: list[str]) -> str | None:
+def run(argv: list[str], *, emit: Callable[[dict], None] = event_line) -> str | None:
     if not argv:
         raise Usage(USAGE)
     if argv[0] in ("help", "-h", "--help"):
@@ -539,16 +710,23 @@ def run(argv: list[str]) -> str | None:
                 {"text": args[2], "state": state},
             )
         case "wait":
-            every, args = _option(args, "--every")
-            limit, args = _option(args, "--timeout")
-            need(1, "ID [--every SECONDS] [--timeout SECONDS]")
-            every = float(every or 10)
-            limit = float(limit if limit is not None else 6 * HOUR)
-            if not (every >= 5 and limit >= 0):  # NaN too
+            every_arg, args = _option(args, "--every")
+            limit_arg, args = _option(args, "--timeout")
+            once = "--once" in args
+            if once:
+                args.remove("--once")
+            need(1, "ID [--once] [--every SECONDS] [--timeout SECONDS]")
+            every = float(every_arg or 10)
+            limit = float(limit_arg if limit_arg is not None else 6 * HOUR if once else 0)
+            if not (math.isfinite(every) and math.isfinite(limit) and every >= 5 and limit >= 0):
                 raise Usage("wait: --every 5 or more seconds, --timeout 0 (no limit) or more")
             # A link says which; a bare id is a project's if the server
             # knows such a project of ours, else a file's.
             target, kind = _wait_target(args[0])
+            if not once:
+                for event in subscribe(c, target, kind, every, limit):
+                    emit(event)
+                return None
             event = None
             if kind != "a":
                 event = wait_project(c, target, every, limit, maybe_file=kind is None)
@@ -630,6 +808,8 @@ def main() -> None:
             stream.reconfigure(encoding="utf-8", errors="backslashreplace")
     try:
         out = run(sys.argv[1:])
+    except KeyboardInterrupt:
+        sys.exit(130)
     except Usage as e:
         print(str(e).rstrip(), file=sys.stderr)
         sys.exit(2)

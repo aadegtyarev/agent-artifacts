@@ -52,7 +52,8 @@ artifacts_cli.py comment <id> "Should this be blue?"    # owner proposal, whole 
 artifacts_cli.py comment <id> "Try this?" --anchor '{"type":"element","selector":"main > p","text":"Hi","x":0.5,"y":0.5,"width":1280}'
 artifacts_cli.py take <id>                              # start on those waiting for you
 artifacts_cli.py reply <id> <n> "what was done"         # --wrote: done with a remark; --asked: not done
-artifacts_cli.py wait <id>                              # in the background: returns on news
+artifacts_cli.py wait <id>                              # subscribe in the background
+artifacts_cli.py wait <id> --once                       # one result, then exit
 artifacts_cli.py list                                   # your files; also: projects, me
 ```
 
@@ -60,15 +61,40 @@ artifacts_cli.py list                                   # your files; also: proj
 
 Give the person the `url` (the project's for a job) and, outside a project,
 until when it works. **Whenever you share an artifact or project link, start
-`artifacts_cli.py wait <id>` in the background before ending the turn.** Use
-`artifacts wait <id>` if that shortcut is installed. Keep one watcher per link;
-a project watcher covers all its files. Use the agent's background process
-tool (in Pi, `start_process`). If you cannot start a watcher, say so.
+one background watcher before ending the turn.** A project watcher covers all
+its files. Start it in the conversation that should receive the result:
 
-`wait` polls every 10 seconds by default. It returns one event and exits.
-On `waiting`, handle the comments below; `accepted` needs no action on those
-comments. Restart after handling the event or after `timeout` (6 h) if feedback
-is still expected. Stop on `gone` or when the review is complete.
+- **Pi with pi-intercom:** use `start_process` to run
+  `python3 <skill folder>/scripts/watch_pi.py '<url>'` (or `uv run` in place of
+  `python3`). Name it `artifact-wait-<id>`; restart that watcher instead of
+  starting a second one. The helper forwards each event to this session via
+  `pi-intercom` and keeps watching. Plain `wait` in `start_process` only
+  writes a log; it doesn't wake Pi. If pi-intercom or inbound triggers are
+  unavailable, say that automatic delivery is unavailable.
+- **Claude Code:** use [`Monitor`](https://code.claude.com/docs/en/tools-reference#monitor-tool)
+  with `artifacts_cli.py wait '<url>'` (or `artifacts wait '<url>'`). Set the
+  watch deadline to the longest the session allows (up to 30 min interactively).
+  When Monitor reports the deadline, start it again if feedback is still
+  expected. It does not require a restart after each event. If Monitor is
+  unavailable, use `Bash` with `run_in_background: true` and
+  `artifacts_cli.py wait '<url>' --once`; restart after handling its result.
+- **Other agents:** use plain `wait` if the tool streams background output
+  into the conversation. If it only reports completion, use `wait --once`
+  and start it again after each result. If neither works, say so.
+
+`wait` polls every 10 seconds and emits one JSON line per event. On `waiting`,
+fetch the comments and handle them as described below; for a project, read
+the listed files. `accepted` needs no action. Don't restart a live
+subscription on either event. Stop on `gone` or when the review is complete.
+After a harness restart or watcher timeout, check open reviews and resume
+one watcher per link. A fresh watcher reports work still waiting, even if
+it was reported before the restart.
+
+In Pi, `ready` only means the process started. Use `watch_pi.py status <id>`:
+`polling` with `pid_exists: false` means it stopped; `failed` records the
+failed stage; `notified` records delivery of a terminal event. If a notice
+is missing, try `wait <id> --once --timeout 1` to check for pending work
+without changing comments. Check the failure before restarting repeatedly.
 
 An `<id>` is the 22-character id or the link itself (`…/a/<id>`, `…/p/<pid>`).
 A wrong command or argument exits 2 with a usage line: fix the call. An error
@@ -191,7 +217,7 @@ project page lists them by section with what waits for the person; each
 file's header lists the others. `replace` keeps project, section and title;
 `set <id> --project none` takes a file out (it expires again). A file in a
 project shows the whole project to whoever has its link.
-`wait <pid>` waits for news on any file of the project and names the files.
+`wait <pid>` watches all the project's files, including files added later.
 
 ## When the space runs out
 

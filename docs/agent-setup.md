@@ -75,6 +75,33 @@ Windows. Below, `run` means `uv run` if uv is installed, otherwise `python3`
 Do not repeat the key in your answer, and do not write it anywhere except
 through `setup`.
 
+### Feedback notifications
+
+`artifacts_cli.py wait ID` now streams events until stopped. Scripts that
+need the old one-result behavior must add `--once`.
+
+In Claude Code, use [Monitor](https://code.claude.com/docs/en/tools-reference#monitor-tool)
+for the stream. It forwards each line without waiting for the command to exit.
+When Claude's deadline ends the watch, renew it if feedback is still expected.
+With no Monitor tool, use a background Bash task for `wait ID --once` and
+renew it after the result. Neither route needs Pi.
+
+For automatic feedback notifications in an interactive Pi session, the
+skill's `scripts/watch_pi.py` needs `pi-intercom` loaded in that session,
+its CLI on `PATH`, and inbound triggers enabled (`inboundTrigger: "always"`).
+It sends only the event and validated IDs back to the session that started
+it, not comment text or credentials. Without the helper, plain `wait` still
+works in Pi, but `start_process` alone only records the result in its log.
+
+After restarting a harness, verify the watches for reviews still in progress.
+In Pi, `watch_pi.py status ID` shows the latest stage in this session and
+whether its PID still exists on POSIX. The status stays under
+`$XDG_STATE_HOME/agent-artifacts/watch/` (default `~/.local/state`) after the
+process exits. It stores only lifecycle metadata, not keys or review text.
+`polling` with an event records the most recent delivery while still watching.
+`notified` records broker delivery of a terminal event, not that the agent
+handled it.
+
 ## Update
 
 The key is not in the skill folder, so replacing the folder keeps it. Run

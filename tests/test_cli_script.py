@@ -264,7 +264,7 @@ def test_wait_waiting_gone_and_timeout(server):
     store.publish(art_id, "h", author="p", text=None)
     store.add_draft(art_id, "h", author="p", text="make it green", anchor=None)
     store.publish(art_id, "h", author="p", text=None, for_agent=True)
-    code, out, _ = cli(home, "wait", art_id, env=env)
+    code, out, _ = cli(home, "wait", art_id, "--once", env=env)
     event = json.loads(out)
     assert code == 0 and event["event"] == "waiting"
     assert [c["text"] for c in event["comments"]] == ["make it green"]
@@ -293,7 +293,7 @@ def test_wait_accepted_counts_only_new(server, monkeypatch, options, interval):
             store.resolve_comment(art_id, 2, True, owner="alice")
 
     mod = _load_cli(monkeypatch, url, key, sleep)
-    event = json.loads(mod.run(["wait", art_id, *options]))
+    event = json.loads(mod.run(["wait", art_id, "--once", *options]))
     assert event["event"] == "accepted" and [c["n"] for c in event["comments"]] == [2]
     assert polls == [interval, interval]
 
@@ -319,7 +319,7 @@ def test_wait_on_a_project(server, monkeypatch):
 
     mod = _load_cli(monkeypatch, url, key, sleep)
     # A bare id: the server knows it as a project.
-    assert json.loads(mod.run(["wait", p["id"]])) == {
+    assert json.loads(mod.run(["wait", p["id"], "--once"])) == {
         "event": "waiting",
         "project": p["id"],
         "files": [{"id": added[0], "title": "New", "waiting": 1}],
@@ -330,7 +330,7 @@ def test_wait_on_a_project(server, monkeypatch):
         store.resolve_comment(a, 1, True, owner="alice")
 
     mod = _load_cli(monkeypatch, url, key, accept)
-    assert json.loads(mod.run(["wait", p["url"]])) == {
+    assert json.loads(mod.run(["wait", p["url"], "--once"])) == {
         "event": "accepted",
         "project": p["id"],
         "files": [{"id": a, "title": "a.html", "accepted": 1}],
@@ -342,6 +342,219 @@ def test_wait_on_a_project(server, monkeypatch):
     cli(home, "project-delete", p["id"], env=env)
     for target in (p["url"], p["id"]):
         assert json.loads(cli(home, "wait", target, env=env)[1]) == {"event": "gone"}
+
+
+def test_subscription_reports_new_file_events_without_restarting(server, monkeypatch, capsys):
+    url, store, home = server
+    key = store.add_agent("alice")
+    env = {"AGENT_ARTIFACTS_URL": url, "AGENT_ARTIFACTS_KEY": key}
+    page = home / "a.html"
+    page.write_text("<p>hi</p>")
+    art = json.loads(cli(home, "upload", str(page), env=env)[1])
+    aid = art["id"]
+    for text in ("old resolved", "the next approval"):
+        store.add_draft(aid, "h", author="p", text=text, anchor=None)
+    store.publish(aid, "h", author="p", text=None)
+    store.resolve_comment(aid, 1, True, owner="alice")
+    store.add_draft(aid, "h", author="p", text="untrusted text", anchor=None)
+    store.publish(aid, "h", author="p", text=None, for_agent=True)
+    sleeps = []
+
+    def sleep(seconds):
+        sleeps.append(seconds)
+        if len(sleeps) == 2:
+            store.add_draft(
+                aid, "h", author="p", text="untrusted reply", anchor=None, kind="reply", of_n=3
+            )
+            store.publish(aid, "h", author="p", text=None, for_agent=True)
+            store.resolve_comment(aid, 2, True, owner="alice")
+        if len(sleeps) == 4:
+            store.delete(aid, owner="alice")
+
+    mod = _load_cli(monkeypatch, url, key, sleep)
+    assert mod.run(["wait", art["url"]]) is None
+    assert sleeps == [10] * 4
+    rows = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert rows == [
+        {"event": "waiting", "comments": [{"n": 3}]},
+        {"event": "waiting", "comments": [{"n": 3}]},
+        {"event": "accepted", "comments": [{"n": 2}]},
+        {"event": "gone"},
+    ]
+
+
+def test_subscription_project_detects_same_count_changes_and_late_files(server, monkeypatch):
+    url, store, home = server
+    key = store.add_agent("alice")
+    env = {"AGENT_ARTIFACTS_URL": url, "AGENT_ARTIFACTS_KEY": key}
+    page = home / "a.html"
+    page.write_text("<p>hi</p>")
+    p = json.loads(cli(home, "project-new", "Site", env=env)[1])
+    pid = p["id"]
+
+    def add_file():
+        out = cli(home, "upload", str(page), "--project", pid, env=env)[1]
+        return json.loads(out)["id"]
+
+    def publish(aid):
+        store.add_draft(aid, "h", author="p", text="not in notifications", anchor=None)
+        store.publish(aid, "h", author="p", text=None, for_agent=True)
+
+    aid = add_file()
+    publish(aid)
+    added = []
+    sleeps = []
+
+    def sleep(seconds):
+        if seconds < 5:  # pacing individual project detail reads
+            return
+        sleeps.append(seconds)
+        if len(sleeps) == 2:
+            store.take(aid, owner="alice")
+            store.resolve_comment(aid, 1, True, owner="alice")
+            publish(aid)  # a different thread, still one waiting
+            added.append(add_file())
+            publish(added[0])
+        if len(sleeps) == 4:
+            store.delete_project(pid, owner="alice")
+
+    mod = _load_cli(monkeypatch, url, key, sleep)
+    events = []
+    assert mod.run(["wait", pid, "--every", "7"], emit=events.append) is None
+    assert sleeps == [7] * 4
+    assert events == [
+        {"event": "waiting", "project": pid, "files": [{"id": aid, "waiting": 1}]},
+        {
+            "event": "waiting",
+            "project": pid,
+            "files": [
+                {"id": aid, "waiting": 1},
+                {"id": added[0], "waiting": 1},
+            ],
+        },
+        {"event": "accepted", "project": pid, "files": [{"id": aid, "accepted": 1}]},
+        {"event": "gone"},
+    ]
+
+
+def test_subscription_project_rotates_paced_batches_and_keeps_partial_events(monkeypatch):
+    import urllib.error
+
+    ids = [f"{n:022d}" for n in range(15)]
+    pid = "p" * 22
+    clock = [100.0]
+
+    def sleep(seconds):
+        clock[0] += seconds
+
+    mod = _load_cli(monkeypatch, "http://127.0.0.1:8000", "k", sleep)
+    monkeypatch.setattr(mod.time, "monotonic", lambda: clock[0])
+
+    class Proxy:
+        batch = 0
+        absent = None
+        last_request = None
+        details = []
+        throttled = False
+
+        def send(self, method, path):
+            previous = self.last_request
+            self.last_request = clock[0]
+            assert previous is None or clock[0] - previous >= 0.5
+            if "/summary" in path:
+                assert len(self.details) <= 6
+                self.details = []
+                self.batch += 1
+                return json.dumps(
+                    {
+                        "now": clock[0],
+                        "files": [
+                            {
+                                "id": fid,
+                                "waiting": 1,
+                                "accepted": int(fid == ids[0] and self.batch > 1),
+                            }
+                            for fid in ids
+                            if fid != self.absent
+                        ],
+                    }
+                )
+            fid = path.split("/")[-2]
+            self.details.append(fid)
+            if fid == ids[8] and not self.throttled:
+                self.throttled = True  # another client shared the proxy burst
+                raise urllib.error.HTTPError(path, 429, "limited", {}, None)
+            return json.dumps([{"n": 1, "agent": "waiting", "replies": []}])
+
+    proxy = Proxy()
+    sub = mod._Subscription(proxy, pid, "p")
+    seen = []
+
+    def tick():
+        clock[0] += 10
+        events = sub.poll()
+        seen.extend(f["id"] for e in events if e["event"] == "waiting" for f in e["files"])
+        return events
+
+    tick()
+    assert proxy.details == ids[:6]
+    throttled = tick()
+    assert proxy.details == ids[6:9] and proxy.throttled
+    assert throttled == [
+        {
+            "project": pid,
+            "event": "waiting",
+            "files": [{"id": fid, "waiting": 1} for fid in ids[6:8]],
+        },
+        {"project": pid, "event": "accepted", "files": [{"id": ids[0], "accepted": 1}]},
+    ]
+    tick()
+    assert proxy.details == ids[8:14]  # start at the throttled file, not the beginning
+    tick()
+    assert seen == ids  # all waiting notifications arrived, once each
+    proxy.absent = ids[0]
+    tick()
+    proxy.absent = None
+    assert all(e["event"] != "accepted" for e in tick())  # no repeated approval on rejoin
+
+
+def test_subscription_does_not_start_another_poll_after_deadline(monkeypatch):
+    clock = [0.0]
+
+    def sleep(seconds):
+        clock[0] += seconds
+
+    mod = _load_cli(monkeypatch, "http://127.0.0.1:8000", "k", sleep)
+    monkeypatch.setattr(mod.time, "monotonic", lambda: clock[0])
+    calls = []
+
+    class Empty:
+        def send(self, _method, path):
+            calls.append(path)
+            return "[]"
+
+    rows = list(mod.subscribe(Empty(), "a" * 22, "a", 10, 1))
+    assert rows == [{"event": "timeout"}]
+    assert clock == [1.0] and len(calls) == 1
+
+
+def test_subscription_does_not_start_file_fallback_after_deadline(monkeypatch):
+    import urllib.error
+
+    clock = [0.0]
+    mod = _load_cli(monkeypatch, "http://127.0.0.1:8000", "k", lambda _: None)
+    monkeypatch.setattr(mod.time, "monotonic", lambda: clock[0])
+    calls = []
+
+    class SlowProjectLookup:
+        def send(self, _method, path):
+            calls.append(path)
+            clock[0] = 2.0
+            raise urllib.error.HTTPError(path, 404, "not a project", {}, None)
+
+    target = "a" * 22
+    assert list(mod.subscribe(SlowProjectLookup(), target, None, 10, 1)) == [{"event": "timeout"}]
+    assert calls == [f"/api/v1/projects/{target}/summary"]
 
 
 def test_wait_retries_a_failed_poll_and_stops_on_auth(tmp_path, monkeypatch):
@@ -366,10 +579,10 @@ def test_wait_retries_a_failed_poll_and_stops_on_auth(tmp_path, monkeypatch):
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     mod = _load_cli(monkeypatch, f"http://127.0.0.1:{srv.server_port}", "k", lambda s: None)
     try:
-        event = json.loads(mod.run(["wait", "x" * 22]))
+        event = json.loads(mod.run(["wait", "x" * 22, "--once"]))
         assert event == {"event": "waiting", "comments": waiting}
         with pytest.raises(SystemExit) as e:
-            mod.run(["wait", "x" * 22])
+            mod.run(["wait", "x" * 22, "--once"])
         assert e.value.code == 1 and answers == []
     finally:
         srv.shutdown()
