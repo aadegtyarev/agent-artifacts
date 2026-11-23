@@ -55,9 +55,27 @@ Written as values, not tokens.
 | `#e8890c` / `#0a84ff` | colleague / own pin |
 | `#8e8e93` | rejected pin, placeholder text |
 | `#64b5ff` | Undo in the toast |
-| `rgb(28 28 30 / 0.55)` | floating ≡ (`0.75` while dragged) |
-| `rgb(0 0 0 / 0.28)` / `0.25` / `0.35` | scrim under the menu / dialogs / file list |
+| `rgb(28 28 30 / 0.55)` / `rgb(28 28 30 / 0.75)` | floating ≡ / while dragged |
+| `rgb(0 0 0 / 0.28)` / `rgb(0 0 0 / 0.25)` / `rgb(0 0 0 / 0.35)` | scrim under the menu / dialogs / file list |
+| `rgb(10 132 255 / 0.15)` | 4 px focus ring of a field |
+| `rgb(10 132 255 / 0.07)` / `rgb(10 132 255 / 0.05)` | fill of the dashed outline in a page: element under the pointer / a new draft's element |
 | `#fff` | content frame background, so a file without its own background is never transparent |
+
+### Shadows
+
+Black at low opacity, as fixed values.
+
+| Value | Where |
+| --- | --- |
+| `rgb(0 0 0 / 0.08)` | the sheet on a phone (`0 -6px 24px`) |
+| `rgb(0 0 0 / 0.12)` | selected segment in Finish review |
+| `rgb(0 0 0 / 0.16)` | menu squares |
+| `rgb(0 0 0 / 0.18)` | dialogs, toast, menu labels, selected Settings segment |
+| `rgb(0 0 0 / 0.2)` | line pin, list pin |
+| `rgb(0 0 0 / 0.25)` | floating ≡, banner, selected pin |
+| `rgb(0 0 0 / 0.28)` | pin on the content; inset shadow of a pressed header bubble and menu Comment |
+| `rgb(0 0 0 / 0.35)` | file list drop-down |
+| `rgb(28 28 30 / 0.18)` | 6 px halo of the selected pin |
 
 Status words in a row's second line (see [tone-of-voice.md](tone-of-voice.md#status-words)):
 
