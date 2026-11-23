@@ -42,4 +42,4 @@ const pageLinks = (() => {
   return Object.freeze({ target, destination, fragmentOf });
 })();
 
-if (typeof module !== "undefined") module.exports = pageLinks;
+if (typeof module === "object" && module) module.exports = pageLinks;

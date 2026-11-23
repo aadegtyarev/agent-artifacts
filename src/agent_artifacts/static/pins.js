@@ -271,6 +271,9 @@
   // transform is put back as it was at 1x.
   let zoom = 1;
   let bodyStyle = null;
+  // The style attribute <body> has after the zoom's own last write: that
+  // change moves no element, so it does not make the pins look again.
+  let zoomedStyle = null;
   pageZoom.attach(window, {
     max: 4,
     scale: () => zoom,
@@ -286,21 +289,27 @@
         body.style.transformOrigin = "0 0";
         body.style.transform = `scale(${s})`;
       }
+      zoomedStyle = body.getAttribute("style");
       zoom = s;
+      schedule();
     },
     box: () => {
       const r = document.body ? document.body.getBoundingClientRect() : { left: 0, top: 0 };
       return { left: r.left, top: r.top };
     },
     scrollBy: (x, y) => window.scrollBy({ left: x, top: y, behavior: "instant" }),
-    // A page that does not scroll by itself (overflow hidden on its root)
-    // is still scrolled by a script: one finger moves it while zoomed.
-    pan: () => [document.documentElement, document.body].some((el) => {
-      if (!el) return false;
-      const s = getComputedStyle(el);
-      return /hidden|clip/.test(`${s.overflowX} ${s.overflowY}`);
-    }),
-    doubleTap: () => !picking,
+    // Along an axis the page does not scroll by itself (overflow hidden on
+    // the window: the root's, or the body's when the root's is visible), a
+    // script still scrolls it: one finger moves it there while zoomed.
+    locked: () => {
+      const root = getComputedStyle(document.documentElement);
+      const body = document.body ? getComputedStyle(document.body) : root;
+      const of = (axis) => (root[axis] === "visible" ? body[axis] : root[axis]);
+      return { x: /hidden|clip/.test(of("overflowX")), y: /hidden|clip/.test(of("overflowY")) };
+    },
+    // Not in pin mode, on a pin, or on anything the page acts on (its
+    // second tap is the page's, a button pressed twice gets both).
+    doubleTap: (e) => !picking && !fromLayer(e) && !acts(e.target),
     // Where the page keeps the browser from zooming (touch-action without
     // pinch-zoom: a map, a canvas, a whole page), it zooms by itself or not
     // at all.
@@ -408,6 +417,12 @@
     + " slider spinbutton textbox searchbox combobox treeitem gridcell scrollbar";
   const ACTS = `${INTERACTIVE},area[href],canvas,${WIDGETS.split(" ").map((r) => `[role=${r}]`).join(",")},`
     + "[contenteditable]:not([contenteditable=false]),[tabindex]:not([tabindex=\"-1\"]),[onclick],video,audio,iframe,embed,object";
+  function acts(target) {
+    for (let x = target instanceof Element ? target : null; x; x = x.parentElement) {
+      if (x.matches(ACTS) || getComputedStyle(x).cursor === "pointer") return true;
+    }
+    return false;
+  }
   // A press is a tap when it lifts within 500 ms and 10 px of where it
   // began; told by the pointer's own events, as a click's point is not
   // always where the finger was.
@@ -428,10 +443,7 @@
     press = null;
     if (picking || !tapped || e.defaultPrevented || e.button !== 0 || e.detail !== 1 || fromLayer(e)
       || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
-    if (!(e.target instanceof Element)) return;
-    for (let x = e.target; x; x = x.parentElement) {
-      if (x.matches(ACTS) || getComputedStyle(x).cursor === "pointer") return;
-    }
+    if (!(e.target instanceof Element) || acts(e.target)) return;
     tell({ type: "blank" });
   });
 
@@ -450,9 +462,14 @@
       return { top: r.top + anchor.y * r.height - box.top - box.height / 2,
         left: r.left + anchor.x * r.width - box.left - box.width / 2 };
     };
+    // A box inside the zoomed <body> scrolls in its own px: the distance
+    // on screen divided by the zoom. The window scrolls in screen px.
     for (let box = el.parentElement; box && box !== document.documentElement; box = box.parentElement) {
       const scrolls = box.scrollHeight > box.clientHeight || box.scrollWidth > box.clientWidth;
-      if (scrolls && /auto|scroll/.test(getComputedStyle(box).overflow)) box.scrollBy(point(box.getBoundingClientRect()));
+      if (scrolls && /auto|scroll/.test(getComputedStyle(box).overflow)) {
+        const d = point(box.getBoundingClientRect());
+        box.scrollBy({ top: d.top / zoom, left: d.left / zoom });
+      }
     }
     const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     window.scrollBy({
@@ -524,7 +541,12 @@
   // A screen shown by :target changes nothing in the DOM.
   window.addEventListener("hashchange", () => schedule(true));
   new ResizeObserver(() => schedule(true)).observe(document.documentElement);
-  new MutationObserver(() => schedule(true)).observe(document.documentElement, {
+  new MutationObserver((records) => {
+    const body = document.body;
+    const own = (r) => r.type === "attributes" && r.target === body && r.attributeName === "style"
+      && body.getAttribute("style") === zoomedStyle;
+    if (!records.every(own)) schedule(true);
+  }).observe(document.documentElement, {
     subtree: true, childList: true, attributes: true, characterData: true,
   });
   tell({ type: "ready" });

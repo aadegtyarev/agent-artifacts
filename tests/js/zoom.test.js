@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const path = require("node:path");
 
-const { clamp, pinchScale, keepPoint, toggled, wheelScale, isDoubleTap } = require(path.join(__dirname, "../../src/agent_artifacts/static/zoom.js"));
+const { clamp, pinchScale, keepPoint, toggled, wheelScale, scriptPan, isDoubleTap } = require(path.join(__dirname, "../../src/agent_artifacts/static/zoom.js"));
 
 test("clamp keeps a value in its range", () => {
   assert.equal(clamp(0.5, 1, 4), 1);
@@ -70,4 +70,17 @@ test("Ctrl + wheel: down zooms out, up zooms in, within the range", () => {
   assert.equal(wheelScale(2, -1, 1, 4), wheelScale(2, -33, 0, 4));
   // One huge turn is one notch at most.
   assert.equal(wheelScale(2, -5000, 0, 8), wheelScale(2, -100, 0, 8));
+});
+
+test("one finger on zoomed content: the script moves it only along an axis that does not scroll", () => {
+  const none = { x: false, y: false };
+  assert.equal(scriptPan(30, 2, none), false);
+  // overflow-x hidden: a sideways move is the script's, a downward one the browser's.
+  const x = { x: true, y: false };
+  assert.equal(scriptPan(30, 5, x), true);
+  assert.equal(scriptPan(-30, 5, x), true);
+  assert.equal(scriptPan(5, 30, x), false);
+  // Both hidden: every move.
+  assert.equal(scriptPan(5, -30, { x: true, y: true }), true);
+  assert.equal(scriptPan(5, 30, { x: false, y: true }), true);
 });

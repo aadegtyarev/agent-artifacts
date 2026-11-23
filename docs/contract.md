@@ -408,20 +408,22 @@ box scrolls; a page (HTML, Markdown, text) zooms from 1x to 4x: the script
 in its frame (see Pins on pages) scales the page's `<body>` by a CSS
 `transform` from its top left corner, and the page scrolls (while zoomed,
 its `position: fixed` elements move with it). The point under the fingers
-stays under them. Zoomed, one finger moves the content (a page whose root
-does not scroll by itself, `overflow: hidden`, is moved by the script); at
-1x one finger scrolls as before. A double tap outside comment mode zooms in
-to 2x at its point, and back to 1x when zoomed; let go under 1.05x, the
-content is back at 1x. On a computer Ctrl + wheel over the file (a
-trackpad's pinch) zooms it the same way; elsewhere on the page the browser's
-zoom stays. Pins keep their size and stay on their spots, and a draft placed
-while zoomed gets the same anchor as at 1x. Every file opens at 1x, and so
-does a page loaded again in the frame. A gesture the page's own script takes
-(it cancels the touch or the wheel), or one over an element whose
-`touch-action` keeps the browser from zooming (a map, a canvas, or the whole
-page), is left to the page. The viewer page of an SVG, a PDF or an archive
-has none of this and keeps the browser's zoom, as the project page and the
-other pages do.
+stays under them. Zoomed, one finger moves the content, also the finger left
+after a pinch (along an axis the page does not scroll by itself, `overflow:
+hidden`, the script moves it); at 1x one finger scrolls as before. A double
+tap outside comment mode, not on a pin and not on anything the page acts on
+(as for a tap on an empty spot: a link, a control, an editable element; such
+a target gets both taps), zooms in to 2x at its point, and back to 1x when
+zoomed; let go under 1.05x, the content is back at 1x. On a computer Ctrl +
+wheel over the file (a trackpad's pinch) zooms it the same way; elsewhere on
+the page the browser's zoom stays. Pins keep their size and stay on their
+spots, and a draft placed while zoomed gets the same anchor as at 1x. Every
+file opens at 1x, and so does a page loaded again in the frame. A gesture
+the page's own script takes (it cancels the touch or the wheel), or one over
+an element whose `touch-action` keeps the browser from zooming (a map, a
+canvas, or the whole page), is left to the page. The viewer page of an SVG,
+a PDF or an archive has none of this and keeps the browser's zoom, as the
+project page and the other pages do.
 
 ### The project page
 

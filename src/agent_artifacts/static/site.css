@@ -100,7 +100,8 @@ body > header, .sheet > *, .toast-box, .fan-item, .modal, .banner > *, .pj > * {
    over the file zooms the file alone (zoom.js), text size enlarges the
    rest. Its viewport meta says so; this is for browsers that ignore it
    (Safari on an iPhone), on the page and on what scrolls in it. */
-html:has(> body > .stage.zooms), .stage.zooms .sbody { touch-action: pan-x pan-y; }
+html:has(> body > .stage.zooms) { touch-action: pan-x pan-y; }
+.stage.zooms .sbody { touch-action: pan-x pan-y; }
 /* The content fills main by absolute position, not height: 100%, which
    older WebViews (Telegram's, for one) leave at the 150 px iframe default
    inside a flex item. */

@@ -47,6 +47,12 @@ const pageZoom = (() => {
     return clamp(scale * Math.exp(-clamp(px, -100, 100) / 1000), 1, max);
   }
 
+  // One finger moved (dx, dy) past the tap threshold on zoomed content:
+  // whether the script moves it rather than the browser's own scroll. Only
+  // where the move is mostly along an axis the content does not scroll by
+  // itself (`locked`, {x, y}); along the other the browser scrolls as usual.
+  const scriptPan = (dx, dy, locked) => (Math.abs(dx) >= Math.abs(dy) ? locked.x : locked.y) === true;
+
   // Taps as {x, y, at}: whether `tap` is the second of a double tap.
   const isDoubleTap = (first, tap) => Boolean(first) && tap.at - first.at <= DOUBLE_MS
     && Math.hypot(tap.x - first.x, tap.y - first.y) <= DOUBLE_PX;
@@ -57,14 +63,15 @@ const pageZoom = (() => {
   //   setScale(s):    show the content at `s`
   //   box():          the content's top left corner in the window, now
   //   scrollBy(x, y): scroll what shows the content
-  //   pan():          whether one finger is moved here, while zoomed (where
-  //                   the browser would not scroll the zoomed content)
-  //   doubleTap():    whether a double tap zooms now
+  //   locked():       the axes the browser does not scroll the zoomed
+  //                   content along ({x, y}); one finger moves it there
+  //   doubleTap(e):   whether a double tap (its second touchend) zooms now
   //   own(e):         whether a touch is the page's own to handle
   // A gesture the page's own script already took (its touchstart or wheel
   // cancelled) is left to it.
   function attach(target, {
-    max, scale, setScale, box, scrollBy, pan = () => false, doubleTap = () => true, own = () => false,
+    max, scale, setScale, box, scrollBy, locked = () => ({ x: false, y: false }),
+    doubleTap = () => true, own = () => false,
   }) {
     let pinch = null;
     let press = null; // one finger down: a tap, or a pan when zoomed
@@ -77,7 +84,8 @@ const pageZoom = (() => {
     // To `to`, keeping the point under `from` where it was, then under `at`.
     function zoomTo(to, from, at = from, start = { box: box(), scale: scale() }) {
       if (to !== scale()) setScale(to);
-      const d = keepPoint(start.box, start.scale, from, box(), to, at);
+      // What it took: an image not loaded yet stays at 1x.
+      const d = keepPoint(start.box, start.scale, from, box(), scale(), at);
       if (d.dx || d.dy) scrollBy(d.dx, d.dy);
     }
 
@@ -97,7 +105,7 @@ const pageZoom = (() => {
       } else if (e.touches.length === 1) {
         const t = e.touches[0];
         press = { x: t.clientX, y: t.clientY, lastX: t.clientX, lastY: t.clientY,
-          at: performance.now(), moved: false };
+          at: performance.now(), moved: false, script: false };
       }
     }, { passive: false });
 
@@ -110,8 +118,14 @@ const pageZoom = (() => {
       }
       if (!press || e.touches.length !== 1) return;
       const t = e.touches[0];
-      if (Math.hypot(t.clientX - press.x, t.clientY - press.y) > TAP_PX) press.moved = true;
-      if (scale() > 1 && pan() && e.cancelable) {
+      // Past the tap threshold it is a move: the script's or the browser's,
+      // decided once.
+      if (!press.moved && Math.hypot(t.clientX - press.x, t.clientY - press.y) > TAP_PX) {
+        press.moved = true;
+        press.script = scale() > 1 && e.cancelable
+          && scriptPan(t.clientX - press.x, t.clientY - press.y, locked());
+      }
+      if (press.script && e.cancelable) {
         e.preventDefault();
         scrollBy(press.lastX - t.clientX, press.lastY - t.clientY);
       }
@@ -126,6 +140,13 @@ const pageZoom = (() => {
           const t = e.changedTouches[0];
           zoomTo(1, { x: t.clientX, y: t.clientY });
         }
+        // The finger left on zoomed content moves it: the browser does not
+        // start a scroll in the middle of a touch it was kept from.
+        if (e.touches.length === 1 && scale() > 1) {
+          const t = e.touches[0];
+          press = { x: t.clientX, y: t.clientY, lastX: t.clientX, lastY: t.clientY,
+            at: performance.now(), moved: true, script: true };
+        }
       }
       if (e.touches.length) return;
       const wasMulti = multi;
@@ -137,7 +158,7 @@ const pageZoom = (() => {
         return;
       }
       const tap = { x: p.x, y: p.y, at: performance.now() };
-      if (!isDoubleTap(lastTap, tap) || !doubleTap()) {
+      if (!isDoubleTap(lastTap, tap) || !doubleTap(e)) {
         lastTap = tap;
         return;
       }
@@ -157,7 +178,7 @@ const pageZoom = (() => {
     }, { passive: false });
   }
 
-  return Object.freeze({ clamp, pinchScale, keepPoint, toggled, wheelScale, isDoubleTap, attach });
+  return Object.freeze({ clamp, pinchScale, keepPoint, toggled, wheelScale, scriptPan, isDoubleTap, attach });
 })();
 
-if (typeof module !== "undefined") module.exports = pageZoom;
+if (typeof module === "object" && module) module.exports = pageZoom;
