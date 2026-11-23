@@ -163,16 +163,27 @@ Once an admin changes one through the API, the database value wins.
 ## Back up
 
 Everything lives in the `data` volume: `files/` and `meta.sqlite` (keys as
-hashes, invites, settings). To copy the database safely while the service
-runs:
+hashes, invites, settings, and a row for every file with its comments). Back
+up both. While the service runs, copy the database first, then the files:
 
 ```bash
 docker compose exec app python -c "import sqlite3; sqlite3.connect('/data/meta.sqlite').backup(sqlite3.connect('/data/backup.sqlite'))"
 docker compose cp app:/data/backup.sqlite ./meta-$(date +%F).sqlite
+docker compose cp app:/data/files ./files-$(date +%F)
 ```
 
-Files are short-lived, so a backup of the database alone keeps keys, invites
-and settings.
+In that order, after a restore, a file uploaded between the two copies has
+no row and is removed as a leftover once it is an hour old; a file deleted
+between them is a lost file, below. A snapshot of the whole volume, or a copy
+taken with the service stopped, has neither.
+
+To restore, put `meta.sqlite` and `files/` back into the volume together,
+with the service stopped.
+
+If only the database comes back, every file whose own file is missing (files
+in projects, which never expire, included) answers 404, and the service
+removes its row, with its comments, on start and every ten minutes after,
+logging the owner and the file name of each. Keys, invites and settings stay.
 
 ## Upgrade
 

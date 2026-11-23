@@ -241,10 +241,17 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
                 return JSONResponse(project_json(p) | {"artifacts": [as_json(a) for a in files]})
         return error(404, "not_found", "no such project")
 
+    def on_disk(a: Artifact) -> bool:
+        if store.path(a.id).exists():
+            return True
+        # Purged since the lookup, or lost (a database restored without its
+        # files); the next purge removes the row. Not the id: that is the link.
+        logging.getLogger(__name__).warning("file of %s's %r is missing", a.owner, a.name)
+        return False
+
     def live(request: Request) -> Artifact | None:
         a = store.get(request.path_params["id"])
-        # The file may be gone already if the purge ran since the lookup.
-        return a if a and store.path(a.id).exists() else None
+        return a if a and on_disk(a) else None
 
     async def view(request: Request) -> Response:
         a = live(request)
@@ -291,7 +298,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         if request.method not in ("GET", "HEAD") or match is None:
             return _raw_origin_not_found()
         a = store.get(match[1])
-        if a is None or not store.path(a.id).exists():
+        if a is None or not on_disk(a):
             return _raw_origin_not_found()
         kind = kinds.get(a.kind)
         if not kind.viewable:

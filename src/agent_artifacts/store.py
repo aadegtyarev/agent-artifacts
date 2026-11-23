@@ -1406,14 +1406,27 @@ class Store:
         return gone
 
     def purge_expired(self) -> int:
+        """Removes expired artifacts and those whose file is lost; returns
+        how many."""
         with self._conn(write=True) as db:
             # A file in a project (expires_at NULL) never matches.
             expired = db.execute("SELECT id FROM artifacts WHERE expires_at <= ?", (self.clock(),))
             ids = [r[0] for r in expired]
             db.executemany("DELETE FROM artifacts WHERE id = ?", [(i,) for i in ids])
+            # Rows whose file is gone (a database restored without its files)
+            # would be a 404 that counts toward the quota for good; they go
+            # with their comments. Looked for under the write lock: an upload
+            # puts its file in place before its row commits, so a committed
+            # row without a file never gets it back.
+            rows = db.execute("SELECT id, owner, name FROM artifacts").fetchall()
+            lost = [r for r in rows if not self.path(r[0]).exists()]
+            db.executemany("DELETE FROM artifacts WHERE id = ?", [(r[0],) for r in lost])
             db.execute(
                 "DELETE FROM drafts WHERE updated_at <= ?", (self.clock() - DRAFT_TTL_SECONDS,)
             )
+        # The owner and the name, not the id: that is the link.
+        for _, owner, name in lost:
+            log.warning("removed %s's %r: its file is missing", owner, name)
         for artifact_id in ids:
             self._unlink(artifact_id)
         # Leftovers of a crash mid-upload: temp files, and files whose row
@@ -1428,7 +1441,7 @@ class Store:
                 continue
             if f.name not in known and old:
                 f.unlink(missing_ok=True)
-        return len(ids)
+        return len(ids) + len(lost)
 
     def path(self, artifact_id: str) -> Path:
         return self.files / artifact_id
