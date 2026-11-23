@@ -793,6 +793,7 @@
     onPin: tapPin,
     onSpot: place,
     onEscape: escape,
+    onBlank: blank,
     // The list and the item say which spots were not found; a field being
     // typed in is not redrawn for that.
     onChange: (spotsOnly) => {
@@ -888,6 +889,14 @@
     S.view = "list";
     S.pos = "strip";
     render();
+  }
+
+  // A tap on an empty spot of the content, outside comment mode, lets go of
+  // the selected comment, as the fold button does. With nothing selected it
+  // does nothing.
+  function blank() {
+    if (S.mode || !S.sel) return;
+    fold();
   }
 
   // --- Comment mode and the name ---------------------------------------------------

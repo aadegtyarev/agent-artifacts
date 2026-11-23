@@ -346,6 +346,37 @@
     tell({ type: "open", path: to.path, fragment: to.fragment });
   });
 
+  // Outside pin mode, a tap on an empty spot of the page tells the viewer,
+  // which lets go of the selected comment. Only a plain tap: not one that
+  // moved (a scroll or a drag) or was held, and not on anything the page
+  // may act on: a control, an editable or focusable element, one with an
+  // onclick or a pointer cursor; a click the page's own script cancelled
+  // is left alone too.
+  const ACTS = `${INTERACTIVE},area[href],[contenteditable]:not([contenteditable=false]),[tabindex],[onclick],video,audio,iframe,embed,object`;
+  // A press is a tap when it lifts within 500 ms and 10 px of where it
+  // began; told by the pointer's own events, as a click's point is not
+  // always where the finger was.
+  let press = null;
+  window.addEventListener("pointerdown", (e) => {
+    press = picking || !e.isPrimary ? null : { x: e.clientX, y: e.clientY, at: performance.now(), tap: false };
+  }, { capture: true, passive: true });
+  window.addEventListener("pointerup", (e) => {
+    if (press && e.isPrimary) {
+      press.tap = Math.hypot(e.clientX - press.x, e.clientY - press.y) <= 10 && performance.now() - press.at <= 500;
+    }
+  }, { capture: true, passive: true });
+  window.addEventListener("pointercancel", () => { press = null; }, true);
+  window.addEventListener("click", (e) => {
+    const tapped = press && press.tap;
+    press = null;
+    if (picking || !tapped || e.defaultPrevented || e.button !== 0 || !e.detail || fromLayer(e)) return;
+    if (!(e.target instanceof Element)) return;
+    for (let x = e.target; x; x = x.parentElement) {
+      if (x.matches(ACTS) || getComputedStyle(x).cursor === "pointer") return;
+    }
+    tell({ type: "blank" });
+  });
+
   // Escape in pin mode reaches the viewer too while the focus is in the page.
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && picking) tell({ type: "escape" });

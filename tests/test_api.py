@@ -908,3 +908,21 @@ def test_the_frame_takes_the_pin_look_only_when_strictly_true():
     # The dot's colour: only a name from the list, as a colour the frame
     # writes itself (tests/js/pin-marks.test.js checks the list).
     assert 'layer.style.setProperty("--dot", dotColour(m.dot))' in pins
+
+
+def test_a_tap_on_an_empty_spot_lets_go_only_outside_comment_mode():
+    # The frame reports a plain tap away from what the page acts on, never in
+    # pin mode; the viewer takes it only from its frame, outside pin mode,
+    # and lets go only when something is selected and comment mode is off.
+    static = Path(__file__).parent.parent / "src" / "agent_artifacts" / "static"
+    pins = (static / "pins.js").read_text()
+    assert "if (picking || !tapped || e.defaultPrevented" in pins
+    assert 'x.matches(ACTS) || getComputedStyle(x).cursor === "pointer"' in pins
+    assert "press.y) <= 10 && performance.now() - press.at <= 500;" in pins
+    viewer_pins = (static / "comments-pins.js").read_text()
+    assert 'm.type === "blank" && !page.picking' in viewer_pins
+    assert "press.y) <= 10 && performance.now() - press.at <= 500;" in viewer_pins
+    handler = viewer_pins.index("function onFrameMessage(e) {")
+    assert "if (e.source !== frame.contentWindow) return;" in viewer_pins[handler:handler + 120]
+    comments = (static / "comments.js").read_text()
+    assert "if (S.mode || !S.sel) return;\n    fold();" in comments
