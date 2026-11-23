@@ -92,8 +92,9 @@ What works with people reviewing on a phone:
    `components.md` (components and their states), `icons/` (one `.svg`
    per icon) with `icons.md` (each shown, named, where used) and
    `tone-of-voice.md` (voice rules, a glossary of the words used and
-   avoided, status words, message patterns); with no repository, the
-   Markdown files in the job's project here. Every later mockup follows
+   avoided, status words, message patterns); with no repository, the same
+   folder in the folder you work in. Never only here: files on this
+   service are temporary. Every later mockup follows
    them; a decision that changes the look or the words goes into them too.
 2. **Then wireframes of the flow** — for a new product, a new screen and a
    redesign alike. Numbered steps from the person's first action to the
@@ -128,10 +129,10 @@ What works with people reviewing on a phone:
 
 The same holds beyond screens: when you design a process, a workflow or
 an architecture with the person, keep the agreed result in their project
-— `docs/` in the repository (a flow, the decisions and why, open
-questions), or a Markdown file in the job's project here — so either of
-you can come back to it, change it or build on it after the discussion
-pages are gone.
+— `docs/` in the repository, or in the folder you work in (a flow, the
+decisions and why, open questions) — not only here, so either of you can
+come back to it, change it or build on it after the discussion pages are
+gone.
 
 ## Comments
 
