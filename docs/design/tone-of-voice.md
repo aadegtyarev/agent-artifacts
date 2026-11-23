@@ -49,7 +49,7 @@ dialog; "address" is the network address in the 429 error).
 | Waiting for this person's decision | need you ("2 need you", "Need you") | action required, awaiting input | pending, to do |
 | Sent and not answered yet | in progress ("1 in progress", "In progress") | with the agent, queued | |
 | The agent's finished work, taken | accept ("✓ Accept", "✓ Accepted") | resolve, resolved | close, done |
-| A colleague's comment let through | approve ("✓ Approve", "✓ Approved by Anna") | | confirm, allow |
+| A colleague's comment let through | accept ("✓ Accept", "✓ Approved by Anna") | | confirm, allow |
 | A colleague's comment stopped | reject ("✕ Reject", "rejected") | decline, dismiss | delete |
 | Asking the agent for more | reply ("Reply to the agent…") | send back, reopen | return |
 | The AI that made the file | agent ("Agent", "Send to agent") | bot, assistant | AI, Claude (fine as the product name: "Claude Code, Codex or any other" on the key page) |
@@ -70,7 +70,7 @@ author, "you" when it is mine, "N replies" or the time
 | Comment state | Lead | Colour |
 | --- | --- | --- |
 | my draft of a new comment | when, e.g. "2 min ago" (the "Your drafts" group names it) | muted |
-| my decision in this review | ✓ Approve / ✕ Reject / ✓ Accept | blue |
+| my decision in this review | ✓ Accept / ✕ Reject | blue |
 | the same, with my reply | ✓ Accept · your reply (etc.) | blue |
 | my reply draft | ↩ Your reply | blue |
 | accepted | accepted | muted |
@@ -109,7 +109,7 @@ image", "“Send”", "on the page".
 
 Verb first, one or two words: **Copy link**, **Download file**, **Finish
 review**, **Show**, **Save**, **Edit**, **Delete**, **Undo**, **Back**.
-Decisions carry their mark: **✓ Approve**, **✕ Reject**, **✓ Accept**,
+Decisions carry their mark: **✓ Accept**, **✕ Reject**,
 **✓ All · N** (pill), **Accept all · N** (link). Closing a dialog is
 **Done**; skipping the name is **No name**. The full-screen tip closes with
 **OK**, or with **Hide** for good. A menu item that opens a dialog
@@ -178,3 +178,7 @@ comment has the most replies it can hold."
 | in progress | "N in progress" |
 | list position | "N of M" |
 | zero | left out of the strip; a title with nothing shows its empty state |
+
+Use “✓ Accept” for the positive action on a colleague’s pending comment and
+the agent’s completed work; keep “✕ Reject” for the colleague’s comment.
+An unread colleague reply on your comment leads with “New reply”.

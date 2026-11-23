@@ -70,17 +70,17 @@
   <div class="center">Archive: download it to see the contents.</div>
 {%- endif %}
 </main>
-{#- Comments: a bottom sheet on a phone (strip, a quarter, half, full),
+{#- Comments: a bottom sheet on a phone (strip, content, full),
     a panel at the right on a computer. The script fills it; names and
     texts go in as text only. #}
 <aside id="comments" class="sheet" data-pos="strip" aria-label="Comments" data-artifact="{{ a.id }}" data-kind="{{ kind.name }}" data-pin="{{ kind.pin or '' }}" data-url="{{ url }}"{% if not a.open_comments %} hidden{% endif %}>
-  <div id="sheet-grip" class="grip" aria-hidden="true"></div>
+  <div id="sheet-grip" class="grip" role="button" tabindex="0" aria-label="Change sheet height"></div>
   <div id="sheet-strip" class="strip"><span id="strip-text" class="strip-text">{% if a.open_comments %}Comments · {{ a.open_comments }}{% endif %}</span></div>
   <div id="sheet-body" class="sbody"></div>
   <div id="sheet-foot" class="sfoot"></div>
 </aside>
 </div>
-{#- Asked once, the first time comment mode is turned on. #}
+{#- Asked once, on the first nonempty review submission. #}
 <div id="name-dialog" class="scrim" hidden>
   <form id="name-form" class="modal" role="dialog" aria-modal="true" aria-labelledby="name-title" novalidate>
     <h2 id="name-title">What should we call you?</h2>

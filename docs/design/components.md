@@ -116,7 +116,7 @@ colours, radius 14, centred just under the header; `role="status"`.
 
 | Kind | Class | Look | Used for |
 | --- | --- | --- | --- |
-| Primary | `.btn.pri` | `--pri` with `--on-color`, 600; dark in light theme, blue in dark | Finish review, Approve, Accept, Save, Done, Copy link, Show |
+| Primary | `.btn.pri` | `--pri` with `--on-color`, 600; dark in light theme, blue in dark | Finish review, Accept, Save, Done, Copy link, Show |
 | Plain | `.btn` | `--surface` (in dialogs `--field`), 14, h 32, radius 10, padding 0 12 | Back, Edit, Delete, Cancel, Reject, No name, + About the whole file |
 | Big | `.btn.big` | h 36, padding 0 16 | Finish review in the Finish review view |
 | Pill | `.all-pill` | `--blue` on `--tint`, 13/600, h 28, radius 14 | "✓ All · N" in the Need you title |
@@ -126,7 +126,7 @@ colours, radius 14, centred just under the header; `role="status"`.
 | Site button | `button` | `--surface` with a `--line` border, radius 6 | invite and key pages |
 
 States: pressed `scale(0.97)` and `--surface-2`; disabled opacity 0.35; focus
-2 px `--blue` outline, 2 px offset. One primary per view; Approve or Accept
+2 px `--blue` outline, 2 px offset. One primary per view; Accept
 and Finish review can share a sheet (one in the body, one in the footer).
 
 ## Segmented control
@@ -148,7 +148,7 @@ On a phone every title line ends with the fold button (⌄).
 | --- | --- | --- |
 | strip | one line, see below | — |
 | list | title "Comments · N" (or "No comments yet"), groups, "+ About the whole file" in comment mode | Finish review · N, with drafts |
-| item | navigation, one comment as a chat or one draft, then "Others" with the rest when pulled to ½ or full | reply field; Finish review · N with drafts |
+| item | navigation, one comment as a chat or one draft, then "Others" with the rest when pulled to full | reply field; Finish review · N with drafts |
 | compose | caption "New draft" (or "New draft · about the whole file"), field with send | the field itself, so it stays above the keyboard |
 | finish | title "Finish review · N", Not decided yet, In this review, general comment field | Send to agent / Only publish, Back, Finish review |
 
@@ -158,11 +158,11 @@ review sits in the strip line that heads the panel.
 ### Strip
 
 One line, 14 px, words only, parts joined by " · ", zeros left out. Tap: the
-list at ½; drag: the sheet follows the finger.
+list at middle height; drag: the sheet follows the finger.
 
 | Part | Shown when |
 | --- | --- |
-| **N need you** (bold) | the agent answered or a colleague's comment awaits approval, with no draft of this person's on it |
+| **N need you** (bold) | the agent answered, a colleague’s comment awaits approval, or a colleague replied unread on this person’s comment, with no draft on it |
 | N drafts | the person has drafts; **Finish review** (primary) at the right |
 | N in progress | sent to the agent and not answered, and no drafts |
 | N comments | none of the above; in comment mode the hint "tap a spot to add" at the right |
@@ -180,11 +180,16 @@ Empty groups are left out. ‹ › in the item view follow this order.
 
 | Group | Holds | Start | Title extra |
 | --- | --- | --- | --- |
-| Need you | the agent's finished work, then its questions, then colleagues' comments awaiting approval | open | "✓ All · N" pill when two or more can be accepted |
+| Need you | the agent's finished work, then its questions, then colleagues' comments awaiting approval and unread colleague replies on own comments | open | "✓ All · N" pill when two or more can be accepted |
 | Your drafts | new comments, and comments with this person's decision or reply draft | open | — |
 | In progress | `waiting`, `working` | open | — |
 | Discussion | published, nothing waits for this person | folded | title is a button with › / ⌄, min h 44 |
 | Closed | accepted or rejected | folded | same |
+
+On your comment, an unread colleague reply leads with “New reply” in Need you.
+Local drafts and Closed take precedence; existing agent ordering is unchanged.
+Opening the thread marks the current replies read; a reply arriving later stays
+new until the thread is opened again.
 
 A folded group opens while one of its items is selected, and all fold again
 when the sheet folds to the strip.
@@ -211,12 +216,12 @@ last).
 
 | Part | Look |
 | --- | --- |
-| Navigation | "‹ All" (computer only), "N of M · where" (13 muted, tap: the list at ½), ‹ ›, fold (phone) |
+| Navigation | "‹ All" (computer only), "N of M · where" (13 muted, tap: the list at middle height), ‹ ›, fold (phone) |
 | Comment | pin, author 14/600 + time 13 muted, text 16; notes ("written before the file was replaced", where the spot is); "✓ Approved by X", "✕ Rejected by X" or "Awaiting approval · not sent to the agent" (13 muted) |
 | Replies | avatar 28 (agent: white star on `--purple-fill`; person: initial on `--orange`, `--blue-fill` when mine), "Agent", "You" or the name |
-| Decision | one line under the thread: "✓ Approved" / "✕ Rejected" / "✓ Accepted" (600, `--blue`; Rejected muted), "goes with your review" or "closes with your review", **Undo** at the right |
+| Decision | one line under the thread: "✕ Rejected" / "✓ Accepted" (600, `--blue`; Rejected muted), "goes with your review" or "closes with your review", **Undo** at the right |
 | Unsent reply | `--tint`, ↩ avatar, "Your reply", Edit / Delete |
-| Actions | awaiting approval: **✓ Approve** (primary), **✕ Reject**; agent done: **✓ Accept** (primary) |
+| Actions | awaiting approval: **✓ Accept** (primary), **✕ Reject**; agent done: **✓ Accept** (primary) |
 | Own draft | `--tint`, "Your draft" + time, text, Edit / Delete; editing: field, Save (primary), Cancel |
 | Reply field | pill field in the footer: "Reply to the agent…", "Add a reply…" or "Reply to {name}…"; not shown on a rejected comment or with an accept draft |
 
@@ -240,7 +245,9 @@ breaks the line; on a touch screen Enter breaks the line and the arrow sends.
 | Footer | segmented Send to agent / Only publish; Back and **Finish review** (big, primary), disabled with nothing to send |
 
 While a reply or the general comment is typed in, the footer hides the
-segmented control and the buttons under the field.
+segmented control and the buttons under the field. The name dialog appears at
+the first nonempty Finish review submission, not when entering comment mode
+or saving drafts. Dismissing it publishes nothing.
 
 ## Project page
 

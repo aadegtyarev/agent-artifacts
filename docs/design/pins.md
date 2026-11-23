@@ -101,3 +101,9 @@ the agent's".
 | Person avatar | 28 px circle, initial 13/600 white; `--orange`, `--blue-fill` for this browser; "↩" on an unsent reply |
 | Project page | no pins: a row has only the dot, see [components.md](components.md#project-page) |
 | Floating ≡ in comment mode | 12 px `--blue` bubble at the top right |
+
+A peer reply badge uses the count of replies from other non-agent keys, not
+display names. Opening the thread acknowledges that count in this browser; a
+pin tap that only highlights its list row does not.
+
+A reply arriving while its thread is open stays new until the thread is explicitly opened again; polling, redraw and scrolling do not acknowledge it.

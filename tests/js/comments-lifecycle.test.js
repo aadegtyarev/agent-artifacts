@@ -1,0 +1,128 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const source = fs.readFileSync(path.join(__dirname, '../../src/agent_artifacts/static/comments.js'), 'utf8');
+const part = (from, to) => source.slice(source.indexOf(from), source.indexOf(to, source.indexOf(from)));
+
+test('completed poll does not acknowledge; explicit visible open redraws strip and pins together', async () => {
+  let unread = 1, strip = 1, pin = 1, marked = 0;
+  const c = { id: 1 };
+  const context = { document: { visibilityState: 'visible', activeElement: null },
+    S: { comments: [], sel: 'c1', view: 'item', pos: 'm', edit: null, compose: null, order: ['c1'] },
+    pollStopped: false, sending: false, fields: { reply: { value: '' } }, generation: 0, pollSeq: 0,
+    fetchComments: async () => [c], items: () => [{ key: 'c1' }], itemOf: () => ({ c }),
+    markSeen: () => { unread = 0; marked++; }, ordered: () => [{ key: 'c1' }],
+    go: () => { strip = unread; pin = unread; }, toChatEnd() {}, revealSoon() {},
+    render: () => { strip = unread; pin = unread; }, body: {}, desk: { matches: false },
+  };
+  vm.createContext(context);
+  vm.runInContext(part('  async function poll()', '  setInterval(poll'), context);
+  vm.runInContext(part('  function openItem(key)', '  // At middle height'), context);
+  await context.poll();
+  assert.deepEqual([marked, strip, pin], [0, 1, 1]);
+  context.document.visibilityState = 'hidden'; context.openItem('c1');
+  assert.equal(marked, 0);
+  context.document.visibilityState = 'visible'; context.openItem('c1');
+  assert.deepEqual([marked, strip, pin], [1, 0, 0]);
+  assert.doesNotMatch(source, /acknowledgeVisibleReply/);
+});
+
+test('visual height override follows visual-only resize, zoom and desktop', () => {
+  const properties = {}, classes = new Set();
+  const context = { visual: { height: 240, scale: 1 }, desk: { matches: false },
+    document: { body: { style: { setProperty: (k, v) => { properties[k] = v; }, removeProperty: k => { delete properties[k]; } },
+      classList: { toggle: (k, on) => on ? classes.add(k) : classes.delete(k) } } } };
+  vm.createContext(context);
+  vm.runInContext(part('  function syncVisualHeight()', '  if (visual) visual.addEventListener'), context);
+  context.syncVisualHeight(); assert.equal(properties['--visual-height'], '240px'); assert.ok(classes.has('visual-compact'));
+  context.visual.scale = 2; context.syncVisualHeight(); assert.equal(properties['--visual-height'], undefined); assert.equal(classes.size, 0);
+  context.visual.scale = 1; context.desk.matches = true; context.syncVisualHeight(); assert.equal(properties['--visual-height'], undefined);
+});
+
+test('keyboard and accessibility click activate once and focus current heading or grip', () => {
+  for (const desktop of [false, true]) {
+    const handlers = {}, heading = { focus() { focused = 'heading'; } }, grip = { addEventListener() {}, focus() { focused = 'grip'; } };
+    let focused, opens = 0;
+    const stripText = { setAttribute() {}, addEventListener(type, fn) { handlers[type] = fn; }, click() { handlers.click({ target: this, detail: 0 }); }, closest() { return null; } };
+    const strip = { addEventListener(type, fn) { handlers[type] = fn; } };
+    const context = { stripText, strip, grip, desk: { matches: desktop }, body: { querySelector: () => heading },
+      drag: { dragged: () => false }, openList: () => opens++, go: () => opens++ };
+    vm.runInNewContext(part('  stripText.setAttribute("role"', '  // --- Keys'), context);
+    handlers.keydown({ key: 'Enter', preventDefault() {} });
+    assert.equal(opens, 1); assert.equal(focused, desktop ? 'heading' : 'grip');
+    stripText.click(); assert.equal(opens, 2);
+  }
+});
+
+test('fold focuses visible strip or immersive floating menu', () => {
+  for (const visible of [true, false]) {
+    let focused = '';
+    const stripText = { getClientRects: () => visible ? [1] : [], focus: () => { focused = 'strip'; } };
+    const float = { getClientRects: () => [1], focus: () => { focused = 'float'; } };
+    const context = { stripText, $: () => float };
+    vm.runInNewContext(part('  function focusFoldTarget()', '  // A typed reply or a changed edit'), context);
+    context.focusFoldTarget(); assert.equal(focused, visible ? 'strip' : 'float');
+  }
+});
+
+test('viewport token falls back to vh without dynamic viewport support or JS override', () => {
+  const css = fs.readFileSync(path.join(__dirname, '../../src/agent_artifacts/static/site.css'), 'utf8');
+  assert.match(css, /--viewport-height:\s*100vh/);
+  assert.match(css, /@supports\s*\(height:\s*100dvh\)\s*\{\s*:root\s*\{\s*--viewport-height:\s*100dvh/);
+  assert.match(css, /body\s*\{\s*height:\s*var\(--visual-height,\s*var\(--viewport-height\)\)/);
+  assert.equal((css.match(/var\(--visual-height,\s*var\(--viewport-height\)\)/g) || []).length, 3);
+  assert.doesNotMatch(css, /var\(--visual-height,\s*100dvh\)/);
+});
+
+test('seen counts survive two tabs and synchronize without acknowledging other threads', () => {
+  const data = new Map([['aa-seen:art', JSON.stringify({ 3: 2 })]]);
+  const storage = { get length() { return data.size; }, key: i => [...data.keys()][i],
+    getItem: k => data.get(k) ?? null, setItem: (k, v) => data.set(k, v) };
+  function tab() {
+    let handler, renders = 0;
+    const context = { artifact: 'art', localStorage: storage, S: {}, pending: new Set(),
+      window: { addEventListener: (_, fn) => { handler = fn; } }, render: () => renders++,
+      commentsModel: (_, { seen }) => ({ markSeen(c) { if ((seen[c.n] || 0) >= c.count) return false; seen[c.n] = c.count; return true; } }) };
+    vm.runInNewContext(part('  const seenKey =', "  // An item's pin"), context);
+    return { context, event: key => handler({ storageArea: storage, key, newValue: '1' }), get renders() { return renders; },
+      seen: n => vm.runInNewContext(`seen[${n}] || 0`, context) };
+  }
+  const a = tab(), b = tab();
+  assert.equal(a.seen(3), 2);
+  a.context.markSeen({ n: 1, count: 2 });
+  b.context.markSeen({ n: 2, count: 3 });
+  b.event('aa-seen:art:1:2'); a.event('aa-seen:art:2:3');
+  assert.deepEqual([a.seen(1), a.seen(2), b.seen(1), b.seen(2)], [2, 3, 2, 3]);
+  assert.equal(a.seen(4), 0); assert.equal(a.renders, 1);
+  // Stale acknowledgements of the same thread cannot lower a later count.
+  a.context.markSeen({ n: 1, count: 5 }); b.context.markSeen({ n: 1, count: 4 });
+  a.event('aa-seen:art:1:4'); b.event('aa-seen:art:1:5');
+  const reloaded = tab(); assert.equal(reloaded.seen(1), 5); assert.equal(reloaded.seen(2), 3);
+  data.set('aa-seen:art', '{invalid'); assert.equal(tab().seen(1), 5);
+});
+
+test('explicit fold click focuses even without prior sheet focus, but refusal and passive fold do not', () => {
+  let click, focused = 0, rendered = 0;
+  const context = { button: (_, fn) => { click = fn; return { append() {}, setAttribute() {} }; }, icon() {},
+    S: { edit: null, sel: 'c1', view: 'item', pos: 'm' }, fields: { reply: { value: '' } },
+    sheet: { contains: () => false }, document: { activeElement: null }, desk: { matches: false },
+    render: () => rendered++, toast() {}, focusFoldTarget: () => focused++ };
+  vm.createContext(context);
+  vm.runInContext(part('  function foldButton()', '  function titled('), context);
+  vm.runInContext(part('  function fold(explicit', '  function focusFoldTarget()'), context);
+  context.foldButton(); click(); assert.equal(focused, 1); assert.equal(context.S.pos, 'strip');
+  context.S.pos = 'm'; context.fields.reply.value = 'draft'; click();
+  assert.equal(context.S.pos, 'm'); assert.equal(focused, 1);
+  context.fields.reply.value = ''; context.fold(); assert.equal(focused, 1); assert.equal(rendered, 3);
+});
+
+test('unavailable seen storage keeps acknowledgements in the current page', () => {
+  const context = { artifact: 'art', S: {}, pending: new Set(), window: { addEventListener() {} },
+    commentsModel: (_, { seen }) => ({ markSeen(c) { seen[c.n] = c.count; return true; } }) };
+  Object.defineProperty(context, 'localStorage', { get() { throw new Error('denied'); } });
+  vm.runInNewContext(part('  const seenKey =', "  // An item's pin"), context);
+  context.markSeen({ n: 1, count: 2 });
+  assert.equal(vm.runInNewContext('seen[1]', context), 2);
+});

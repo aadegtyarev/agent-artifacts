@@ -284,10 +284,8 @@
       closeFan(false);
       commentsToggle.click();
       // The press's own click, on letting go, does not land on what this
-      // opened (the name dialog's backdrop); see swallowUntil.
+      // opened; see swallowUntil.
       swallowUntil = Infinity; // until released; releaseSoon sets the end
-      // Asked for a name first: the dialog is the answer, the mode comes after.
-      if ($("name-dialog")?.hidden === false) return;
       if (navigator.vibrate) navigator.vibrate(12);
       toast(document.body.classList.contains("commenting") ? "Commenting on" : "Commenting off");
     }, LONG_MS);

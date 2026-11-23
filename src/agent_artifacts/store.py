@@ -1330,7 +1330,12 @@ class Store:
             if not drafts and text is None:
                 raise NothingToPublish
             items = [
-                (d_author, d_text, d_anchor if _anchor_fits(d_anchor, pin) else None, written)
+                (
+                    d_author or author,
+                    d_text,
+                    d_anchor if _anchor_fits(d_anchor, pin) else None,
+                    written,
+                )
                 for _, d_author, d_text, d_anchor, written, kind, _ in drafts
                 if kind == "comment"
             ]
@@ -1345,7 +1350,7 @@ class Store:
                 )
             }
             about = [
-                (kind, of_n, d_author, d_text)
+                (kind, of_n, d_author or author, d_text)
                 for _, d_author, d_text, _, _, kind, of_n in drafts
                 if kind != "comment" and of_n in open_n
             ]

@@ -272,13 +272,12 @@ Sheet heights on a phone (`data-pos`):
 
 | Height | CSS | Drag snaps to |
 | --- | --- | --- |
-| strip | min 44 px, one line | 44 px |
-| ¼ (`q`) | its content, max 52% | 30% of the stage |
-| ½ (`h`) | 52% | 52% |
-| full (`f`) | 100%, no rounded top | 100% |
+| strip | min 44 px, one line | rendered height |
+| middle (`m`) | intrinsic content, capped at 60% of the visible viewport and available stage | rendered height |
+| full (`f`) | 100%, no rounded top | stage height |
 
-¼ and ½ overlap the content by 16 px (their rounded top). Let go below 75% of
-the ¼ height while dragging down, the sheet folds to the strip.
+Middle overlaps the content by 16 px (its rounded top). The body scrolls
+when capped; the footer remains above the keyboard.
 
 Layers (`z-index`): sheet 5, banner 30, menu 40, floating ≡ 45, file list 46,
 toast 60, dialogs 70.

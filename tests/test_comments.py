@@ -1549,3 +1549,47 @@ def test_a_batch_delete_deletes_only_the_keys_drafts(env):
     assert client.post(url, json={"ids": [kept]}).status_code == 400  # no author key
     assert delete_drafts(client, "a" * 22, [kept]).status_code == 404
     assert [d["id"] for d in drafts(client, art["id"], OTHER).json()] == [kept]
+
+
+def test_provisional_draft_authors_are_resolved_only_on_publish(env):
+    client, _, keys = env
+    art = upload(client, keys["alice"], "a.html", b"<p>Hi</p>")["id"]
+    other = comment(client, art, "peer", key=OTHER)
+    provisional = add_draft(client, art, {"author": None, "text": "new"}).json()
+    assert provisional["author"] is None
+    assert (
+        add_draft(
+            client, art, {"author": None, "kind": "reply", "of": other["n"], "text": "reply"}
+        ).status_code
+        == 201
+    )
+    assert (
+        add_draft(client, art, {"author": None, "kind": "approve", "of": other["n"]}).status_code
+        == 201
+    )
+    assert add_draft(client, art, {"author": "", "text": "anonymous"}).status_code == 201
+    assert add_draft(client, art, {"author": "Earlier", "text": "named"}).status_code == 201
+    assert add_draft(client, art, {"author": None, "text": "private"}, key=OTHER).status_code == 201
+    assert drafts(client, art).json()[0]["author"] is None
+    assert review(client, art, {"author": "Alice"}).status_code == 201
+    comments = client.get(f"/a/{art}/comments", headers=as_author()).json()
+    by_text = {c["text"]: c for c in comments}
+    assert by_text["new"]["author"] == "Alice"
+    assert by_text["anonymous"]["author"] == "anonymous"
+    assert by_text["named"]["author"] == "Earlier"
+    assert by_text["peer"]["approved_by"] == "Alice"
+    assert by_text["peer"]["replies"][0]["author"] == "Alice"
+    assert drafts(client, art, OTHER).json()[0]["author"] is None
+    assert review(client, art, {"author": ""}, OTHER).json()[0]["author"] == "anonymous"
+
+
+def test_batch_accepts_provisional_author_and_resolves_it_on_publish(env):
+    client, _, keys = env
+    art = upload(client, keys["alice"], "a.html", b"<p>Hi</p>")["id"]
+    peer = comment(client, art, "peer", key=KEY)
+    response = batch(client, art, [{"kind": "approve", "of": peer["n"]}], author=None)
+    assert response.status_code == 201
+    assert response.json()[0]["author"] is None
+    assert review(client, art, {"author": "Alice"}, OTHER).status_code == 201
+    comments = client.get(f"/a/{art}/comments", headers=as_author(OTHER)).json()
+    assert comments[0]["approved_by"] == "Alice"

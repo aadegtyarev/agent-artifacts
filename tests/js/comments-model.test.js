@@ -56,7 +56,7 @@ test("a decision and a reply on one comment: the decision leads, the reply is no
     draft("approve", 1), draft("reply", 1), draft("reply", 2), draft("reject", 3),
   ]);
   assert.deepEqual([itemFor(m, 1).tone, itemFor(m, 1).fill], ["own", "solid"]);
-  assert.deepEqual(m.status(itemFor(m, 1))[0], ["mine", "✓ Approve · your reply"]);
+  assert.deepEqual(m.status(itemFor(m, 1))[0], ["mine", "✓ Accept · your reply"]);
   assert.deepEqual([itemFor(m, 2).tone, itemFor(m, 2).fill], ["other", "line"]);
   assert.deepEqual(m.status(itemFor(m, 2))[0], ["mine", "↩ Your reply"]);
   assert.equal(itemFor(m, 3).fill, "rej");
@@ -233,4 +233,30 @@ test("a kept order holds after a decision moves an item; gone ones drop, new one
   assert.deepEqual(m.keptOrder(keys).map((i) => i.key), ["c1", "c2", "c3"]);
   state.comments = state.comments.filter((c) => c.n !== 3).concat(comment(4));
   assert.deepEqual(m.keptOrder(keys).map((i) => i.key), ["c1", "c2", "c4"]);
+});
+
+test("unread peer replies promote only my thread and acknowledgement persists", () => {
+  const peer = { author: "Bob", mine: false, agent: false };
+  const own = comment(1, { mine: true, replies: [peer, { mine: true }] });
+  const other = comment(2, { replies: [peer] });
+  const seen = {};
+  const m = model([own, other], [], { seen });
+  assert.equal(m.groups()[0].items.some((it) => it.key === "c1"), true);
+  assert.deepEqual(m.status(itemFor(m, 1))[0], ["ask", "New reply"]);
+  assert.equal(m.groupCounts().need, 2);
+  assert.equal(m.acceptable().length, 1);
+  assert.equal(m.markSeen(own), true);
+  assert.equal(model([own], [], { seen }).groupCounts().talk, 1);
+  assert.equal(model([own], [draft("reply", 1)], {}).groups()[0].id, "drafts");
+  const closed = model([comment(3, { mine: true, rejected_by: "x", replies: [peer] })]);
+  assert.equal(closed.groups()[0].id, "closed");
+  const later = model([{ ...own, replies: [...own.replies, peer] }], [], { seen });
+  assert.equal(later.groupCounts().need, 1);
+});
+
+test("an approved colleague thread keeps its unread pin outside Need you", () => {
+  const m = model([comment(1, { approved_by: "Alice", replies: [{ mine: false, agent: false }] })]);
+  assert.equal(itemFor(m, 1).badge, "new");
+  assert.equal(m.groupCounts().need, 0);
+  assert.equal(m.groups()[0].id, "talk");
 });
