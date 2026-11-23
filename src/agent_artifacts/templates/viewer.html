@@ -29,7 +29,8 @@
     <button type="button" role="menuitemcheckbox" aria-checked="false" class="fan-item" data-act="comment" data-when="full"><span class="fan-label"><span class="when-off">Comment</span><span class="when-on">Commenting</span></span><span class="fan-sq">{{ icon.bubble() }}</span></button>
     <button type="button" role="menuitem" class="fan-item" data-act="exit" data-when="full"><span class="fan-label">Exit full screen</span><span class="fan-sq">{{ icon.shrink() }}</span></button>
     {%- if in_project %}
-    <button type="button" role="menuitem" class="fan-item" data-act="files" data-when="full"><span class="fan-label">Project files</span><span class="fan-sq">{{ icon.files() }}</span></button>
+    {#- Always: the project's title in the header is easy to miss. #}
+    <button type="button" role="menuitem" class="fan-item" data-act="files"><span class="fan-label">Project files</span><span class="fan-sq">{{ icon.files() }}</span></button>
     {%- endif %}
     {%- if separate %}
     <a role="menuitem" class="fan-item" href="{{ separate }}" target="_blank" rel="noopener" data-act="separate"><span class="fan-label">Open separately</span><span class="fan-sq">{{ icon.external() }}</span></a>

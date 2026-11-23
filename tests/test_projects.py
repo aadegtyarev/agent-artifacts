@@ -531,11 +531,12 @@ def test_the_menu_holds_what_the_header_does_not(tmp_path):
             "inside": client.get(f"/a/{inside}").text,
             "project": client.get(f"/p/{p}").text,
         }
-    # Normal: what the header lacks. Full screen: the header's buttons in its
-    # order on top (bubble, full screen), then the project's files.
+    # Normal: what the header lacks, and the project's files, whose title in
+    # the header is easy to miss. Full screen: the header's buttons in its
+    # order on top (bubble, full screen).
     tail = [("separate", False), ("share", False), ("settings", False)]
     assert _menu(pages["plain"]) == [("comment", True), ("exit", True), *tail]
-    assert _menu(pages["inside"]) == [("comment", True), ("exit", True), ("files", True), *tail]
+    assert _menu(pages["inside"]) == [("comment", True), ("exit", True), ("files", False), *tail]
     assert _menu(pages["project"]) == [("exit", True), ("share", False), ("settings", False)]
     for name, page in pages.items():
         # The header keeps its buttons; the old items are gone from the menu.
