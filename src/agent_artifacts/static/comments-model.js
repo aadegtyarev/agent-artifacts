@@ -110,7 +110,12 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
     done: ["fin", "Done · check it"], wrote: ["fin", "Done, wrote"], asked: ["ask", "Asks you"],
   };
   function status(it, lost = null) {
-    if (it.draft) return [null, lost ? `your draft · ${lost}` : "your draft"];
+    // Under "Your drafts" a draft needs no word of its own: when, and where
+    // when its pin is not on what is shown.
+    if (it.draft) {
+      const at = it.d.created_at ? when(it.d.created_at) : "";
+      return [null, [at, lost].filter(Boolean).join(" · ")];
+    }
     const c = it.c;
     const dec = decisionOn(c.n);
     const mine = repliesOn(c.n).length;

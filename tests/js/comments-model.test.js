@@ -135,7 +135,7 @@ test("status leads per agent state, and the rest of the line", () => {
   assert.equal(one.status(itemFor(one, 1))[1], "Bob · 1 reply");
 });
 
-test("drafts: listed first, marked with the author's letter, their status says so", () => {
+test("drafts: listed first, marked with the author's letter, their status says when and where", () => {
   const drafts = Array.from({ length: 27 }, () => draft("comment"));
   const m = model([comment(5)], drafts);
   const all = m.items();
@@ -143,8 +143,12 @@ test("drafts: listed first, marked with the author's letter, their status says s
   assert.equal(all[0].label, "?"); // no author yet
   assert.equal(all[27].label, "B");
   assert.equal(m.itemOf(`d${drafts[1].id}`).fill, "line");
-  assert.deepEqual(m.status(all[0]), [null, "your draft"]);
-  assert.deepEqual(m.status(all[0], "on another screen"), [null, "your draft · on another screen"]);
+  assert.deepEqual(m.status(all[0]), [null, ""]);
+  assert.deepEqual(m.status(all[0], "on another screen"), [null, "on another screen"]);
+  const dated = model([], [draft("comment", null, { created_at: ago(120) })]);
+  const it = dated.items()[0];
+  assert.deepEqual(dated.status(it), [null, "2 min ago"]);
+  assert.deepEqual(dated.status(it, "on another screen"), [null, "2 min ago · on another screen"]);
   assert.equal(m.itemOf("c99"), null);
 });
 

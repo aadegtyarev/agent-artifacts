@@ -192,7 +192,7 @@ last).
 | State | Look |
 | --- | --- |
 | pressed, selected | `--surface` |
-| draft (not in Finish review) | `--tint`, no hairline, status "your draft" in `--blue` 600; selected `--tint-2` |
+| draft (not in Finish review) | `--tint`, no hairline; status in `--muted` like other rows: when, and where if its pin is not on what is shown (the group says it is a draft); selected `--tint-2` |
 | spot not found | status in `--red` |
 | on another screen | status muted, not bold |
 
