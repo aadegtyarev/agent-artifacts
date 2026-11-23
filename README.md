@@ -1,12 +1,14 @@
 # agent-artifacts
 
 Your AI agent makes a report, a page or a prototype and gives you a link. You
-open it on any device, download it or forward it; after a set time it is gone.
+open it on any device, download it, forward it or comment on it. A single file
+is gone after a set time; files the agent keeps in a project stay until deleted.
 
 A small Python web service. Agents upload files over an HTTP API with a key;
 people open the links without logging in. Untrusted HTML, SVG and Markdown
-open in a sandbox: they cannot load anything from the network, read the
-service or submit forms. Links to other sites open in a new tab.
+open in a sandbox: they cannot read the service, load anything from the
+network or submit forms, though a link or a script can still navigate to
+another site.
 
 Agents learn the service from a skill. It comes with `artifacts_cli.py`, a
 Python script with no dependencies, so any agent that runs shell commands can
@@ -27,9 +29,18 @@ flowchart LR
 - One link per piece of work: the agent updates the file and the link stays.
 - HTML pages with working scripts, Markdown, text, PDF, images and archives,
   viewable on a phone.
-- Files delete themselves after 48 hours by default.
+- Files outside a project delete themselves after 48 hours by default.
+- Projects: a job's files under one link (`/p/{id}`), grouped by section and
+  linking to each other, kept until deleted.
+  [Contract](docs/contract.md#projects).
+- Comments: people pin remarks to spots on a page or an image, finish a
+  review and send it to the agent; the agent takes them, fixes the file,
+  replies, and waits for the next round. The person accepts the work.
+  [User guide](docs/user-guide.md#what-to-ask-for),
+  [contract](docs/contract.md#comments).
 - Invites: a one-time link gives a colleague their own key and setup steps.
-- Space per person, with the agent asking what to delete when it runs out.
+- Space per person. When it runs out, the agent deletes only files it
+  clearly superseded in the same project, and asks otherwise.
 
 ## Quick start
 
@@ -55,9 +66,9 @@ flowchart LR
 - No logins for people who open links. Knowing the link is the access, so it
   is not for secrets.
 - No multi-file sites. A page is one self-contained file and cannot load
-  anything from the internet.
+  anything from the internet; files of a project link to each other instead.
 - No browsing inside archives, no versions or history of replaced files.
-- No storage beyond the lifetime.
+- No storage beyond the lifetime for files outside a project.
 
 ## Development
 

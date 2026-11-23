@@ -53,8 +53,10 @@ SANDBOX = (
     "allow-scripts allow-forms allow-modals allow-popups "
     "allow-popups-to-escape-sandbox allow-downloads"
 )
-# For untrusted HTML, SVG, Markdown and text: an opaque origin with no
-# network access, so the content can neither read this site nor phone home.
+# For untrusted HTML, SVG, Markdown and text: an opaque origin that loads
+# nothing from the network, so the content cannot read this site or fetch
+# from another. It can still navigate away (a link, its own frame, a popup
+# allowed to leave the sandbox), and a URL can carry data out.
 SANDBOX_CSP = (
     f"sandbox {SANDBOX}; default-src 'none'; form-action 'none'; script-src 'unsafe-inline'; "
     "style-src 'unsafe-inline'; img-src data: blob:; font-src data:; "

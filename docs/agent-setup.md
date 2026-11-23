@@ -1,7 +1,7 @@
 # agent-artifacts: setup for an AI agent
 
 This page is written for an AI agent that a person asked to set up
-agent-artifacts. There are two jobs; do the one you were asked for.
+agent-artifacts. There are three jobs; do the one you were asked for.
 
 - **Connect**: the person gave you two lines, `AGENT_ARTIFACTS_URL=…` and
   `AGENT_ARTIFACTS_KEY=…`. Install the skill and save the key.
@@ -65,7 +65,7 @@ Windows. Below, `run` means `uv run` if uv is installed, otherwise `python3`
    ```
 
    It prints the person's name, used space and quota, for example
-   `{"name":"petrov","used_bytes":0,"quota_bytes":524288000,"files":0,"admin":false}`.
+   `{"name":"petrov","admin":false,"used_bytes":0,"files":0,"quota_bytes":524288000,"own_quota":false,"last_upload_at":null}`.
 
 5. Delete the temporary clone and tell the person it is ready. Suggest a
    first try: "make a small HTML page and give me a link". Some harnesses load
