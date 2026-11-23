@@ -1359,8 +1359,13 @@
     grow(fields.reply);
     replyButton.disabled = !fields.reply.value.trim();
   });
+  // Enter sends only with a hardware keyboard. On a touch screen the
+  // keyboard's Enter is a new line, as in the draft's own editor; the send
+  // arrow and Add send.
+  const sendsOnEnter = (e) => e.key === "Enter" && !e.shiftKey && !e.isComposing
+    && !matchMedia("(pointer: coarse)").matches;
   fields.reply.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+    if (sendsOnEnter(e)) {
       e.preventDefault();
       addReply();
     }
@@ -1370,9 +1375,10 @@
     const done = finishButton;
     if (done && done.isConnected) done.disabled = sending || (!reviewCount() && !fields.general.value.trim());
   });
-  // Enter adds the draft; Shift+Enter is a new line.
+  // Enter adds the draft (Shift+Enter is a new line), with a hardware
+  // keyboard only, as above.
   fields.compose.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+    if (sendsOnEnter(e)) {
       e.preventDefault();
       addDraft();
     }
