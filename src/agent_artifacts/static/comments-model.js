@@ -132,6 +132,7 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
     let lead = null;
     if (dec) lead = ["mine", { approve: "✓ Approve", reject: "✕ Reject", accept: "✓ Accept" }[dec.kind]];
     else if (mine) lead = ["mine", "↩ Your reply"];
+    else if (c.resolved) lead = [null, "accepted"];
     else if (c.rejected_by) lead = [null, "rejected"];
     else if (it.pend) lead = [null, "awaiting approval"];
     else if (LEADS[c.agent]) lead = LEADS[c.agent];
@@ -160,10 +161,49 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
   // One waiting is accepted on its own row; Accept all shows from two.
   const acceptAllShown = () => acceptable().length >= 2;
 
+  // The list by what each item waits for, in this order; empty groups are
+  // left out. "need": what the person decides: the agent's finished work,
+  // then its questions, then colleagues' comments awaiting approval.
+  // "drafts": this review: new comments, and comments decided or replied to.
+  // "agent": sent and not answered yet. "talk": published, nothing waits
+  // for this person. "closed": accepted or rejected.
+  const GROUPS = [
+    ["need", "Need you"], ["drafts", "Your drafts"], ["agent", "With the agent"],
+    ["talk", "Discussion"], ["closed", "Closed"],
+  ];
+  function groupOf(it) {
+    if (it.draft) return "drafts";
+    const c = it.c;
+    if (c.resolved || c.rejected_by) return "closed";
+    if (actsOn(c.n).length) return "drafts";
+    if (c.agent === "done" || c.agent === "wrote" || c.agent === "asked" || it.pend) return "need";
+    if (c.agent === "waiting" || c.agent === "working") return "agent";
+    return "talk";
+  }
+  // Inside "need": done first, then asked, then colleagues'.
+  const needRank = (it) => (it.c.agent === "done" || it.c.agent === "wrote" ? 0 : it.c.agent === "asked" ? 1 : 2);
+  function groups() {
+    const all = items();
+    return GROUPS.map(([id, title]) => {
+      const list = all.filter((it) => groupOf(it) === id);
+      // sort is stable: the same rank keeps the comments' order.
+      if (id === "need") list.sort((a, b) => needRank(a) - needRank(b));
+      return { id, title, items: list };
+    }).filter((g) => g.items.length);
+  }
+  // The items in the list's order, for ‹ › on one item.
+  const ordered = () => groups().flatMap((g) => g.items);
+  // How many items each group holds, for the strip.
+  function groupCounts() {
+    const n = Object.fromEntries(GROUPS.map(([id]) => [id, 0]));
+    for (const it of items()) n[groupOf(it)] += 1;
+    return n;
+  }
+
   return {
     STAR, initial, liveDrafts, draftById, isComment, commentDrafts, actsOn, decisionOn, repliesOn,
     reviewCount, othersReplies, markSeen, stateOf, items, itemOf, agentCounts, lastSent, when, status,
-    acceptable, acceptAllShown,
+    acceptable, acceptAllShown, groups, ordered, groupCounts,
   };
 };
 

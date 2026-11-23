@@ -197,3 +197,36 @@ test("Accept all shows from two waiting", () => {
   assert.equal(model([comment(1, { agent: "done" }), comment(2)]).acceptAllShown(), true);
   assert.equal(model([comment(1, { agent: "done" }), comment(2)], [draft("approve", 2)]).acceptAllShown(), false);
 });
+
+test("the list groups by what waits for the person, in a fixed order", () => {
+  const m = model([
+    comment(1), // a colleague's, awaiting approval
+    comment(2, { agent: "asked", mine: true }),
+    comment(3, { agent: "working", mine: true }),
+    comment(4, { agent: "done", mine: true }),
+    comment(5, { mine: true }), // published, nothing waits
+    comment(6, { rejected_by: "alice" }),
+    comment(7, { agent: "done", resolved: true }),
+    comment(8, { agent: "waiting", mine: true }),
+    comment(9, { agent: "wrote" }),
+    comment(10), // decided in this review: a draft, not waiting
+    comment(11, { approved_by: "alice" }), // approved and not sent: discussion
+  ], [draft("comment"), draft("approve", 10)]);
+  const shape = m.groups().map((g) => [g.id, g.items.map((i) => i.key)]);
+  assert.deepEqual(shape, [
+    ["need", ["c4", "c9", "c2", "c1"]],
+    ["drafts", [`d${nextId - 2}`, "c10"]],
+    ["agent", ["c3", "c8"]],
+    ["talk", ["c5", "c11"]],
+    ["closed", ["c6", "c7"]],
+  ]);
+  assert.deepEqual(m.ordered().map((i) => i.key), shape.flatMap(([, keys]) => keys));
+  assert.deepEqual(m.groupCounts(), { need: 4, drafts: 2, agent: 2, talk: 2, closed: 2 });
+  assert.deepEqual(m.status(itemFor(m, 7))[0], [null, "accepted"]);
+});
+
+test("empty groups are left out", () => {
+  const m = model([comment(1, { mine: true })]);
+  assert.deepEqual(m.groups().map((g) => g.id), ["talk"]);
+  assert.deepEqual(model([]).groups(), []);
+});
