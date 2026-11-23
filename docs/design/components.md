@@ -17,24 +17,24 @@ size. Hidden in full screen.
 | Second line (12, muted, one line) | "12.3 KB · expires 2026-11-24 10:00 UTC"; in a project: the project title button | "3 files · kept until deleted" |
 | Buttons, right, gap 12 | bubble, Full screen, ≡ | Full screen, ≡ |
 
-**Square button** (`.actions .sq`): 32 × 32, radius 9, `--btn` fill, no border,
-icon 19. Pressed: scale 0.95. Focus: 2 px `#0a84ff` outline.
+**Square button** (`.actions .sq`): 32 × 32, radius 9, `--surface` fill, no border,
+icon 19. Pressed: scale 0.95. Focus: 2 px `--blue` outline.
 
 | Button | States |
 | --- | --- |
-| Bubble | off: `--btn`, title "Comment"; on: white icon on `#0a84ff`, inset shadow, `aria-pressed="true"`, title "Stop commenting" |
+| Bubble | off: `--surface`, title "Comment"; on: white icon on `--blue-fill`, inset shadow, `aria-pressed="true"`, title "Stop commenting" |
 | Full screen | one state |
 | ≡ | menu open: `--line` fill, `aria-expanded="true"` |
 
-**Project title button** (`.pmeta`, file in a project): 12/600 in `--plink`,
+**Project title button** (`.pmeta`, file in a project): 12/600 in `--blue`,
 then the 10 px chevron; the title is cut, the chevron stays. Its touch area
 reaches up over the file title (44 px). Tap: the [file list](#file-list-drop-down).
 
 ## Menu (≡)
 
 A column of items fanned out from its button over a scrim
-`rgb(0 0 0 / 0.28)`. Each item: a dark label pill (`--fan-label`, white
-14 px, radius 10, padding 7 11) and a 40 × 40 square (`--fan-sq`, radius 12,
+`--scrim`. Each item: a dark label pill (`--ink`, white
+14 px, radius 10, padding 7 11) and a 40 × 40 square (`--raised`, radius 12,
 icon 20), 44 high, 10 apart. Opened from the header it drops down, right
 aligned; from the floating ≡ it opens up or down, whichever has room, on the
 side the button keeps to (label on the right when the button is on the left).
@@ -49,26 +49,26 @@ It scrolls only when it does not fit.
 | 5 | Share… | yes | yes | yes | yes |
 | 6 | Settings… | yes | yes | yes | yes |
 
-Comment in comment mode: label "Commenting", square white on `#0a84ff` with an
+Comment in comment mode: label "Commenting", square white on `--blue-fill` with an
 inset shadow (`aria-checked="true"`).
 
 ## Floating ≡ (full screen)
 
-44 × 44, radius 12, `rgb(28 28 30 / 0.55)` with a 12 px blur, white 22 px icon.
+44 × 44, radius 12, `--glass` with a 12 px blur, white 22 px icon.
 Dragged anywhere, it snaps to the nearer side edge, 8 px in.
 
 | State | Look |
 | --- | --- |
 | rest | translucent, ≡ |
-| dragged | scale 1.08, `rgb(28 28 30 / 0.75)` |
-| menu open | `--float-open`, ✕ icon |
-| comment mode | 2 px `#0a84ff` ring inside the edge, 12 px blue bubble top right |
+| dragged | scale 1.08, `--ink` |
+| menu open | `--ink`, ✕ icon |
+| comment mode | 2 px `--blue` ring inside the edge, 12 px `--blue` bubble top right |
 | long press 500 ms | toggles comment mode, toast "Commenting on" / "Commenting off" |
 
 ## Dialogs
 
 A centred card (`.modal`): max 380 wide, padding 16, radius 16, `--raised`,
-shadow `0 12px 40px rgb(0 0 0 / 0.18)`, over a scrim `rgb(0 0 0 / 0.25)`.
+shadow `0 12px 40px` `--shadow-1`, over `--scrim`.
 Title 16/600. Buttons at the bottom right, gap 8; the closing one is primary.
 Inputs and plain buttons use `--field`. A tap on the scrim or Escape closes.
 
@@ -82,7 +82,7 @@ Settings controls apply at once; there is no Cancel.
 
 ## Toast
 
-One per page, white text on `--toast-bg`, 13 px, radius 20, min h 36,
+One per page, white text on `--ink`, 13 px, radius 20, min h 36,
 max w 440, blur 20, two lines at most. On a phone 8 px above the sheet (under
 the header when the sheet is full); on a computer at the bottom left of the
 content, beside the panel.
@@ -90,39 +90,39 @@ content, beside the panel.
 | State | Look | Time |
 | --- | --- | --- |
 | info | as above | 2.6 s (2.5 s from the menu and the project page) |
-| with Undo | **Undo** at the right, 600, `#64b5ff` | at least 5 s |
-| error | `--error` background, Undo white | 8 s (10 s from the menu and the project page; 6 s for a refused name) |
+| with Undo | **Undo** at the right, 600, `--blue` lightened (60% with white) | at least 5 s |
+| error | `--red-fill` background, Undo white | 8 s (10 s from the menu and the project page; 6 s for a refused name) |
 
 Inside an open dialog the dialog's own status line speaks instead, because the
 toast sits under the scrim.
 
 ## Banner
 
-"The file was updated" + **Show** (blue pill, white 600, radius 16). Toast
+"The file was updated" + **Show** (`--blue-fill` pill, white 600, radius 16). Toast
 colours, radius 14, centred just under the header; `role="status"`.
 
 ## Buttons
 
 | Kind | Class | Look | Used for |
 | --- | --- | --- | --- |
-| Primary | `.btn.pri` | `--pri-bg` / `--pri-fg`, 600; dark in light theme, blue in dark | Finish review, Approve, Accept, Save, Done, Copy link, Show |
-| Plain | `.btn` | `--fill` (in dialogs `--field`), 14, h 32, radius 10, padding 0 12 | Back, Edit, Delete, Cancel, Reject, No name, + About the whole file |
+| Primary | `.btn.pri` | `--pri` with `--on-color`, 600; dark in light theme, blue in dark | Finish review, Approve, Accept, Save, Done, Copy link, Show |
+| Plain | `.btn` | `--surface` (in dialogs `--field`), 14, h 32, radius 10, padding 0 12 | Back, Edit, Delete, Cancel, Reject, No name, + About the whole file |
 | Big | `.btn.big` | h 36, padding 0 16 | Finish review in the Finish review view |
-| Pill | `.all-pill` | `--accent` on `--draft-bg`, 13/600, h 28, radius 14 | "✓ All · N" in the Need you title |
-| Link | `.all-link`, `.undo`, `.drop-foot a` | `--accent` (or `--plink`), no fill | "Accept all · N", Undo on a decision, "Project page ›" |
-| Round icon | `.chev` | 32, radius 16, muted, `--fill` when pressed | ‹ › and fold |
-| Send | `.send` | 30 circle, white arrow on `--send`; disabled `--send-off` | inside comment and reply fields |
-| Site button | `button` | `--btn` with a `--line` border, radius 6 | invite and key pages |
+| Pill | `.all-pill` | `--blue` on `--tint`, 13/600, h 28, radius 14 | "✓ All · N" in the Need you title |
+| Link | `.all-link`, `.undo`, `.drop-foot a` | `--blue`, no fill | "Accept all · N", Undo on a decision, "Project page ›" |
+| Round icon | `.chev` | 32, radius 16, muted, `--surface` when pressed | ‹ › and fold |
+| Send | `.send` | 30 circle, white arrow on `--blue-fill`; disabled `--line` | inside comment and reply fields |
+| Site button | `button` | `--surface` with a `--line` border, radius 6 | invite and key pages |
 
-States: pressed `scale(0.97)` and `--fill2`; disabled opacity 0.35; focus
-2 px `--send` outline, 2 px offset. One primary per view; Approve or Accept
+States: pressed `scale(0.97)` and `--surface-2`; disabled opacity 0.35; focus
+2 px `--blue` outline, 2 px offset. One primary per view; Approve or Accept
 and Finish review can share a sheet (one in the body, one in the footer).
 
 ## Segmented control
 
 | Where | Track | Option | Selected |
 | --- | --- | --- | --- |
-| Finish review: Send to agent / Only publish | `--fill`, padding 2, radius 10 | h 36, 15 px, radius 8 | `--seg-on` (dark) or `--raised`, 600, small shadow |
+| Finish review: Send to agent / Only publish | `--surface`, padding 2, radius 10 | h 36, 15 px, radius 8 | `--seg-on`, 600, `--shadow-1` |
 | Settings | `--field` | radio buttons drawn as segments, h 40, 14 px | same |
 
 ## Comments sheet (phone) and panel (computer)
@@ -191,9 +191,9 @@ last).
 
 | State | Look |
 | --- | --- |
-| pressed, selected | `--fill` |
-| draft (not in Finish review) | `--draft-bg`, no hairline, status "your draft" in `--accent` 600; selected `--draft-bg2` |
-| spot not found | status in `--error` |
+| pressed, selected | `--surface` |
+| draft (not in Finish review) | `--tint`, no hairline, status "your draft" in `--blue` 600; selected `--tint-2` |
+| spot not found | status in `--red` |
 | on another screen | status muted, not bold |
 
 ### Item view
@@ -202,11 +202,11 @@ last).
 | --- | --- |
 | Navigation | "‹ All" (computer only), "N of M · where" (13 muted, tap: the list at ½), ‹ ›, fold (phone) |
 | Comment | pin, author 14/600 + time 13 muted, text 16; notes ("written before the file was replaced", where the spot is); "✓ Approved by X", "✕ Rejected by X" or "Awaiting approval · not sent to the agent" (13 muted) |
-| Replies | avatar 28 (agent: purple star; person: initial, blue when mine), "Agent", "You" or the name |
-| Decision | one line under the thread: "✓ Approved" / "✕ Rejected" / "✓ Accepted" (600, `--accent`; Rejected muted), "goes with your review" or "closes with your review", **Undo** at the right |
-| Unsent reply | `--draft-bg`, ↩ avatar, "Your reply", Edit / Delete |
+| Replies | avatar 28 (agent: white star on `--purple-fill`; person: initial on `--orange`, `--blue-fill` when mine), "Agent", "You" or the name |
+| Decision | one line under the thread: "✓ Approved" / "✕ Rejected" / "✓ Accepted" (600, `--blue`; Rejected muted), "goes with your review" or "closes with your review", **Undo** at the right |
+| Unsent reply | `--tint`, ↩ avatar, "Your reply", Edit / Delete |
 | Actions | awaiting approval: **✓ Approve** (primary), **✕ Reject**; agent done: **✓ Accept** (primary) |
-| Own draft | `--draft-bg`, "Your draft" + time, text, Edit / Delete; editing: field, Save (primary), Cancel |
+| Own draft | `--tint`, "Your draft" + time, text, Edit / Delete; editing: field, Save (primary), Cancel |
 | Reply field | pill field in the footer: "Reply to the agent…", "Add a reply…" or "Reply to {name}…"; not shown on a rejected comment or with an accept draft |
 
 ### Compose
@@ -214,7 +214,7 @@ last).
 Caption 13 muted, then a pill field (radius 20, 16 px, grows to 120 px) with
 the round send arrow inside at the bottom right; the arrow is disabled while
 the field is empty. Enter sends, Shift+Enter breaks the line. 2000 characters
-at most. Focus: `--sheet-bg` with a 4 px soft blue ring.
+at most. Focus: `--bg` with a hairline and a 4 px `--tint-2` ring.
 
 ### Finish review
 
@@ -232,17 +232,17 @@ segmented control and the buttons under the field.
 
 ## Project page
 
-The project's files in its order, on `--sheet-bg`, zoomed by text size.
+The project's files in its order, on `--bg`, zoomed by text size.
 
 | Part | Look |
 | --- | --- |
 | Section heading | as a group title, margin 16 0 4 |
-| Row (`.pf`) | link, min h 60, padding 8 6, gap 14, radius 10, hairline below; pressed or hovered `--fill`; focus 2 px inset outline |
-| Type square | 40 × 40, radius 9, `--fill`, muted 11/700 type ("HTML", "MD", "PNG"…) |
+| Row (`.pf`) | link, min h 60, padding 8 6, gap 14, radius 10, hairline below; pressed or hovered `--surface`; focus 2 px inset outline |
+| Type square | 40 × 40, radius 9, `--surface`, muted 11/700 type ("HTML", "MD", "PNG"…) |
 | Title | 16, one line, ellipsis |
 | Detail | 14 muted, "12.3 KB · 2 h ago" |
-| Counters, right | red pill (h 24, radius 12, white 14/600 on `#ff3b30`): waiting for this person, title "N waiting for you"; agent pin (line, 26) + number in purple 15/600, title "N in progress" |
-| Current file (in the drop-down) | `--fill` (`aria-current="page"`) |
+| Counters, right | red pill (h 24, radius 12, white 14/600 on `--red-fill`): waiting for this person, title "N waiting for you"; agent pin (line, 26) + number in `--purple` 15/600, title "N in progress" |
+| Current file (in the drop-down) | `--surface` (`aria-current="page"`) |
 
 Counters appear only after the summary call answers; none while it loads or
 when it fails.
@@ -250,9 +250,9 @@ when it fails.
 ## File list drop-down
 
 In a file of a project: the project page's rows in a sheet hanging from under
-the header, over a scrim `rgb(0 0 0 / 0.35)`; max h 80%, bottom radius 16,
+the header, over `--scrim`; max h 80%, bottom radius 16,
 full width on a phone, 440 px from 641 px. The current file is marked and
-scrolled into view. At the bottom right "Project page ›" (16/600, `--plink`,
+scrolled into view. At the bottom right "Project page ›" (16/600, `--blue`,
 44 high). Closes on the scrim, Escape or the title again.
 
 ## Empty states

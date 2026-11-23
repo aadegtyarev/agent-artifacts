@@ -1,15 +1,16 @@
 <!doctype html>
 {#- The Markdown source and a renderer; the viewer's browser does the work,
-    inside the sandbox, so everything is inline. #}
+    inside the sandbox, so everything is inline. Its colours are the light
+    values of tokens.md (--fg, --bg, --surface, --line, --muted). #}
 <html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ title }}</title>
 <style>
-body{max-width:820px;margin:0 auto;padding:24px 16px;font:16px/1.6 system-ui,sans-serif;color:#1d1d1f;background:#fff}
-pre,code{background:#f2f2f4;border-radius:4px}pre{padding:12px;overflow:auto}
+body{max-width:820px;margin:0 auto;padding:24px 16px;font:16px/1.6 system-ui,sans-serif;color:#1c1c1e;background:#fff}
+pre,code{background:#f2f2f7;border-radius:4px}pre{padding:12px;overflow:auto}
 code{padding:1px 4px}pre code{padding:0}table{border-collapse:collapse}
-th,td{border:1px solid #d2d2d7;padding:4px 8px}img{max-width:100%}
-blockquote{margin:0;padding-left:12px;border-left:3px solid #d2d2d7;color:#6e6e73}
+th,td{border:1px solid #d1d1d6;padding:4px 8px}img{max-width:100%}
+blockquote{margin:0;padding-left:12px;border-left:3px solid #d1d1d6;color:#6e6e73}
 </style></head><body>
 <script>{{ marked }}</script>
 <script>{{ links }}</script>

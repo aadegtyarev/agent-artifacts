@@ -80,7 +80,7 @@ author, "you" when it is mine, "N replies" or the time
 | `working` | Agent is working | purple |
 | `done` | Done · check it | green |
 | `wrote` | Done, wrote | green |
-| `asked` | Asks you | orange |
+| `asked` | Asks you | red (it needs you) |
 | none of these | (no lead) | — |
 
 Where the spot is, after the rest: "spot not found", "on “Checkout”",

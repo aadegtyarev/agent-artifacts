@@ -4,87 +4,93 @@ Colours, type, text size, spacing, radii and control sizes of the service's own
 interface, as `src/agent_artifacts/static/site.css` and `pin.css` define them.
 Pins have their own page: [pins.md](pins.md).
 
-## Colour tokens
+## Colour
 
-Defined on `:root`. The dark values apply under
+One colour, one meaning. Blue is you and actions, orange a colleague, purple
+the agent, green done, red what needs you or went wrong; everything else is
+grey. Nothing in `site.css` or the templates is written as a colour value
+outside these tokens (`design_check.py` checks it), with two exceptions: the
+content frame's `#fff` canvas and the white of pin letters and rings.
+
+Defined on `:root` in `site.css`. The dark values apply under
 `@media (prefers-color-scheme: dark)` unless Settings chose Light, and always
 with `:root[data-theme="dark"]`. A token without a dark value keeps its light
 one.
 
+### Hues
+
+A hue used as text has a value per theme that reads on that theme's
+background. Under white text or a white mark it is the `-fill` value, which
+holds white at 4.5:1 or more. Orange is only ever a fill.
+
+| Token | Light | Dark | Means, used for |
+| --- | --- | --- | --- |
+| `--blue` | `#0a64d8` | `#4c9bff` | you and actions: links, link buttons, draft status, decision line, Accept all, project title and "Project page ›", focus outlines, comment-mode ring on the floating ≡ |
+| `--blue-fill` | `#0a64d8` | `#0a6edc` | blue under white: send arrow, primary button (dark theme), pressed comment bubble and menu Comment, banner Show, own avatar; own pin |
+| `--orange` | `#e8890c` | — | a colleague: their pins and avatars |
+| `--purple` | `#5e5ce6` | `#9d9bff` | the agent as text: "Agent is working", agent counter on the project page |
+| `--purple-fill` | `#5e5ce6` | — | the agent under white: its avatar, its pins |
+| `--green` | `#1e7d36` | `#30d158` | done: "Done · check it", "Done, wrote" |
+| `--red` | `#cf291d` | `#ff6b5e` | needs you or went wrong, as text: "Asks you", "spot not found" |
+| `--red-fill` | `#cf291d` | — | red under white: error toast, "waiting for you" pill on the project page; the red dot |
+
+### Neutrals
+
 | Token | Light | Dark | Used for |
 | --- | --- | --- | --- |
-| `--fg` | `#1d1d1f` | `#f2f2f4` | text |
-| `--bg` | `#fff` | `#1c1c1e` | page background |
-| `--muted` | `#6e6e73` | `#a1a1a6` | secondary text: meta, status lines, section titles, chevrons |
-| `--line` | `#d2d2d7` | `#3a3a3c` | header bottom border, plain button border, ≡ while its menu is open |
-| `--btn` | `#f2f2f4` | `#2c2c2e` | header square buttons, plain buttons, pressed menu square |
-| `--accent` | `#0a64d8` | `#4c9bff` | links and link buttons, draft status, decision line, Accept all |
-| `--error` | `#c4281c` | `#ff6b5e` | error toast background, "spot not found" |
-| `--fill` | `#f2f2f7` | `#2c2c2e` | sheet buttons, fields, pressed and selected rows, segmented track, type square |
-| `--fill2` | `#e9e9ee` | `#3a3a3c` | pressed sheet buttons |
-| `--hair` | `rgb(60 60 67 / 0.12)` | `rgb(235 235 245 / 0.16)` | hairline separators between rows, panel edge, focus ring of a field |
-| `--pri-bg` | `#1c1c1e` | `#0071e3` | primary button: dark in light theme, blue in dark |
-| `--pri-fg` | `#fff` | `#fff` | primary button text |
-| `--send` | `#0a84ff` | — | send arrow button, focus outlines in the sheet |
-| `--send-off` | `#c7c7cc` | `#3a3a3c` | send arrow button disabled |
-| `--own` | `#0a84ff` | — | avatar of this browser's replies |
-| `--other` | `#e8890c` | — | avatar of a colleague |
-| `--sheet-bg` | `#fff` | `#1c1c1e` | comments sheet and panel, project page, file list drop-down |
-| `--raised` | `#fff` | `#2c2c2e` | dialogs, selected segment (light) |
-| `--field` | `#f2f2f7` | `#3a3a3c` | inputs, plain buttons and the segmented track in dialogs |
-| `--grip` | `#d1d1d6` | `#545458` | sheet grip bar |
-| `--draft-bg` | `rgb(10 132 255 / 0.08)` | `rgb(10 132 255 / 0.16)` | draft rows, unsent messages, Accept all pill |
-| `--draft-bg2` | `rgb(10 132 255 / 0.16)` | `rgb(10 132 255 / 0.26)` | the same, pressed or selected |
-| `--toast-bg` | `rgb(28 28 30 / 0.92)` | `rgb(58 58 60 / 0.96)` | toast, "file was updated" banner |
-| `--fan-label` | `rgb(28 28 30 / 0.92)` | `#48484a` | menu item labels |
-| `--fan-sq` | `#fff` | `#2c2c2e` | menu item squares |
-| `--float-open` | `#1c1c1e` | `#3a3a3c` | floating ≡ while its menu is open |
-| `--seg-on` | — (falls back to `--raised`) | `#636366` | selected segment |
-| `--plink` | `var(--accent)` | `#64b5ff` | project title in the header, "Project page ›" |
-| `--ts` | `1.15` | — | text size factor, see [Text size](#text-size) |
+| `--bg` | `#fff` | `#1c1c1e` | page, comments sheet and panel, project page, file list drop-down |
+| `--surface` | `#f2f2f7` | `#2c2c2e` | buttons (header squares, sheet, site), fields, pressed and selected rows, segmented track, type square; dialogs and menu squares in the dark |
+| `--surface-2` | `#e5e5ea` | `#3a3a3c` | pressed buttons; fields in dialogs, toast and menu labels in the dark |
+| `--line` | `#d1d1d6` | `#48484a` | header bottom border, site button border, sheet grip, ≡ while its menu is open, send arrow disabled |
+| `--faint` | `#8e8e93` | `#636366` | rejected pin; selected segment in the dark |
+| `--muted` | `#6e6e73` | `#a1a1a6` | secondary text: meta, status lines, section titles, chevrons, placeholders |
+| `--fg` | `#1c1c1e` | `#f2f2f4` | text; primary button in the light theme |
+| `--on-color` | `#fff` | — | text and icons on a fill: primary, send, toast, banner, menu labels, avatars, floating ≡ |
 
-### Fixed colours
+### Overlays and shadows
 
-Written as values, not tokens.
+| Token | Value | Used for |
+| --- | --- | --- |
+| `--scrim` | `rgb(0 0 0 / 0.3)` | under the menu, dialogs and the file list |
+| `--shadow-1` | `rgb(0 0 0 / 0.12)` | soft: sheet on a phone, dialogs, toast, menu labels and squares, selected segment |
+| `--shadow-2` | `rgb(0 0 0 / 0.25)` | firm: pins, floating ≡, banner, file list, inset of a pressed bubble |
+| `--glass` | `rgb(28 28 30 / 0.55)` | floating ≡ over the file (blurred), both themes |
 
-| Value | Where |
-| --- | --- |
-| `#0a84ff` | header bubble pressed, comment mode ring and bubble on the floating ≡, menu Comment pressed, focus outlines in header and menu, banner Show button |
-| `#ff3b30` | red dot badge, "waiting for you" pill on the project page |
-| `#5e5ce6` | agent pin, agent avatar, agent counter on the project page (dark: `#9d9bff`) |
-| `#e8890c` / `#0a84ff` | colleague / own pin |
-| `#8e8e93` | rejected pin, placeholder text |
-| `#64b5ff` | Undo in the toast |
-| `rgb(28 28 30 / 0.55)` / `rgb(28 28 30 / 0.75)` | floating ≡ / while dragged |
-| `rgb(0 0 0 / 0.28)` / `rgb(0 0 0 / 0.25)` / `rgb(0 0 0 / 0.35)` | scrim under the menu / dialogs / file list |
-| `rgb(10 132 255 / 0.15)` | 4 px focus ring of a field |
-| `rgb(10 132 255 / 0.07)` / `rgb(10 132 255 / 0.05)` | fill of the dashed outline in a page: element under the pointer / a new draft's element |
-| `#fff` | content frame background, so a file without its own background is never transparent |
+### Mixed from the tokens
 
-### Shadows
+Not colours of their own: `color-mix()` or another token, so they follow the
+theme.
 
-Black at low opacity, as fixed values.
-
-| Value | Where |
-| --- | --- |
-| `rgb(0 0 0 / 0.08)` | the sheet on a phone (`0 -6px 24px`) |
-| `rgb(0 0 0 / 0.12)` | selected segment in Finish review |
-| `rgb(0 0 0 / 0.16)` | menu squares |
-| `rgb(0 0 0 / 0.18)` | dialogs, toast, menu labels, selected Settings segment |
-| `rgb(0 0 0 / 0.2)` | line pin, list pin |
-| `rgb(0 0 0 / 0.25)` | floating ≡, banner, selected pin |
-| `rgb(0 0 0 / 0.28)` | pin on the content; inset shadow of a pressed header bubble and menu Comment |
-| `rgb(0 0 0 / 0.35)` | file list drop-down |
-| `rgb(28 28 30 / 0.18)` | 6 px halo of the selected pin |
-
-Status words in a row's second line (see [tone-of-voice.md](tone-of-voice.md#status-words)):
-
-| Class | Light | Dark | Words |
+| Token | Light | Dark | Used for |
 | --- | --- | --- | --- |
-| `.st b.fin` | `#248a3d` | `#30d158` | Done · check it, Done, wrote |
-| `.st b.ask` | `#b25e00` | `#ff9f0a` | Asks you |
-| `.st b.work` | `#5e5ce6` | `#7d7aff` | Agent is working |
-| `.st b.mine` | `--accent` | `--accent` | ✓ Approve, ✕ Reject, ✓ Accept, ↩ Your reply |
+| `--hair` | `--fg` at 12% | same | hairlines between rows, panel edge, field focus |
+| `--tint` | `--blue` at 8% | `--blue` at 12% | draft rows, unsent messages, Accept all pill; outline fill of a pointed element in a page |
+| `--tint-2` | `--blue` at 12% | `--blue` at 18% | the same pressed or selected; 4 px focus ring of a field |
+| `--ink` | `--fg` at 92% | `--surface-2` | toast, "file was updated" banner, menu labels, floating ≡ while open or dragged |
+| `--raised` | `--bg` | `--surface` | dialogs, menu squares |
+| `--field` | `--surface` | `--surface-2` | inputs, plain buttons and the segmented track in dialogs |
+| `--pri` | `--fg` | `--blue-fill` | primary button: dark in the light theme, blue in the dark |
+| `--seg-on` | `--bg` | `--faint` | selected segment |
+| Undo in the toast | `--blue` 60% with `--on-color` | same | the toast is dark in both themes, so its blue is lightened |
+
+### Where tokens do not reach
+
+Pins (`pin.css`, also drawn inside a page's sandbox), the outline of a
+pointed element (`pins.js`) and the plain-text and Markdown pages get no
+tokens: they write the **light** values out (`--blue-fill`, `--orange`,
+`--purple-fill`, `--faint`, `--red-fill`, `--shadow-1`/`-2`, `--fg`,
+`--surface`, `--line`, `--muted`, `--tint`) in both themes, since they sit
+on the file's own white canvas. Change them together with the tokens.
+
+### Contrast
+
+Text is at least 4.5:1 on the background it sits on, in both themes (white
+on `--blue-fill` 5.5 light, 4.9 dark; `--blue` on `--bg` 5.5 / 6.0; `--muted`
+on `--surface` 4.5 / 5.4; `--red` on `--bg` 5.3 / 6.1; `--green` on `--bg`
+5.2 / 8.4). Known short of it: white letters on an orange pin or avatar
+(2.6), white on a rejected pin (3.3), `--muted` on `--tint-2` in the light
+theme (4.3, a selected draft set aside) and placeholders in dark dialog
+fields (4.4).
 
 ## Type
 

@@ -1,11 +1,12 @@
 <!doctype html>
 {#- Plain text with fixed colours: a bare text/plain document follows the
     browser's dark mode and turns white-on-white in the frame. Inline styles:
-    the sandbox this is shown in loads nothing. #}
+    the sandbox this is shown in loads nothing. The colours are the light
+    --fg and --bg of tokens.md. #}
 <html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ title }}</title>
 <style>
-body{margin:0;padding:16px;color:#1d1d1f;background:#fff}
+body{margin:0;padding:16px;color:#1c1c1e;background:#fff}
 pre{margin:0;font:14px/1.5 ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
 </style></head><body><pre>{{ text }}</pre>{{ pins }}</body></html>
