@@ -1,6 +1,10 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
+{# The viewer's own interface is not zoomed by a pinch: the file is, by
+    zoom.js, and Settings' text size enlarges the rest. Other pages, and the
+    viewer of a file zoom.js does not zoom (SVG, PDF, archive), keep the
+    browser's zoom. -#}
+<meta name="viewport" content="width=device-width, initial-scale=1, {% if viewer and kind.pin %}maximum-scale=1, user-scalable=no, {% endif %}interactive-widget=resizes-content">
 <title>{{ title }}</title>
 {% if viewer or project %}<link rel="stylesheet" href="{{ static['pin.css'] }}">
 {% endif %}
@@ -13,6 +17,7 @@
 <script src="{{ static['comments-model.js'] }}"></script>
 <script src="{{ static['sheet-drag.js'] }}"></script>
 <script src="{{ static['links.js'] }}"></script>
+<script src="{{ static['zoom.js'] }}"></script>
 <script src="{{ static['comments-pins.js'] }}"></script>
 <script src="{{ static['comments.js'] }}"></script>
 <script src="{{ static['viewer.js'] }}"></script>

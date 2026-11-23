@@ -265,6 +265,54 @@
     requestAnimationFrame(() => { queued = false; layout(); });
   }
 
+  // Zoom of the page alone, see zoom.js (pages.py puts it before this
+  // script). Its listeners come first, as pin mode stops a touchend below.
+  // Zoomed, <body> is scaled from its top left corner, and its inline
+  // transform is put back as it was at 1x.
+  let zoom = 1;
+  let bodyStyle = null;
+  pageZoom.attach(window, {
+    max: 4,
+    scale: () => zoom,
+    setScale: (s) => {
+      const body = document.body;
+      if (!body) return;
+      if (s === 1 && bodyStyle) {
+        body.style.transform = bodyStyle.transform;
+        body.style.transformOrigin = bodyStyle.origin;
+        bodyStyle = null;
+      } else if (s !== 1) {
+        if (!bodyStyle) bodyStyle = { transform: body.style.transform, origin: body.style.transformOrigin };
+        body.style.transformOrigin = "0 0";
+        body.style.transform = `scale(${s})`;
+      }
+      zoom = s;
+    },
+    box: () => {
+      const r = document.body ? document.body.getBoundingClientRect() : { left: 0, top: 0 };
+      return { left: r.left, top: r.top };
+    },
+    scrollBy: (x, y) => window.scrollBy({ left: x, top: y, behavior: "instant" }),
+    // A page that does not scroll by itself (overflow hidden on its root)
+    // is still scrolled by a script: one finger moves it while zoomed.
+    pan: () => [document.documentElement, document.body].some((el) => {
+      if (!el) return false;
+      const s = getComputedStyle(el);
+      return /hidden|clip/.test(`${s.overflowX} ${s.overflowY}`);
+    }),
+    doubleTap: () => !picking,
+    // Where the page keeps the browser from zooming (touch-action without
+    // pinch-zoom: a map, a canvas, a whole page), it zooms by itself or not
+    // at all.
+    own: (e) => {
+      for (let el = e.target instanceof Element ? e.target : null; el; el = el.parentElement) {
+        const t = getComputedStyle(el).touchAction;
+        if (t && t !== "auto" && !/pinch-zoom|manipulation/.test(t)) return true;
+      }
+      return false;
+    },
+  });
+
   // Pin mode: the presses around a click stop here too, so menus that
   // open on a press stay shut; scrolling is left alone.
   // The layer's shadow root is closed: from out here its pins are the host.

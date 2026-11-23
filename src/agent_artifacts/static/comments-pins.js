@@ -177,6 +177,34 @@ const commentsPins = ({
       if (e.target instanceof Element && e.target.closest(".pin")) return;
       onBlank();
     });
+    // Zoom of the image alone, see zoom.js: the image is drawn larger and
+    // its box scrolls; the pins' layer takes the image's size (fitPins).
+    // Its size at 1x is taken when it is first zoomed.
+    let zoom = 1;
+    let base = null;
+    pageZoom.attach(imageBox, {
+      max: 8,
+      scale: () => zoom,
+      setScale: (s) => {
+        if (s === 1) {
+          base = null;
+          for (const p of ["width", "height", "maxWidth", "maxHeight", "flex"]) image.style[p] = "";
+        } else {
+          if (!base) base = { w: image.offsetWidth, h: image.offsetHeight };
+          if (!base.w || !base.h) return;
+          Object.assign(image.style, { width: `${base.w * s}px`, height: `${base.h * s}px`,
+            maxWidth: "none", maxHeight: "none", flex: "none" });
+        }
+        zoom = s;
+        fitPins();
+      },
+      box: () => {
+        const r = image.getBoundingClientRect();
+        return { left: r.left, top: r.top };
+      },
+      scrollBy: (x, y) => imageBox.scrollBy({ left: x, top: y, behavior: "instant" }),
+      doubleTap: () => !picking(),
+    });
     image.addEventListener("load", fitPins);
     // As the sheet grows or shrinks, the image moves in its box.
     if (window.ResizeObserver) {

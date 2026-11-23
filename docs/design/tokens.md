@@ -195,6 +195,12 @@ Not zoomed: the file (frame or image), the pins on it, the floating ≡ (44 px
 as is), the sheet's own box (its height is set in px by drags), the invite,
 key and message pages. A browser without `zoom` keeps `--ts: 1`.
 
+Text size is the way to enlarge the viewer's interface: the browser does not
+zoom the viewer page of a page, a Markdown or text file or an image (viewport `maximum-scale=1, user-scalable=no`, and
+`touch-action: pan-x pan-y` for browsers that ignore it); a pinch zooms the
+file alone (see contract.md, The viewer page). Other pages, and the viewer
+of an SVG, a PDF or an archive, keep the browser's zoom.
+
 ## Spacing
 
 | Where | Value |
