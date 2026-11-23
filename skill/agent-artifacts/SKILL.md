@@ -6,9 +6,9 @@ description: Share a file with a person as a link — an HTML page, report, prot
 # agent-artifacts
 
 Upload a file, get a link. Anyone with the link opens it in a browser, with
-no login, and can comment on it. A file lives for the time the service is
-set to after its last upload (24 h on art.adsrv.ru now; each upload answers
-with `expires_at`); files in a project stay until deleted.
+no login, and can comment on it. A file lives for the service's set time
+after its last upload (`expires_at` in each upload's answer says until
+when); files in a project stay until deleted.
 
 Everything goes through `scripts/artifacts_cli.py` in this folder (Python,
 no dependencies): `uv run <path>/artifacts_cli.py …`, or `python3`
@@ -37,8 +37,7 @@ where.
 - **Write to the person in their language**, in replies too.
 - **Never `resolve`** a comment the person has not accepted, never
   `project-delete` or `drop-drafts` unless the person asks.
-- Types: `.html .md .txt .pdf .png .jpg .gif .webp .svg .zip .tar.gz`, 25 MB;
-  Markdown and text 2 MB.
+- Types and sizes: `me` lists the accepted types and size limits.
 
 ## Commands you need
 
@@ -115,7 +114,7 @@ What works with people reviewing on a phone:
    page (inline `data:` URIs; an interactive mockup is its own HTML file,
    replaced each round), phone width first, both themes when colours matter, a
    one-line caption per frame saying what the person sees (JPEG keeps the
-   page small; the limit is 25 MB). Under the frames,
+   page small, within the size limit `me` shows). Under the frames,
    the decisions you made yourself and the open questions as numbered
    options.
 5. **Show how it looks, not its history.** No "was / now", counts of what

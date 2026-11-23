@@ -67,6 +67,11 @@ class KindError(ValueError):
         self.code = code
 
 
+def extensions() -> list[str]:
+    """The file name extensions an upload may have."""
+    return list(_EXTENSIONS)
+
+
 def get(name: str) -> Kind:
     return _KINDS[name]
 

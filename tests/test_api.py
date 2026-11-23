@@ -588,7 +588,15 @@ def test_quota_per_agent_and_me(tmp_path):
             "admin": False,
             "own_quota": False,
             "last_upload_at": me["last_upload_at"],
+            "limits": {
+                "ttl_seconds": 48 * 3600,
+                "max_file_bytes": 2000,
+                "max_text_bytes": 2 * 1024 * 1024,
+                "types": me["limits"]["types"],
+            },
         }
+        types = me["limits"]["types"]
+        assert ".html" in types and ".tar.gz" in types and ".exe" not in types
         assert client.get("/api/v1/me").status_code == 401
 
 
@@ -665,6 +673,8 @@ def test_admin_api(env):
     r = client.patch("/api/v1/admin/settings", headers=auth(root), json={"ttl_seconds": 86400})
     assert r.json()["ttl_seconds"] == 86400
     assert client.get("/api/v1/admin/settings", headers=auth(root)).json() == r.json()
+    me = client.get("/api/v1/me", headers=auth(keys["bob"])).json()
+    assert me["limits"]["ttl_seconds"] == 86400
     art = upload(client, keys["bob"], "c.txt", b"x").json()
     assert store.get(art["id"]).expires_at - store.get(art["id"]).created_at == 24 * 3600
     for bad in (

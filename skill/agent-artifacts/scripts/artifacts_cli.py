@@ -81,7 +81,8 @@ USAGE = """usage: artifacts_cli.py <command> [args]
   reopen ID N               mark comment N open again
   delete-comment ID N       delete comment N; the other numbers stay
   drop-drafts ID            delete every unpublished draft on a file, unread
-  me                        your name, space used and quota, admin or not
+  me                        your name, space used and quota, admin or not,
+                            and "limits": file lifetime, sizes, types
   new-key                   replace your key (after a leak) and save the new one
   version                   this skill's version
 

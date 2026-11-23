@@ -86,7 +86,7 @@ a missing one.
 | `PATCH /api/v1/artifacts/{id}` | any of `{"title", "project", "section"}`, without uploading again | `200` + artifact JSON |
 | `DELETE /api/v1/artifacts/{id}` | delete now | `204` |
 | `GET /api/v1/artifacts` | the calling agent's live artifacts, those in projects too | `200` + list |
-| `GET /api/v1/me` | the calling agent's name, space and role | `200` + user JSON, see [Admin calls](#admin-calls) |
+| `GET /api/v1/me` | the calling agent's name, space and role, and the limits its uploads are held to now | `200` + user JSON, see [Admin calls](#admin-calls), with `limits` |
 | `POST /api/v1/me/key` | a new key for the calling agent; the old one stops working, the files stay | `200` + `{"name", "key"}` |
 
 `name` defaults to the uploaded file name. It is reduced to a safe base name
@@ -265,6 +265,16 @@ User JSON, the same in `/api/v1/me`:
 ```json
 {"name": "petrov", "admin": false, "used_bytes": 48213, "files": 1,
  "quota_bytes": 524288000, "own_quota": false, "last_upload_at": "2026-11-20T10:00:00Z"}
+```
+
+`/api/v1/me` adds `limits`, read from the same settings the upload checks
+use: `ttl_seconds` (lifetime of a file outside a project), `max_file_bytes`,
+`max_text_bytes` (Markdown and text) and `types`, the accepted extensions:
+
+```json
+"limits": {"ttl_seconds": 172800, "max_file_bytes": 26214400, "max_text_bytes": 2097152,
+ "types": [".html", ".htm", ".md", ".txt", ".svg", ".pdf", ".png", ".jpg", ".jpeg",
+           ".gif", ".webp", ".zip", ".tar.gz", ".tgz"]}
 ```
 
 Values are whole numbers: sizes at least 1 MB (1048576), times at least one
