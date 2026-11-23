@@ -73,6 +73,8 @@ iframe { display: block; border: 0; width: 100%; height: 100%; background: #fff;
 :root { --ts: 1.15; }
 :root[data-text-size="normal"] { --ts: 1; }
 :root[data-text-size="larger"] { --ts: 1.3; }
+/* A browser without zoom keeps every size as it is, the panel included. */
+@supports not (zoom: 1) { :root, :root[data-text-size] { --ts: 1; } }
 body > header, .sheet > *, .toast-box, .fan-item, .modal, .banner > *, .pj > * {
   zoom: var(--ts); }
 
@@ -499,7 +501,7 @@ body.commenting .fan-item[data-act="comment"] .fan-sq { color: #fff; background:
 .sfoot .pill + .foot2 { margin-top: 10px; }
 /* The file was replaced: offered, not swapped under the finger. Just below
    the header; in full screen, near the top. */
-.banner { position: fixed; z-index: 30; top: 60px; left: 50%;
+.banner { position: fixed; z-index: 30; top: calc(15px + 45px * var(--ts)); left: 50%;
   display: flex; align-items: center; gap: 12px; max-width: calc(100% - 24px); padding: 8px 8px 8px 14px;
   color: #fff; background: var(--toast-bg); border-radius: 14px; transform: translateX(-50%);
   box-shadow: 0 6px 20px rgb(0 0 0 / 0.25); font-size: 14px; white-space: nowrap; }

@@ -143,6 +143,8 @@
       // No storage: the size lasts while the page is open.
     }
     showTextSize();
+    // The panel beside it got wider or narrower: the floating button moves.
+    if (!floatButton.hidden) applyPlace();
     if (!fan.hidden) place(opener);
   }
   showTextSize();
