@@ -64,6 +64,7 @@ USAGE = """usage: artifacts_cli.py <command> [args]
   comments ID               the comments on a file, oldest first
   take ID                   take the comments waiting for you ("agent": "waiting"):
                             they become "working"; prints them
+  comment ID TEXT [--anchor JSON]
   reply ID N TEXT [--wrote|--asked]
                             answer in comment N's chat: done (default), done
                             with a remark or question (--wrote), or not done
@@ -508,6 +509,17 @@ def run(argv: list[str]) -> str | None:
         case "comments":
             need(1, "ID")
             return c.call("GET", f"{api}/{_id(args[0])}/comments")
+        case "comment":
+            anchor, tail = _option(args[2:], "--anchor")
+            args = args[:2] + tail
+            need(2, "ID TEXT [--anchor JSON]")
+            body = {"text": args[1]}
+            if anchor is not None:
+                try:
+                    body["anchor"] = json.loads(anchor)
+                except ValueError:
+                    raise Usage("comment: --anchor must be JSON") from None
+            return c.json("POST", f"{api}/{_id(args[0])}/comments", body)
         case "take":
             need(1, "ID")
             return c.call("POST", f"{api}/{_id(args[0])}/take")

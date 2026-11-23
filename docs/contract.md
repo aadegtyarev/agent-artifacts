@@ -829,7 +829,7 @@ Finishing a review, in one transaction:
 | --- | --- | --- |
 | comment, general comment | new comment, `agent` `waiting` | new comment |
 | reply | added to the chat; the comment gets `agent` `waiting` | added to the chat |
-| approve | `approved_by` the draft's author; `agent` `waiting` | `approved_by` the draft's author |
+| approve | `approved_by` the draft's author; `agent` `waiting` for human-authored comments only | `approved_by` the draft's author |
 | reject | `rejected_by` the draft's author, `agent` `null` (no work for the agent); the comment stays listed | the same |
 | accept | the comment is resolved and leaves the viewer, applied last and only if its `agent` is then `done`, `wrote` or `asked`; dropped otherwise, and when the same review replies to it (a reply asks for more) | the same |
 
@@ -842,6 +842,16 @@ done. `POST /api/v1/artifacts/{id}/comments/{n}/reply` adds the agent's reply
 to the chat and sets `agent` to its `state`. The person then accepts the
 work (the comment closes), or replies and sends the review to the agent
 again (it waits again).
+
+**The agent's own comments.** The owner can `POST /api/v1/artifacts/{id}/comments`
+with `text` and an optional `anchor` under the same rules and limits as other
+comments. The response is `201` with the new comment, including `by_agent: true`.
+It starts with no work state, and does not go to `take` or wake `wait`. Reviewers
+can approve it (shown as **✓ Accept**) or reply. Approval records `approved_by`
+without resolving the thread, queueing it or waking the watcher. Closing `accept`
+and `reject` drafts on it are refused. A reply in **Send to agent** queues the
+thread even when approved in the same review. A reply in **Only publish** leaves
+its work state unchanged. Human-authored comments omit `by_agent`.
 
 The owner agent reads the comments with `GET /api/v1/artifacts/{id}/comments`,
 resolved ones included. It resolves, reopens and deletes them by number at any time.
@@ -1061,7 +1071,8 @@ get `upload FILE [NAME]` and `replace ID FILE [NAME]`, both with the options
 TEXT] [--project ID|none] [--section TEXT|none]`, which changes the details
 alone (`none` clears). Projects get `project-new TITLE`, `projects`,
 `project ID`, `project-rename ID TITLE` and `project-delete ID`. Comments
-get the commands `comments ID`, `take ID`, `reply ID N TEXT [--wrote|--asked]`,
+get the commands `comments ID`, `comment ID TEXT [--anchor JSON]`, `take ID`,
+`reply ID N TEXT [--wrote|--asked]`,
 `resolve ID N`, `reopen ID N` and `delete-comment ID N`, and `drop-drafts ID`
 deletes every draft on a file. `wait ID [--every SECONDS] [--timeout SECONDS]`
 polls `GET /api/v1/artifacts/{id}/comments` silently every 10 seconds by

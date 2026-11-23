@@ -48,6 +48,8 @@ artifacts_cli.py set <id> --title "Q3 report, final"    # details without upload
 artifacts_cli.py project-new "Landing redesign"         # prints id, url
 artifacts_cli.py upload hero.html --project <pid> --section "Mockups" --title "Hero, phone"
 artifacts_cli.py comments <id>                          # all comments, oldest first
+artifacts_cli.py comment <id> "Should this be blue?"    # owner proposal, whole file
+artifacts_cli.py comment <id> "Try this?" --anchor '{"type":"element","selector":"main > p","text":"Hi","x":0.5,"y":0.5,"width":1280}'
 artifacts_cli.py take <id>                              # start on those waiting for you
 artifacts_cli.py reply <id> <n> "what was done"         # --wrote: done with a remark; --asked: not done
 artifacts_cli.py wait <id>                              # in the background: returns on news

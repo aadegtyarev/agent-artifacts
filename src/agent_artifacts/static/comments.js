@@ -608,8 +608,9 @@
       // so none is left behind: the agent's answers, and colleagues'
       // comments awaiting approval. Then what this review changes, what is
       // accepted last.
-      const undecided = items().filter((i) => i.c && (["done", "wrote", "asked"].includes(i.c.agent) || i.pend)
-        && !actsOn(i.c.n).length);
+      const undecided = items().filter((i) => i.c && !actsOn(i.c.n).length && (i.c.by_agent
+        ? i.c.agent === "asked" || model.proposalCanApprove(i.c)
+        : ["done", "wrote", "asked"].includes(i.c.agent) || i.pend));
       const accepting = (i) => (decisionOn(i.c.n) || {}).kind === "accept";
       const out = [titled(`Finish review · ${count}`)];
       if (undecided.length) {
@@ -703,7 +704,7 @@
     const out = [];
     const head = el("div", "msg");
     const bd = el("div", "bd");
-    const who = el("span", "who", c.author);
+    const who = el("span", "who", c.by_agent ? "Agent" : c.author);
     who.append(el("span", "when", when(c.created_at)));
     bd.append(who, el("div", "text", c.text));
     const notes = [];
@@ -713,6 +714,7 @@
     if (notes.length) bd.append(el("span", `st${lostClass(it)}`, notes.join(" · ")));
     if (c.approved_by) bd.append(el("span", "ref", `✓ Approved by ${c.approved_by}`));
     else if (c.rejected_by) bd.append(el("span", "ref", `✕ Rejected by ${c.rejected_by}`));
+    else if (model.proposalCanApprove(c)) bd.append(el("span", "ref", "Awaiting approval"));
     else if (it.pend) bd.append(el("span", "ref", "Awaiting approval · not sent to the agent"));
     head.append(miniPin(it), bd);
     out.push(head);
@@ -756,10 +758,12 @@
     // Buttons only on the selected comment, and only what fits its state.
     if (!dec && !c.rejected_by) {
       const acts = el("div", "acts thread-acts");
-      if (it.pend) {
+      if (model.proposalCanApprove(c)) {
+        acts.append(button("✓ Accept", () => decide(c, "approve"), "btn pri"));
+      } else if (!c.by_agent && it.pend) {
         acts.append(button("✓ Accept", () => decide(c, "approve"), "btn pri"),
           button("✕ Reject", () => decide(c, "reject")));
-      } else if ((c.agent === "done" || c.agent === "wrote") && !repliesOn(c.n).length) {
+      } else if (!c.by_agent && (c.agent === "done" || c.agent === "wrote") && !repliesOn(c.n).length) {
         acts.append(button("✓ Accept", () => decide(c, "accept"), "btn pri"));
       }
       if (acts.children.length) out.push(acts);
@@ -769,7 +773,7 @@
 
   function replyPill(it) {
     const c = it.c;
-    fields.reply.placeholder = c.agent ? "Reply to the agent…" : c.mine ? "Add a reply…" : `Reply to ${c.author}…`;
+    fields.reply.placeholder = c.by_agent || c.agent ? "Reply to the agent…" : c.mine ? "Add a reply…" : `Reply to ${c.author}…`;
     fields.reply.setAttribute("aria-label", fields.reply.placeholder.replace("…", ""));
     replyFor = c.n;
     const pill = el("div", "pill");
@@ -1374,7 +1378,10 @@
       // Omitted when empty: the review is then the drafts alone.
       if (general.trim()) payload.text = general;
       if (S.toAgent) payload.agent = true;
-      const sent = S.toAgent;
+      const drafts = liveDrafts();
+      const onlyProposalApprovals = !general.trim() && drafts.length > 0 && drafts.every((d) =>
+        d.kind === "approve" && S.comments.some((c) => c.n === d.of && c.by_agent));
+      const sent = S.toAgent && !onlyProposalApprovals;
       const made = await call("POST", "/review", payload);
       S.toAgent = true;
       changed();

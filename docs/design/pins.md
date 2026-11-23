@@ -65,6 +65,10 @@ colleague's reply not yet seen in this browser.
 | my accept draft | own | solid | star | — |
 | any, with an unseen colleague reply | unchanged | unchanged | unchanged | dot |
 
+An agent-authored proposal always has a star, including during and after
+approval. With no agent work state, an unapproved proposal is outlined in
+the agent's colour and an approved one has the filled blue pin.
+
 ## Sizes
 
 | Pin | Normal | Large (Settings) |

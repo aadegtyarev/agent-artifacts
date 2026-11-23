@@ -7,6 +7,7 @@ import time
 import pytest
 from starlette.testclient import TestClient
 
+from agent_artifacts import comments as comments_module
 from agent_artifacts import store as store_module
 from agent_artifacts.config import Config
 from agent_artifacts.store import DRAFT_TTL_SECONDS, Store
@@ -728,6 +729,7 @@ def v1_store(tmp_path, monkeypatch):
     monkeypatch.setattr(store_module, "_MIGRATIONS", store_module._MIGRATIONS[:1])
     store = Store(tmp_path, max_total_bytes=10**6)
     with store._conn() as db:
+        db.execute("ALTER TABLE comments ADD COLUMN by_agent INTEGER NOT NULL DEFAULT 0")
         for column in ("title TEXT", "project TEXT", "section TEXT", "added_at REAL"):
             db.execute(f"ALTER TABLE artifacts ADD COLUMN {column}")
     return store
@@ -825,6 +827,7 @@ def test_a_database_from_before_chats_keeps_its_drafts(tmp_path, monkeypatch):
             ("comments", "approved_by"),
             ("comments", "rejected_by"),
             ("comments", "agent"),
+            ("comments", "by_agent"),
             ("artifacts", "title"),
         ):
             db.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
@@ -896,6 +899,7 @@ def test_todays_database_without_a_version_is_only_stamped(tmp_path, monkeypatch
     store.resolve_comment(art.id, 2, True, owner="old")
     store.add_draft(art.id, "h", author="p", text="pending", anchor=None)
     with store._conn() as db:
+        db.execute("ALTER TABLE comments DROP COLUMN by_agent")
         db.execute("ALTER TABLE comments ADD COLUMN edited_at REAL")
         db.execute("ALTER TABLE artifacts DROP COLUMN title")
         db.execute("PRAGMA user_version = 0")
@@ -937,6 +941,7 @@ def test_version_2_drops_for_agent_and_read_at_and_keeps_the_rest(tmp_path, monk
     )
     with store._conn() as db:
         # What version 1's code wrote: sent to the agent, read by the owner.
+        db.execute("ALTER TABLE comments DROP COLUMN by_agent")
         db.execute("UPDATE comments SET for_agent = 1, read_at = 70 WHERE n IN (1, 2, 3)")
         db.execute("ALTER TABLE artifacts DROP COLUMN title")
         before = [db.execute(sql).fetchall() for sql in kept]
@@ -1594,13 +1599,136 @@ def test_batch_accepts_provisional_author_and_resolves_it_on_publish(env):
     comments = client.get(f"/a/{art}/comments", headers=as_author(OTHER)).json()
     assert comments[0]["approved_by"] == "Alice"
 
+
 @pytest.mark.parametrize("count", [1, 2])
 def test_viewer_initial_strip_count(env, count):
     client, _, keys = env
     art = upload(client, keys["alice"], "a.html", b"<p>Hi</p>")
     for i in range(count):
         comment(client, art["id"], text=f"comment {i}")
-    html = client.get(f'/a/{art["id"]}').text
-    label = f'{count} comment' + ('s' if count != 1 else '')
+    html = client.get(f"/a/{art['id']}").text
+    label = f"{count} comment" + ("s" if count != 1 else "")
     assert f'data-count="{count}"' in html
     assert f'id="strip-text" class="strip-text">{label}</span>' in html
+
+
+def test_agent_authored_proposal_review_and_guards(env):
+    client, _, keys = env
+    art = upload(client, keys["alice"], "a.html", b"<p>Hi</p>")
+    aid = art["id"]
+    url = f"/api/v1/artifacts/{aid}/comments"
+    assert client.post(url, json={"text": "no"}).status_code == 401
+    assert client.post(url, headers=auth(keys["bob"]), json={"text": "no"}).status_code == 404
+    assert (
+        client.post(
+            url, headers=auth(keys["alice"]), json={"text": "no", "author": "x"}
+        ).status_code
+        == 400
+    )
+    assert (
+        client.post(url, headers=auth(keys["alice"]), json={"text": "no", "anchor": {}}).status_code
+        == 400
+    )
+    made = client.post(url, headers=auth(keys["alice"]), json={"text": "A", "anchor": ELEMENT})
+    assert made.status_code == 201
+    c = made.json()
+    assert c["n"] == 1 and c["by_agent"] is True and c["anchor"] == ELEMENT and c["agent"] is None
+    assert not c["mine"]
+    assert client.get(f"/a/{aid}/comments", headers=as_author()).json() == [c]
+    assert client.post(f"/api/v1/artifacts/{aid}/take", headers=auth(keys["alice"])).json() == []
+    for kind in ("accept", "reject"):
+        assert add_draft(client, aid, {"kind": kind, "of": 1}).status_code == 400
+        batch = client.post(
+            f"/a/{aid}/drafts/batch",
+            headers=as_author(),
+            json={"decisions": [{"kind": kind, "of": 1}]},
+        )
+        assert batch.status_code == 400
+    assert add_draft(client, aid, {"kind": "approve", "of": 1}).status_code == 201
+    c = review(client, aid, {"author": "P", "agent": True}).json()[0]
+    assert c["approved_by"] == "anonymous" and not c["resolved"] and c["agent"] is None
+    assert client.post(f"/api/v1/artifacts/{aid}/take", headers=auth(keys["alice"])).json() == []
+    assert add_draft(client, aid, {"kind": "reply", "of": 1, "text": "reply"}).status_code == 201
+    assert review(client, aid, {"author": "P", "agent": True}).json()[0]["agent"] == "waiting"
+    assert (
+        client.post(f"/api/v1/artifacts/{aid}/take", headers=auth(keys["alice"])).json()[0]["n"]
+        == 1
+    )
+
+
+def test_agent_proposals_share_comment_limit_and_numbering(env, monkeypatch):
+    client, _, keys = env
+    key = keys["alice"]
+    aid = upload(client, key, "a.html", b"<p>Hi</p>")["id"]
+    url = f"/api/v1/artifacts/{aid}/comments"
+    assert add_draft(client, aid, {"author": "agent", "text": "Human"}).status_code == 201
+    peer = review(client, aid).json()[0]
+    assert peer["author"] == "agent" and "by_agent" not in peer
+    monkeypatch.setattr(store_module, "MAX_COMMENTS", 1)
+    assert client.post(url, headers=auth(key), json={"text": "Proposal"}).status_code == 409
+    monkeypatch.setattr(store_module, "MAX_COMMENTS", 2)
+    assert client.post(url, headers=auth(key), json={"text": "Proposal"}).json()["n"] == 2
+    client.clock.now += 31 * 86400
+    assert client.post(url, headers=auth(key), json={"text": "Expired"}).status_code == 404
+
+
+def test_agent_proposal_uses_one_expiry_check_for_creation_and_response(env, monkeypatch):
+    client, _, keys = env
+    k = keys["alice"]
+    aid = upload(client, k, "a.html", b"<p>Hi</p>")["id"]
+    url = f"/api/v1/artifacts/{aid}/comments"
+    validate = comments_module._anchor
+
+    def validate_at_expiry(anchor, pin):
+        client.clock.now += 2
+        return validate(anchor, pin)
+
+    client.clock.now += 30 * 86400 - 1
+    monkeypatch.setattr(comments_module, "_anchor", validate_at_expiry)
+    created = client.post(url, headers=auth(k), json={"text": "Proposal", "anchor": ELEMENT})
+    assert created.status_code == 201 and created.json()["n"] == 1
+    assert client.post(url, headers=auth(k), json={"text": "Too late"}).status_code == 404
+
+
+def test_proposal_approval_with_reply_and_completed_work_in_one_review(env):
+    client, _, keys = env
+    k = keys["alice"]
+    aid = upload(client, k, "a.html", b"<p>Hi</p>")["id"]
+    url = f"/api/v1/artifacts/{aid}"
+    human = comment(client, aid)
+    n = human["n"]
+    assert (
+        client.post(
+            f"{url}/comments/{n}/reply", headers=auth(k), json={"text": "Changed", "state": "done"}
+        ).status_code
+        == 201
+    )
+    proposal = client.post(f"{url}/comments", headers=auth(k), json={"text": "Proposal"}).json()
+    p = proposal["n"]
+    assert (
+        client.post(
+            f"/a/{aid}/drafts/batch",
+            headers=as_author(),
+            json={"decisions": [{"kind": "accept", "of": n}, {"kind": "approve", "of": p}]},
+        ).status_code
+        == 201
+    )
+    assert (
+        add_draft(client, aid, {"kind": "reply", "of": p, "text": "Please also check"}).status_code
+        == 201
+    )
+    reviewed = review(client, aid, {"author": "Alex", "agent": True}).json()
+    assert len(reviewed) == 1
+    one = reviewed[0]
+    assert (
+        one["n"] == p and not one["resolved"] and one["approved_by"] and one["agent"] == "waiting"
+    )
+    assert owner_comments(client, k, aid).json()[0]["resolved"]
+    assert (
+        add_draft(client, aid, {"kind": "reply", "of": p, "text": "For the record"}).status_code
+        == 201
+    )
+    assert review(client, aid, {"author": "Alex", "agent": False}).json()[0]["agent"] == "waiting"
+    got = client.post(f"{url}/take", headers=auth(k)).json()
+    assert [c["n"] for c in got] == [p]
+    assert [r["text"] for r in got[0]["replies"]] == ["Please also check", "For the record"]

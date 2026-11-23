@@ -470,3 +470,25 @@ def test_output_is_utf8_on_a_narrow_console(server):
         env={"HOME": str(home), "PYTHONIOENCODING": "cp1252", **env},
     )
     assert r.returncode == 0 and "сделай зелёным" in r.stdout.decode()
+
+
+def test_owner_comment_command(server):
+    url, store, home = server
+    env = {"AGENT_ARTIFACTS_URL": url, "AGENT_ARTIFACTS_KEY": store.add_agent("alice")}
+    page = home / "proposal.html"
+    page.write_text("<main><p>Hi</p></main>")
+    art = json.loads(cli(home, "upload", str(page), env=env)[1])
+    anchor = {
+        "type": "element",
+        "selector": "main > p",
+        "text": "Hi",
+        "x": 0.5,
+        "y": 1,
+        "width": 1280,
+    }
+    code, out, _ = cli(home, "comment", art["url"], "A", "--anchor", json.dumps(anchor), env=env)
+    assert code == 0 and json.loads(out)["anchor"] == anchor
+    code, out, _ = cli(home, "comment", art["id"], "--anchor", env=env)
+    assert code == 0 and json.loads(out)["text"] == "--anchor"
+    assert json.loads(cli(home, "take", art["id"], env=env)[1]) == []
+    assert cli(home, "comment", art["id"], "A", "--anchor", "bad", env=env)[0] == 2
