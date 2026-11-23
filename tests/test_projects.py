@@ -301,6 +301,9 @@ def test_the_project_page_lists_files_by_section(env):
     assert order == sorted(order)
     assert page.count('class="sec"') == 2 and page.count('class="pf"') == 5
     assert f'href="/a/{ids["Main"]}"' in page and ">MD<" in page and "3 B · " in page
+    # The viewer's menu: Copy link, Theme and Text size.
+    assert 'data-act="theme"' in page and 'data-act="text-size"' in page
+    assert ">Text size: Large<" in page
 
 
 def test_the_project_page_of_a_missing_or_deleted_project_is_404(env):

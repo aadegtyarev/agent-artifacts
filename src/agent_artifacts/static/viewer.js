@@ -83,6 +83,10 @@
       nextTheme();
       return;
     }
+    if (act === "text-size") {
+      nextTextSize();
+      return;
+    }
     // Download and Open separately are links and go on by themselves; the
     // project's file list (project.js) takes the focus itself.
     const from = opener;
@@ -117,6 +121,33 @@
     showTheme();
   }
   showTheme();
+
+  // Text size: Normal, Large (the default), Larger, in turn; kept in this
+  // browser, applied by theme.js before the page is drawn. The menu grows
+  // with it, so it is placed again by its button, which grew too.
+  const SIZES = ["normal", "large", "larger"];
+  const SIZE_KEY = "agent-artifacts:text-size";
+  const textSizeLabel = $("text-size-label");
+  const textSize = () => document.documentElement.dataset.textSize || "large";
+  const showTextSize = () => {
+    const s = textSize();
+    textSizeLabel.textContent = `Text size: ${s[0].toUpperCase()}${s.slice(1)}`;
+  };
+  function nextTextSize() {
+    const s = SIZES[(SIZES.indexOf(textSize()) + 1) % SIZES.length];
+    document.documentElement.dataset.textSize = s;
+    try {
+      if (s === "large") localStorage.removeItem(SIZE_KEY);
+      else localStorage.setItem(SIZE_KEY, s);
+    } catch {
+      // No storage: the size lasts while the page is open.
+    }
+    showTextSize();
+    // The panel beside it got wider or narrower: the floating button moves.
+    if (!floatButton.hidden) applyPlace();
+    if (!fan.hidden) place(opener);
+  }
+  showTextSize();
 
   // Escape closes the menu before anything else on the page sees it.
   window.addEventListener("keydown", (e) => {

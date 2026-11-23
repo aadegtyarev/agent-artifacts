@@ -306,6 +306,14 @@ dimmed page:
   on every page of the service (the invite, key and message pages too). The
   dark theme is a palette of its own for the viewer's header, menu, sheet,
   dialog and toasts; the file itself is shown as its author made it.
+- **Text size: Normal / Large / Larger**: each tap moves on to the next and
+  the menu stays open; Large (+15 %) is the default, Larger is +30 %. Kept
+  in this browser (`localStorage` `agent-artifacts:text-size`, no value for
+  Large) and applied before the page is drawn, like the theme. It sizes the
+  service's own interface on the viewer and the project page: the header,
+  the menu, the comments sheet or panel (the panel widens with it), the
+  dialog, toasts and banners, the project's file list. The file and the pins
+  drawn on it keep their size.
 
 A tap outside the menu or Escape closes it.
 
@@ -355,9 +363,9 @@ its link; the page lists only its own files. Each line links to the file's
 viewer page and shows the type, the title, the size and when it was last
 updated ("2 h ago", then the date). An empty project says "No files yet". The
 header has the project's title, the number of files and "kept until
-deleted", **Full screen** and the "≡" menu with **Copy link** and **Theme**,
-as in the viewer (without comment mode). The page sends the same headers as
-the viewer page (`noindex`, `no-referrer`, its own CSP with
+deleted", **Full screen** and the "≡" menu with **Copy link**, **Theme** and
+**Text size**, as in the viewer (without comment mode). The page sends the
+same headers as the viewer page (`noindex`, `no-referrer`, its own CSP with
 `frame-ancestors 'none'`). A missing or deleted project gives the `404`
 page.
 

@@ -34,8 +34,9 @@
     {%- if separate %}
     <a role="menuitem" class="fan-item" href="{{ separate }}" target="_blank" rel="noopener" data-act="separate"><span class="fan-label">Open separately</span><span class="fan-sq">{{ icon.external() }}</span></a>
     {%- endif %}
-    {#- Stays open on a tap: each tap moves on to the next theme. #}
+    {#- Theme and Text size stay open on a tap: each tap moves on to the next. #}
     <button type="button" role="menuitem" class="fan-item" data-act="theme"><span class="fan-label" id="theme-label">Theme: Auto</span><span class="fan-sq">{{ icon.theme() }}</span></button>
+    <button type="button" role="menuitem" class="fan-item" data-act="text-size"><span class="fan-label" id="text-size-label">Text size: Large</span><span class="fan-sq">{{ icon.text_size() }}</span></button>
   </div>
 </div>
 {#- Full screen: this button takes the header's place. Dragged, it snaps
