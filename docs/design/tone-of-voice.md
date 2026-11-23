@@ -69,7 +69,7 @@ author, "you" when it is mine, "N replies" or the time
 
 | Comment state | Lead | Colour |
 | --- | --- | --- |
-| my draft of a new comment | your draft (no lead) | blue, 600 |
+| my draft of a new comment | when, e.g. "2 min ago" (the "Your drafts" group names it) | muted |
 | my decision in this review | ✓ Approve / ✕ Reject / ✓ Accept | blue |
 | the same, with my reply | ✓ Accept · your reply (etc.) | blue |
 | my reply draft | ↩ Your reply | blue |
