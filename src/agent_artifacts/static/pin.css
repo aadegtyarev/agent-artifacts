@@ -27,12 +27,14 @@
 .pin.ag { --c: #5e5ce6; }
 .pin.line { color: var(--c); background: #fff; border: 2px solid var(--c);
   box-shadow: 0 2px 6px rgb(0 0 0 / 0.25); }
-.pin.rej { background: #8e8e93; }
+.pin.rej { --c: #8e8e93; background: #8e8e93; }
 .pin > svg { width: 20px; height: 20px; display: block; }
-/* The selected pin is bigger, with a halo. */
-.pin.lit { z-index: 2; width: 36px; min-width: 36px; height: 36px; font-size: 16px; box-shadow: 0 0 0 2px #fff, 0 0 0 6px rgb(0 0 0 / 0.25),
+/* The selected pin is bigger, with a soft halo of its own colour. */
+.pin.lit { z-index: 2; width: 36px; min-width: 36px; height: 36px; font-size: 16px;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 7px color-mix(in srgb, var(--c) 35%, transparent),
   0 2px 6px rgb(0 0 0 / 0.25); }
-.pin.line.lit { box-shadow: 0 0 0 6px rgb(0 0 0 / 0.25), 0 2px 6px rgb(0 0 0 / 0.25); }
+.pin.line.lit { box-shadow: 0 0 0 6px color-mix(in srgb, var(--c) 35%, transparent),
+  0 2px 6px rgb(0 0 0 / 0.25); }
 .pin.lit > svg { width: 23px; height: 23px; }
 /* The dot: --dot comes from site.css in the viewer and from pins.js in a
    page. */
