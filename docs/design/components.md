@@ -73,8 +73,8 @@ button's side, 8 px from it and from the window's edges. Toast colours
 lines: "Hold — comment mode" (viewer only) and "Double-tap — exit full
 screen"; under them **Hide** (plain, transparent) and **OK** (`--blue-fill`,
 600), h 32 with a 44 px touch area. OK closes it; it shows on three entries
-in all. Hide closes it for good in this browser. Opening the menu or leaving
-full screen closes it too.
+in all. Hide closes it for good in this browser. Escape, a long press, opening the
+menu or leaving full screen close it too.
 
 ## Dialogs
 

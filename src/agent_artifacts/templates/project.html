@@ -10,7 +10,7 @@
   </div>
   <div class="actions">
     <button type="button" id="full-button" class="sq" title="Full screen" aria-label="Full screen">{{ icon.expand() }}</button>
-    <button type="button" id="menu-button" class="sq" aria-haspopup="menu" aria-controls="fan" aria-expanded="false" title="Menu" aria-label="Menu"><span class="float-hint">{{ icon.corners() }}</span>{{ icon.menu() }}</button>
+    <button type="button" id="menu-button" class="sq" aria-haspopup="menu" aria-controls="fan" aria-expanded="false" title="Menu" aria-label="Menu">{{ icon.menu() }}</button>
   </div>
 </header>
 {#- The viewer's menu and full screen (viewer.js), without what is about one file. #}
@@ -21,7 +21,7 @@
     {{- menu.tail() }}
   </div>
 </div>
-<button type="button" id="float-button" class="float-button" hidden aria-haspopup="menu" aria-controls="fan" aria-expanded="false" title="Menu" aria-label="Menu">{{ icon.menu() }}{{ icon.close() }}</button>
+<button type="button" id="float-button" class="float-button" hidden aria-haspopup="menu" aria-controls="fan" aria-expanded="false" title="Menu" aria-label="Menu"><span class="float-hint">{{ icon.corners() }}</span>{{ icon.menu() }}{{ icon.close() }}</button>
 {{ menu.float_tip(comments=False) }}
 <main id="files" class="pj" data-project="{{ project.id }}">
 {{- files.rows(rows) }}

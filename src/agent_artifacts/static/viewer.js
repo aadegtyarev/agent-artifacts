@@ -233,17 +233,23 @@
     lastTap = null;
     closeFan(false);
     exitFull();
-    // Its click, on letting go, lands on nothing (see swallowUntil), and a
-    // mouse let go over the content's frame lets go in this page.
+    // Its click, on letting go, lands on nothing (see swallowUntil), and the
+    // content's frame takes no pointer until that click is past, so neither
+    // a mouse let go over it nor the click falls through to the content.
     doubled = true;
     swallowUntil = Infinity;
     document.body.classList.add("float-pressed");
   }
+  let unpress = 0;
   function releaseDouble() {
     if (!doubled) return;
     doubled = false;
-    document.body.classList.remove("float-pressed");
     releaseSoon();
+    clearTimeout(unpress);
+    unpress = setTimeout(unpressFrame, 350);
+  }
+  function unpressFrame() {
+    if (!drag && !doubled) document.body.classList.remove("float-pressed");
   }
   window.addEventListener("pointerup", releaseDouble, true);
   window.addEventListener("pointercancel", releaseDouble, true);
@@ -251,7 +257,7 @@
   // its scrim beside the button: a double tap too, and the item under the
   // finger does nothing.
   window.addEventListener("pointerdown", (e) => {
-    if (floatButton.hidden || floatButton.contains(e.target) || !isDouble(e)) return;
+    if (e.button !== 0 || !e.isPrimary || floatButton.hidden || floatButton.contains(e.target) || !isDouble(e)) return;
     e.stopPropagation();
     doubleTap();
   }, true);
@@ -274,6 +280,7 @@
       if (drag !== held || held.moved) return;
       held.long = true;
       draggedAt = performance.now(); // its click does not open the menu
+      closeTip();
       closeFan(false);
       commentsToggle.click();
       // The press's own click, on letting go, does not land on what this
@@ -295,6 +302,7 @@
     swallowUntil = -Infinity;
     ev.stopPropagation();
     ev.preventDefault();
+    unpressFrame();
   }, true);
   const releaseSoon = () => {
     if (swallowUntil > performance.now()) swallowUntil = performance.now() + 350;
@@ -389,6 +397,9 @@
     tip.style.left = `${at.left}px`;
     tip.style.top = `${at.top}px`;
   }
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && tip && !tip.hidden) closeTip();
+  });
   if (tip) {
     $("float-tip-ok").addEventListener("click", closeTip);
     $("float-tip-hide").addEventListener("click", () => {

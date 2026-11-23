@@ -402,8 +402,8 @@ under the finger does nothing. Two thin corners of Exit full screen on the
 button hint at it. On entering full screen a tip beside the button says
 "Hold — comment mode" (not on the project page) and "Double-tap — exit full
 screen", with **OK** (closes it) and **Hide** (never again in this browser).
-It shows on three entries at most; opening the menu or leaving full screen
-closes it. This browser keeps the count (`aa-full-tip` in localStorage). When the browser leaves full
+It shows on three entries at most; Escape, a long press, opening the menu
+or leaving full screen close it. This browser keeps the count (`aa-full-tip` in localStorage). When the browser leaves full
 screen by itself (Escape, a system gesture), the viewer stays in its own full
 screen until Exit full screen.
 
