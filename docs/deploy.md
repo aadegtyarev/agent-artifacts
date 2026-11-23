@@ -139,7 +139,7 @@ docker compose exec app agent-artifacts agent remove ci-bot   # also deletes its
 | --- | --- | --- |
 | `AA_PUBLIC_URL` | required by `compose.yaml` | base of the links handed out |
 | `AA_RAW_URL` | empty | [the raw origin](#the-raw-origin-optional) for "Open separately"; empty hides that menu item |
-| `AA_TTL_HOURS` | `48` | lifetime of a file after its last upload |
+| `AA_TTL_HOURS` | `48` | lifetime of a file after its last upload; files in a project have none |
 | `AA_MAX_FILE_MB` | `25` | size limit of one file |
 | `AA_MAX_TOTAL_MB` | `2048` | size limit of all stored files |
 | `AA_USER_QUOTA_MB` | `500` | size limit of one key's live files |
@@ -163,8 +163,8 @@ Once an admin changes one through the API, the database value wins.
 ## Back up
 
 Everything lives in the `data` volume: `files/` and `meta.sqlite` (keys as
-hashes, invites, settings, and a row for every file with its comments). Back
-up both. While the service runs, copy the database first, then the files:
+hashes, invites, settings, projects, and a row for every file with its
+comments). Back up both. While the service runs, copy the database first, then the files:
 
 ```bash
 docker compose exec app python -c "import sqlite3; sqlite3.connect('/data/meta.sqlite').backup(sqlite3.connect('/data/backup.sqlite'))"
@@ -181,9 +181,13 @@ To restore, put `meta.sqlite` and `files/` back into the volume together,
 with the service stopped.
 
 If only the database comes back, every file whose own file is missing (files
-in projects, which never expire, included) answers 404, and the service
-removes its row, with its comments, on start and every ten minutes after,
-logging the owner and the file name of each. Keys, invites and settings stay.
+in projects, which never expire, included) answers 404. On start and every
+ten minutes after, the service removes such rows, with their comments, and
+logs the owner and the file name of each. Keys, invites and settings stay.
+With more than 5 files missing at once it takes the `files/` folder itself
+for missing (a restore in progress, an unmounted volume), removes none and
+logs the error `N of M files are missing; none removed: check the files
+folder`. Put `files/` back.
 
 ## Upgrade
 

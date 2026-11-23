@@ -90,13 +90,15 @@ The values are kept in the service's database and survive restarts. The
 environment variables in [deploy.md](deploy.md#settings) only give the values a
 new installation starts with.
 
-A new lifetime applies to new uploads. Files already stored keep their expiry.
+A new lifetime applies to new uploads and replaces. Files already stored keep
+their expiry, and files in a project have none: they stay until deleted, so
+the space limits, not the lifetime, bound them.
 
 ## Remove a person
 
 "Remove petrov from agent-artifacts" (`artifacts_cli.py remove petrov`). The
-key stops working and the files are deleted at once, so the agent asks you to
-confirm first.
+key stops working and the files and projects are deleted at once, so the
+agent asks you to confirm first.
 
 An admin cannot remove its own key. Another admin can, or `agent remove` on
 the server.

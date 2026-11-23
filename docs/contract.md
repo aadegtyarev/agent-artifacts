@@ -18,9 +18,12 @@ skill and its `artifacts_cli.py` command.
 4. The person forwards the link to a colleague, who opens it without any login.
 5. Two days later the file is gone. The link shows "expired or not found".
 6. The agent uploads a mockup. The person and colleagues click spots on it and
-   leave comments there. The person tells the agent to look at the comments;
-   the agent reads them with the spot each one points at, fixes the mockup,
-   replaces it at the same link and marks those comments resolved.
+   leave comments there, then finish the review and send it to the agent.
+   The agent takes the comments, reads the spot each one points at, fixes the
+   mockup, replaces it at the same link and replies to each: done, done with
+   a remark (`--wrote`) or a question (`--asked`). Then it waits. The person
+   accepts the work, which closes the comment, or replies, which sends it
+   back to the agent for another round.
 7. A job grows into many files: contracts, app mockups, site mockups. The
    agent puts them in a project, each with a title and a section. The person
    keeps one link to the project page, sees the files grouped by section,
@@ -840,8 +843,11 @@ X-Content-Type-Options: nosniff
 
 There is no `allow-same-origin`, so the content runs in an opaque origin: it
 cannot read the service's pages, other artifacts, or browser storage. It also
-cannot load anything from the network, which is why the skill requires
-self-contained files. Scripts, forms handled by scripts, `#anchor` links,
+cannot load anything from the network (no scripts, styles, images, fonts or
+`fetch` from elsewhere), which is why the skill requires self-contained
+files. It can still navigate: a link, its script moving its own frame, or a
+new tab its script opens (`allow-popups-to-escape-sandbox`; browsers mostly
+want a click for that) can go to another site and carry data in the URL. Scripts, forms handled by scripts, `#anchor` links,
 links opening in a new tab and [links to other files](#links-between-files)
 work, so interactive prototypes do. A form that
 really submits goes nowhere (`form-action 'none'`), and `localStorage` is not
@@ -874,7 +880,10 @@ behind a TLS reverse proxy.
 Files under `<data>/files/<id>`, metadata, projects, comments and key hashes
 in `<data>/meta.sqlite`. A background task deletes expired artifacts every 10
 minutes, and expired ids already answer `404` before that. The same task
-deletes drafts not changed for 7 days. A file in a project has no expiry
+deletes drafts not changed for 7 days, and the rows of files that are
+missing from `files/` (a database restored without them), with their
+comments; more than 5 missing at once is taken for a missing folder, and
+then none is removed and an error is logged. A file in a project has no expiry
 (`NULL` in the database, which every live-file query treats as live). Files
 in projects never expire, so over time the total limit, not the lifetime,
 decides how much is kept; an admin watches `stats` and raises the limits if

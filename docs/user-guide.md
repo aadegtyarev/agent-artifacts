@@ -69,9 +69,8 @@ Ask the agent:
 It answers with a link like `https://art.example.org/a/dqzQi3GkThdt_QSnKh4Dkg`
 and says until when it works. Open it on your phone: you see the page under a
 one-line header with buttons for comments, full screen and the "≡" menu:
-download, copy
-link, where the service offers it, open the file on its own, and the theme
-(auto, light or dark).
+download, copy link, open separately (where the service offers it), the theme
+(auto, light or dark) and the text size.
 
 If the agent says there is no key, it did not run step 2 or 3: paste the text
 again.
@@ -84,6 +83,13 @@ again.
   and give me a link".
 - "Update the page at the same link." The agent replaces the file, the link
   stays the same and its lifetime starts again.
+- "Put the contracts and the mockups in one project." You get one link to a
+  project page listing the files by section; they stay until deleted, and
+  the files can link to each other.
+- Comments: press the bubble, tap a spot, write and press **Add**. When
+  done, **Finish review** sends the comments to the agent; then tell it
+  "look at the comments". It fixes the file at the same link and answers
+  each one; you accept the work or reply for another round.
 - "Delete that link now."
 - "How much space do I have?"
 
@@ -94,14 +100,16 @@ secret this way: passwords, tokens, private data, internal addresses.
 
 | What | Limit |
 | --- | --- |
-| Lifetime of a link | 48 hours unless the service is set otherwise; starts again on each update |
+| Lifetime of a link | 48 hours unless the service is set otherwise; starts again on each update; none for files in a project |
 | One file | 25 MB; Markdown and text 2 MB |
 | All your live files | 500 MB unless the admin gave you another limit |
 | File types | `.html` `.htm` `.md` `.txt` `.pdf` `.png` `.jpg` `.jpeg` `.gif` `.webp` `.svg` `.zip` `.tar.gz` `.tgz` |
 
 When your space is full, an upload fails with `quota_exceeded`. The agent then
-lists your files with their sizes and asks which to delete. Files also go away
-on their own when their lifetime ends.
+deletes a file only if it clearly superseded it in the same project (an
+earlier variant, a duplicate) and tells you which; otherwise it asks what to
+delete. Files outside a project also go away on their own when their
+lifetime ends.
 
 A page cannot load anything from the internet: no CDN scripts, web fonts or
 external images. The skill already tells the agent to put everything into one
@@ -112,4 +120,6 @@ file.
 Tell the agent: "my agent-artifacts key leaked, get a new one". It asks the
 service for a new key and saves it; the old one stops working at once and
 your files stay. If you keep the key in environment variables, the agent shows
-the new key for you to put there.
+the new key for you to put there. If the key file cannot be written, the key
+is not changed; should saving fail after the change, the new key is shown so
+it is not lost.
