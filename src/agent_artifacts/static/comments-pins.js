@@ -140,27 +140,12 @@ const commentsPins = ({
       const pin = e.detail ? nearestPin(e.clientX, e.clientY) || hit : hit;
       onPin(pin.dataset.key);
     });
-    // In comment mode a tap places a draft pin; otherwise a plain tap, not
-    // a drag or a long press, is a tap on an empty spot (the sheet checks
-    // the mode for both). A Ctrl/Cmd or middle click still opens the image
-    // full size. A press is a tap when it lifts within 500 ms and 10 px of
-    // where it began.
-    let press = null;
-    imageLink.addEventListener("pointerdown", (e) => {
-      press = e.isPrimary ? { x: e.clientX, y: e.clientY, at: performance.now(), tap: false } : null;
-    }, { passive: true });
-    imageLink.addEventListener("pointerup", (e) => {
-      if (press && e.isPrimary) {
-        press.tap = Math.hypot(e.clientX - press.x, e.clientY - press.y) <= 10 && performance.now() - press.at <= 500;
-      }
-    }, { passive: true });
-    imageLink.addEventListener("pointercancel", () => { press = null; });
+    // In comment mode a tap places a draft pin (the sheet checks the mode);
+    // otherwise it does nothing. A Ctrl/Cmd or middle click still opens the
+    // image full size.
     imageLink.addEventListener("click", (e) => {
-      const tapped = press && press.tap;
-      press = null;
       if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
       e.preventDefault();
-      if (tapped && e.detail) onBlank();
       const box = image.getBoundingClientRect();
       if (!box.width || !box.height) return;
       const fraction = (v) => Math.round(Math.min(1, Math.max(0, v)) * 10000) / 10000;
@@ -169,6 +154,28 @@ const commentsPins = ({
         x: fraction((e.clientX - box.left) / box.width),
         y: fraction((e.clientY - box.top) / box.height),
       });
+    });
+    // Outside comment mode a plain tap on the image or the space around it,
+    // away from the pins, is a tap on an empty spot (the sheet checks the
+    // mode): not a drag, a long press, a double click or one with a
+    // modifier key. A press is a tap when it lifts within 500 ms and 10 px
+    // of where it began.
+    let press = null;
+    imageBox.addEventListener("pointerdown", (e) => {
+      press = e.isPrimary ? { x: e.clientX, y: e.clientY, at: performance.now(), tap: false } : null;
+    }, { passive: true });
+    imageBox.addEventListener("pointerup", (e) => {
+      if (press && e.isPrimary) {
+        press.tap = Math.hypot(e.clientX - press.x, e.clientY - press.y) <= 10 && performance.now() - press.at <= 500;
+      }
+    }, { passive: true });
+    imageBox.addEventListener("pointercancel", () => { press = null; });
+    imageBox.addEventListener("click", (e) => {
+      const tapped = press && press.tap;
+      press = null;
+      if (!tapped || e.button !== 0 || e.detail !== 1 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      if (e.target instanceof Element && e.target.closest(".pin")) return;
+      onBlank();
     });
     image.addEventListener("load", fitPins);
     // As the sheet grows or shrinks, the image moves in its box.
@@ -236,7 +243,10 @@ const commentsPins = ({
       onPin(fromFrame(m.key));
     } else if (m.type === "escape" && page.picking) {
       onEscape();
-    } else if (m.type === "blank" && !page.picking) {
+    } else if (m.type === "blank" && !page.picking
+      && (!navigator.userActivation || navigator.userActivation.isActive)) {
+      // Only right after a tap in the frame, so the page cannot clear the
+      // selection on its own (a click in the frame counts for this page too).
       onBlank();
     } else if (m.type === "open") {
       openLink(m.path, m.fragment);

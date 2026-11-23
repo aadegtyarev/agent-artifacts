@@ -547,10 +547,11 @@ the grip steps ½ and full, a tap on one item's title goes back to the list.
 On a phone each title line ends with a fold button (⌄) at the far right that
 folds the sheet to the strip, away from **Finish review** at the bottom; with a
 reply typed it does not fold and says to send or clear it first.
-Outside comment mode a tap on an empty spot of the file (a page or an image,
-not a drag or a long press) does the same while a comment is selected: its
-pin is no longer lit, on a phone the sheet folds to the strip and on a
-computer the panel shows the list; with nothing selected it does nothing.
+Outside comment mode a tap on an empty spot of the file (a page, or an image
+and the space around it; not a drag or a long press) does the same while a
+comment is selected: its pin is no longer lit, on a phone the sheet folds to
+the strip and on a computer the panel shows the list. With nothing selected,
+or with a reply typed or an edit changed, it does nothing.
 **Finish review** opens at ½. Folding a new draft to the strip drops it, with Undo if text was typed. The keyboard pushes the sheet up and
 the pin stays in sight above it. Buttons show only on the selected item:
 **Edit** and **Delete** on the person's own draft or reply; on a published
@@ -806,10 +807,14 @@ talk only through `postMessage`:
 - outside placing, it asks the viewer to open a link to another file or
   project, see [Links between files](#links-between-files);
 - outside placing, it reports a plain tap on an empty spot of the page
-  (`blank`): not one that moved or was held, not on a pin, and not on
-  anything the page may act on (a link, a control, an editable or focusable
-  element, one with an `onclick` or a pointer cursor, or a click the page's
-  own script cancelled). The viewer takes it only outside comment mode.
+  (`blank`): not one that moved or was held, not a double click, one with a
+  modifier key or one begun over selected text, not on a pin, and not on
+  anything the page may act on (a link, a control, a canvas, an element
+  with a role other than `presentation` or `none`, an editable element, one
+  in the tab order, one with an `onclick` or a pointer cursor). A click the
+  page's own script cancelled or stopped before it reached the window is
+  not reported. The viewer takes it only outside comment mode and while it has
+  a user activation from that tap.
 
 A pin is placed by its selector; if that matches nothing, by the first
 element whose visible text starts with the anchor's `text`; if neither, it is

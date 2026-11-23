@@ -348,17 +348,22 @@
 
   // Outside pin mode, a tap on an empty spot of the page tells the viewer,
   // which lets go of the selected comment. Only a plain tap: not one that
-  // moved (a scroll or a drag) or was held, and not on anything the page
-  // may act on: a control, an editable or focusable element, one with an
-  // onclick or a pointer cursor; a click the page's own script cancelled
-  // is left alone too.
-  const ACTS = `${INTERACTIVE},area[href],[contenteditable]:not([contenteditable=false]),[tabindex],[onclick],video,audio,iframe,embed,object`;
+  // moved (a scroll or a drag) or was held, not a double click, one with a
+  // modifier key or one begun over selected text (those handle text), and
+  // not on anything the page may act on: a control, a canvas, an element
+  // with a role, an editable element, one in the tab order, one with an
+  // onclick or a pointer cursor. A click the page's own script cancelled
+  // is left alone; one it stopped never gets here.
+  const ACTS = `${INTERACTIVE},area[href],canvas,[role]:not([role=presentation]):not([role=none]),`
+    + "[contenteditable]:not([contenteditable=false]),[tabindex]:not([tabindex=\"-1\"]),[onclick],video,audio,iframe,embed,object";
   // A press is a tap when it lifts within 500 ms and 10 px of where it
   // began; told by the pointer's own events, as a click's point is not
   // always where the finger was.
   let press = null;
   window.addEventListener("pointerdown", (e) => {
-    press = picking || !e.isPrimary ? null : { x: e.clientX, y: e.clientY, at: performance.now(), tap: false };
+    const selection = window.getSelection();
+    press = picking || !e.isPrimary || (selection && !selection.isCollapsed) ? null
+      : { x: e.clientX, y: e.clientY, at: performance.now(), tap: false };
   }, { capture: true, passive: true });
   window.addEventListener("pointerup", (e) => {
     if (press && e.isPrimary) {
@@ -369,7 +374,8 @@
   window.addEventListener("click", (e) => {
     const tapped = press && press.tap;
     press = null;
-    if (picking || !tapped || e.defaultPrevented || e.button !== 0 || !e.detail || fromLayer(e)) return;
+    if (picking || !tapped || e.defaultPrevented || e.button !== 0 || e.detail !== 1 || fromLayer(e)
+      || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
     if (!(e.target instanceof Element)) return;
     for (let x = e.target; x; x = x.parentElement) {
       if (x.matches(ACTS) || getComputedStyle(x).cursor === "pointer") return;

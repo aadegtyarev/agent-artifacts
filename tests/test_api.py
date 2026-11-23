@@ -917,12 +917,18 @@ def test_a_tap_on_an_empty_spot_lets_go_only_outside_comment_mode():
     static = Path(__file__).parent.parent / "src" / "agent_artifacts" / "static"
     pins = (static / "pins.js").read_text()
     assert "if (picking || !tapped || e.defaultPrevented" in pins
+    assert "e.detail !== 1 || fromLayer(e)\n      || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;" in pins
+    assert "canvas,[role]:not([role=presentation]):not([role=none])" in pins
     assert 'x.matches(ACTS) || getComputedStyle(x).cursor === "pointer"' in pins
     assert "press.y) <= 10 && performance.now() - press.at <= 500;" in pins
     viewer_pins = (static / "comments-pins.js").read_text()
-    assert 'm.type === "blank" && !page.picking' in viewer_pins
+    assert 'm.type === "blank" && !page.picking\n      && (!navigator.userActivation || navigator.userActivation.isActive)' in viewer_pins
+    assert 'imageBox.addEventListener("click"' in viewer_pins
     assert "press.y) <= 10 && performance.now() - press.at <= 500;" in viewer_pins
     handler = viewer_pins.index("function onFrameMessage(e) {")
     assert "if (e.source !== frame.contentWindow) return;" in viewer_pins[handler:handler + 120]
     comments = (static / "comments.js").read_text()
-    assert "if (S.mode || !S.sel) return;\n    fold();" in comments
+    blank = comments[comments.index("function blank() {"):]
+    blank = blank[:blank.index("\n  }\n")]
+    assert "if (S.mode || !S.sel) return;" in blank and "toast" not in blank
+    assert "fields.reply.value.trim() ||" in blank
