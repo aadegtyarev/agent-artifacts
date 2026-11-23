@@ -63,6 +63,19 @@ iframe { display: block; border: 0; width: 100%; height: 100%; background: #fff;
   --fan-label: #48484a; --fan-sq: #2c2c2e; --float-open: #3a3a3c;
   --draft-bg: rgb(10 132 255 / 0.16); --draft-bg2: rgb(10 132 255 / 0.26); --seg-on: #636366; }
 
+/* Text size (the menu's, theme.js): the service's own interface is zoomed,
+   never the file nor the pins on it. Zoom goes on what the scripts neither
+   size nor place: the sheet's parts, not the sheet, whose height a drag sets
+   in px; the toast's and the menu's insides, not their boxes, which are
+   placed in px from the header's and the sheet's boxes. Those boxes read in
+   real px whatever the zoom (getBoundingClientRect), so they still line up.
+   The floating button stays as it is: 44 px already, dragged in px. */
+:root { --ts: 1.15; }
+:root[data-text-size="normal"] { --ts: 1; }
+:root[data-text-size="larger"] { --ts: 1.3; }
+body > header, .sheet > *, .toast-box, .fan-item, .modal, .banner > *, .pj > * {
+  zoom: var(--ts); }
+
 .stage { flex: 1; min-height: 0; display: flex; }
 /* The content fills main by absolute position, not height: 100%, which
    older WebViews (Telegram's, for one) leave at the 150 px iframe default
@@ -206,8 +219,10 @@ iframe { display: block; border: 0; width: 100%; height: 100%; background: #fff;
 .modal input { background: var(--field); }
 .modal .btn:not(.pri) { background: var(--field); }
 .modal .btn:not(.pri):active { filter: brightness(0.9); }
-/* The theme's label keeps one width, so repeated taps stay on it. */
+/* The theme's and the text size's labels keep one width each, so repeated
+   taps stay on them. */
 .fan-item[data-act="theme"] .fan-label { min-width: 8.5em; text-align: center; }
+.fan-item[data-act="text-size"] .fan-label { min-width: 11.2em; text-align: center; }
 .sheet textarea:focus, .modal input:focus { background: var(--sheet-bg);
   box-shadow: 0 0 0 1px var(--hair), 0 0 0 4px rgb(10 132 255 / 0.15); }
 .pill { position: relative; }
@@ -318,14 +333,15 @@ body.commenting #image-box img { cursor: crosshair; }
   .sheet.dragging { max-height: none; }
 }
 @media (min-width: 900px) {
-  .sheet { width: 360px; box-shadow: -0.5px 0 0 var(--hair); }
+  /* The panel widens with the text, so its lines hold as many words. */
+  .sheet { width: calc(360px * var(--ts)); box-shadow: -0.5px 0 0 var(--hair); }
   .sheet .grip { display: none; }
   .sbody > .handle { position: static; cursor: auto; touch-action: auto; }
   .strip { box-shadow: inset 0 -0.5px 0 var(--hair); }
   .sbody { padding-top: 12px; }
   .sfoot { box-shadow: 0 -0.5px 0 var(--hair); }
   .nav .all { display: inline-flex; }
-  .toast { left: 12px; right: 372px; bottom: 20px; }
+  .toast { left: 12px; right: calc(12px + 360px * var(--ts)); bottom: 20px; }
 }
 body.full:not(.commenting) .sheet[data-pos="strip"] { display: none; }
 @media (prefers-reduced-motion: reduce) { .toast, .strip.pulse .strip-text { transition: none;

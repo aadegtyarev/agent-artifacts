@@ -556,6 +556,9 @@ def test_viewer_page_has_every_element_its_scripts_use(env):
         head = page.split("</head>", 1)[0]
         assert re.search(r'<script src="/static/theme\.js\?v=\w+"></script>', head)
         assert 'data-act="theme"' in page
+        # Next to Theme, Text size; theme.js applies it in <head> too.
+        assert re.search(r'data-act="theme".*?</button>\s*<button[^>]*data-act="text-size"', page, re.S)
+        assert ">Text size: Large<" in page
         assert re.search(r'role="menuitemcheckbox"[^>]*data-act="comment"', page)
         assert f'data-url="https://art.example.org/a/{art["id"]}"' in page
 
