@@ -336,6 +336,8 @@ MAX_COMMENTS = 200
 MAX_DRAFTS_PER_KEY = 50  # one author key's drafts on one file
 MAX_DRAFTS = 200  # all drafts on one file
 DRAFT_TTL_SECONDS = 7 * 24 * 3600  # a draft not changed for this long is deleted
+# More files missing at one purge than this is taken for a missing folder.
+LOST_AT_ONCE = 5
 MAX_REPLIES = 100  # replies in one comment's chat
 MAX_FILE_REPLIES = 1000  # replies in all the chats of one file
 
@@ -1406,14 +1408,37 @@ class Store:
         return gone
 
     def purge_expired(self) -> int:
+        """Removes expired artifacts and those whose file is lost; returns
+        how many."""
         with self._conn(write=True) as db:
             # A file in a project (expires_at NULL) never matches.
             expired = db.execute("SELECT id FROM artifacts WHERE expires_at <= ?", (self.clock(),))
             ids = [r[0] for r in expired]
             db.executemany("DELETE FROM artifacts WHERE id = ?", [(i,) for i in ids])
+            # Rows whose file is gone (a database restored without its files)
+            # would be a 404 that counts toward the quota for good; they go
+            # with their comments. Looked for under the write lock: an upload
+            # puts its file in place before its row commits, so a committed
+            # row without a file never gets it back.
+            rows = db.execute("SELECT id, owner, name FROM artifacts").fetchall()
+            lost = [r for r in rows if self._lost(r[0])]
+            # Many at once is a files folder not (yet) there — a restore in
+            # progress, an unmounted volume — not lost files: nothing goes,
+            # and the log says so.
+            if len(lost) > LOST_AT_ONCE:
+                log.error(
+                    "%d of %d files are missing; none removed: check the files folder",
+                    len(lost),
+                    len(rows),
+                )
+                lost = []
+            db.executemany("DELETE FROM artifacts WHERE id = ?", [(r[0],) for r in lost])
             db.execute(
                 "DELETE FROM drafts WHERE updated_at <= ?", (self.clock() - DRAFT_TTL_SECONDS,)
             )
+        # The owner and the name, not the id: that is the link.
+        for _, owner, name in lost:
+            log.warning("removed %s's %r: its file is missing", owner, name)
         for artifact_id in ids:
             self._unlink(artifact_id)
         # Leftovers of a crash mid-upload: temp files, and files whose row
@@ -1428,7 +1453,17 @@ class Store:
                 continue
             if f.name not in known and old:
                 f.unlink(missing_ok=True)
-        return len(ids)
+        return len(ids) + len(lost)
+
+    def _lost(self, artifact_id: str) -> bool:
+        """Only a file that is not there: a permission or I/O error keeps the row."""
+        try:
+            os.stat(self.path(artifact_id))
+        except FileNotFoundError:
+            return True
+        except OSError:
+            return False
+        return False
 
     def path(self, artifact_id: str) -> Path:
         return self.files / artifact_id

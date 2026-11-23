@@ -1,4 +1,5 @@
 import sqlite3
+import threading
 
 import pytest
 from starlette.testclient import TestClient
@@ -153,6 +154,75 @@ def test_deleting_a_project_deletes_its_files_and_comments(env):
     store.remove_agent("alice")
     with store._conn() as db:
         assert db.execute("SELECT COUNT(*) FROM projects").fetchone() == (0,)
+
+
+def test_a_file_lost_from_disk_is_404_then_purged_with_its_comments(env, caplog):
+    # A database restored without its files: the rows are there, the files not.
+    client, store, keys = env
+    p = new_project(client, keys["alice"]).json()["id"]
+    art = upload(client, keys["alice"], data=b"12345", project=p).json()
+    store.add_draft(art["id"], "h", author="p", text="hi", anchor=None)
+    store.publish(art["id"], "h", author="p", text=None)
+    store.path(art["id"]).unlink()
+    for path in ("", "/raw", "/download"):
+        assert client.get(f"/a/{art['id']}{path}").status_code == 404, path
+    assert "file of alice's 'a.txt' is missing" in caplog.text
+    assert store.agent_info("alice").used_bytes == 5
+    assert store.purge_expired() == 1
+    assert "removed alice's 'a.txt': its file is missing" in caplog.text
+    assert art["id"] not in caplog.text
+    assert store.get(art["id"]) is None
+    assert store.agent_info("alice").used_bytes == 0
+    with sqlite3.connect(store._db) as db:
+        assert db.execute("SELECT COUNT(*) FROM comments").fetchone()[0] == 0
+
+
+def test_many_files_missing_at_once_or_unreadable_are_kept(env, caplog, monkeypatch):
+    # A files folder missing or half restored is not lost files: nothing goes.
+    client, store, keys = env
+    p = new_project(client, keys["alice"]).json()["id"]
+    ids = [
+        upload(client, keys["alice"], project=p).json()["id"]
+        for _ in range(store_module.LOST_AT_ONCE + 1)
+    ]
+    for i in ids:
+        store.path(i).unlink()
+    assert store.purge_expired() == 0
+    assert "files are missing; none removed" in caplog.text
+    assert all(store.get(i) for i in ids)
+    # A file that cannot be looked at (permissions, I/O) is not lost either.
+    real = store_module.os.stat
+
+    def stat(path, *a, **k):
+        if str(path).endswith(ids[0]):
+            raise PermissionError(13, "denied")
+        return real(path, *a, **k)
+
+    monkeypatch.setattr(store_module.os, "stat", stat)
+    assert store._lost(ids[0]) is False
+
+
+def test_a_file_being_uploaded_is_not_purged(env, monkeypatch):
+    # The purge runs while an upload holds its row but has not yet put its
+    # file in place: it waits for the upload and leaves the file be.
+    client, store, keys = env
+    p = new_project(client, keys["alice"]).json()["id"]
+    purge, purged = None, []
+    replace = store_module.os.replace
+
+    def slow_replace(src, dst):
+        nonlocal purge
+        purge = threading.Thread(target=lambda: purged.append(store.purge_expired()))
+        purge.start()
+        purge.join(0.3)
+        assert purge.is_alive()  # waiting for the upload's write lock
+        replace(src, dst)
+
+    monkeypatch.setattr(store_module.os, "replace", slow_replace)
+    art = upload(client, keys["alice"], project=p).json()
+    purge.join()
+    assert purged == [0]
+    assert client.get(f"/a/{art['id']}/raw").status_code == 200
 
 
 def test_limits_answer_too_many(env, monkeypatch):
