@@ -65,6 +65,9 @@ Every artifact can be downloaded in its original form under its original name.
 
 ## Limits (defaults, configurable)
 
+The values a running service applies now are in `limits` of
+`GET /api/v1/me` (see [Admin calls](#admin-calls)); the table gives the defaults.
+
 | Setting | Default |
 | --- | --- |
 | Lifetime of an artifact | 48 h from the last upload or replace; none in a [project](#projects) |
