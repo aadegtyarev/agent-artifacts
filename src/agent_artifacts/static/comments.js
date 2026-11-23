@@ -80,8 +80,11 @@
     edit: null,
     // Finish review sends to the agent, or only publishes
     toAgent: true,
-    // the list shows all comments, not only what went to the agent
-    allShown: false,
+    // the list's folded groups (Discussion, Closed) opened by a tap
+    opened: new Set(),
+    // the list's order of keys while one item is shown, so ‹ › keep it
+    // after a decision moves the item to another group; null on the list
+    order: null,
     comments: [],
     // drafts: the server's, with `gone` while a Delete waits for its Undo
     drafts: [],
@@ -169,7 +172,7 @@
   const model = commentsModel(S, { pending, seen });
   const {
     liveDrafts, draftById, isComment, actsOn, decisionOn, repliesOn,
-    reviewCount, items, itemOf, agentCounts, lastSent, when, acceptable, acceptAllShown,
+    reviewCount, items, itemOf, when, acceptable, acceptAllShown, groups, ordered, keptOrder, groupCounts,
   } = model;
   function markSeen(c) {
     if (!model.markSeen(c)) return;
@@ -352,11 +355,16 @@
     toastBox.style.bottom = `${Math.max(0, window.innerHeight - top) + 8}px`;
   }
 
+  // The list's groups that start folded: nothing in them waits for the person.
+  const FOLDED = new Set(["talk", "closed"]);
+
   // --- Drawing -------------------------------------------------------------------
   function render() {
-    // A field with the focus is put back with its caret after the redraw.
+    // A field with the focus is put back with its caret after the redraw,
+    // and a group's title line with the focus gets it back.
     const active = document.activeElement;
     const kept = Object.values(fields).includes(active) ? active : null;
+    const keptGroup = active && active.classList.contains("sec-fold") ? active.dataset.group : null;
     const caret = kept ? [kept.selectionStart, kept.selectionEnd] : null;
 
     const shown = S.mode || S.comments.length > 0 || liveDrafts().length > 0;
@@ -371,8 +379,10 @@
     // On a phone the strip alone shows nothing else.
     const open = desk.matches || S.pos !== "strip";
     if (S.view === "compose" && !S.compose) S.view = "list";
-    // Folded, the list starts again from what went to the agent.
-    if (!desk.matches && S.pos === "strip") S.allShown = false;
+    // Off one item, ‹ › take the list's order afresh next time.
+    if (S.view !== "item") S.order = null;
+    // Folded, the list starts again with its groups folded.
+    if (!desk.matches && S.pos === "strip") S.opened.clear();
     const [content, footer] = open ? views[S.view]() : [[], []];
     body.replaceChildren(...content);
     foot.replaceChildren(...footer);
@@ -381,6 +391,10 @@
     if (kept && kept.isConnected) {
       kept.focus({ preventScroll: true });
       kept.setSelectionRange(...caret);
+    }
+    if (keptGroup) {
+      const head = body.querySelector(`.sec-fold[data-group="${keptGroup}"]`);
+      if (head) head.focus({ preventScroll: true });
     }
     // A field being typed in hides what would sit under the finger (the
     // item's Finish review, the choice of where to send).
@@ -393,45 +407,29 @@
     document.dispatchEvent(new CustomEvent("aa:sheet"));
   }
 
-  // Before the strip's line, the pin of what the agent has: its star in a
-  // purple ring while it works, filled once done; a red dot when it asks.
-  function stripMark(kind) {
-    if (kind === "ask") return el("span", "strip-dot");
-    const pin = el("span", `pin mini ag${kind === "fin" ? "" : " line"}`);
-    pin.append(mark("star"));
-    pin.setAttribute("aria-hidden", "true");
-    return pin;
-  }
-
+  // The strip: what waits for the person, in bold, then their drafts and
+  // what the agent has; words only, the pins are in the list.
   function renderStrip() {
     const review = reviewCount();
-    const a = agentCounts();
-    const answered = a.done + a.wrote + a.asked;
-    const busy = a.waiting + a.working;
-    const more = desk.matches ? "" : " ›";
-    const many = (n) => `${n} ${n === 1 ? "comment" : "comments"}`;
-    let line;
-    let badge = "";
-    if (review) line = `Review · ${review}`;
-    else if (answered && busy) {
-      line = `${busy} with the agent · ${answered} to check${more}`;
-      badge = a.done || a.wrote ? "fin" : "ask";
-    } else if (answered) {
-      line = `Agent answered ${answered} · take a look${more}`;
-      badge = a.done || a.wrote ? "fin" : "ask";
-    } else if (a.working) {
-      line = `Agent is working · ${many(a.working)}${more}`;
-      badge = "work";
-    } else if (a.waiting) {
-      line = `With the agent · ${many(a.waiting)}${more}`;
-      badge = "wait";
-    } else if (S.comments.length) line = `Comments · ${S.comments.length}${more}`;
-    else if (S.mode && canPin()) line = `Tap a spot on the ${pinType === "point" ? "image" : "page"} to comment`;
-    else line = "No comments yet";
-    stripText.replaceChildren(...(badge ? [stripMark(badge)] : []), line);
+    const n = groupCounts();
+    const more = desk.matches || review ? "" : " ›";
+    const many = (k) => `${k} ${k === 1 ? "comment" : "comments"}`;
+    const parts = [];
+    if (n.need) parts.push(el("b", null, `${n.need} need you`));
+    if (review) parts.push(`${review} ${review === 1 ? "draft" : "drafts"}`);
+    // With Finish review at its side the line has no room for the agent's part.
+    if (n.agent && !review) parts.push(`${n.agent} in progress`);
+    const line = [];
+    parts.forEach((p, i) => line.push(...(i ? [" · ", p] : [p])));
+    const plain = !parts.length;
+    if (!plain) line.push(more);
+    else if (S.comments.length) line.push(`${many(S.comments.length)}${more}`);
+    else if (S.mode && canPin()) line.push(`Tap a spot on the ${pinType === "point" ? "image" : "page"} to comment`);
+    else line.push("No comments yet");
+    stripText.replaceChildren(...line);
     strip.replaceChildren(stripText);
     // In comment mode, with comments to list, the hint goes to the right.
-    if (!review && !badge && S.comments.length && S.mode && canPin()) {
+    if (plain && S.comments.length && S.mode && canPin()) {
       strip.append(el("span", "strip-hint", "tap a spot to add"));
     }
     if (review && S.view !== "finish") {
@@ -442,23 +440,40 @@
   const views = {
     list() {
       const review = reviewCount();
-      if (!review && S.comments.some((c) => c.agent) && !S.allShown) return views.agent();
       const all = items();
       const drafts = all.filter((i) => i.draft).length;
-      const out = [];
-      let title = "No comments yet";
-      if (review) title = `Review · ${review}` + (S.comments.length ? ` · ${S.comments.length} published` : "");
-      else if (S.comments.length) title = `Comments · ${S.comments.length}`;
-      out.push(titled(title, acceptAllButton()));
-      if (all.some((i) => i.pend && !actsOn(i.c.n).length)) {
-        out.push(el("p", "cap", "Colleagues’ comments wait for your approval."));
-      }
+      const out = [titled(all.length ? `Comments · ${all.length}` : "No comments yet")];
       if (!all.length) {
         out.push(el("p", "empty", S.mode && canPin()
           ? `Tap a spot on the ${pinType === "point" ? "image" : "page"} to leave a comment.`
           : S.mode ? "Nobody has commented yet." : "Turn on the speech bubble to comment."));
       }
-      for (const it of all) out.push(row(it, status(it)));
+      for (const g of groups()) {
+        const head = `${g.title} · ${g.items.length}`;
+        if (FOLDED.has(g.id)) {
+          // Shown open while one of its items is selected, so its row lights up.
+          const open = S.opened.has(g.id) || g.items.some((i) => i.key === S.sel);
+          const b = button("", () => {
+            if (open) {
+              S.opened.delete(g.id);
+              if (g.items.some((i) => i.key === S.sel)) S.sel = null;
+            } else S.opened.add(g.id);
+            render();
+          }, "sec sec-fold");
+          b.dataset.group = g.id;
+          b.append(el("span", null, head), icon(open ? "down" : "right"));
+          b.setAttribute("aria-expanded", String(open));
+          out.push(b);
+          if (!open) continue;
+        } else if (g.id === "need") {
+          const sec = el("div", "sec-row");
+          sec.append(el("p", "sec", head));
+          const accept = acceptAllButton();
+          if (accept) sec.append(accept);
+          out.push(sec);
+        } else out.push(el("p", "sec", head));
+        for (const it of g.items) out.push(row(it, status(it)));
+      }
       if (S.mode) {
         const add = el("div", "addwhole");
         add.append(button("+ About the whole file", () => composeWhole()));
@@ -469,34 +484,11 @@
       return [out, review && !desk.matches ? [finishBar(review)] : []];
     },
 
-    // What is with the agent, alone; the rest behind one line.
-    agent() {
-      const sent = items().filter((i) => i.c && i.c.agent);
-      const others = items().filter((i) => !(i.c && i.c.agent));
-      const a = agentCounts();
-      const answered = a.done + a.wrote + a.asked;
-      const title = answered ? `Agent answered · ${answered}`
-        : a.working ? `Agent is working · ${sent.length}` : `Sent to the agent · ${sent.length}`;
-      const out = [titled(title, acceptAllButton())];
-      const last = lastSent();
-      if (last) out.push(el("p", "cap", `Sent ${last.at}`));
-      for (const it of sent) out.push(row(it, status(it)));
-      if (S.mode) {
-        const add = el("div", "addwhole");
-        add.append(button("+ About the whole file", () => composeWhole()));
-        out.push(add);
-      }
-      if (others.length) {
-        const more = button(`Others · ${others.length} ›`, () => { S.allShown = true; render(); }, "more");
-        out.push(more);
-      }
-      return [out, []];
-    },
-
     item() {
       const it = itemOf(S.sel);
       if (!it) return views.list();
-      const all = items();
+      // ‹ › and the rows under it go in the list's order, as it was.
+      const all = inOrder();
       const at = all.findIndex((i) => i.key === it.key);
       const nav = el("div", "nav handle");
       nav.append(
@@ -850,6 +842,8 @@
       fields.reply.value = "";
     }
     S.sel = key;
+    // Entering one item: the list's order is kept while stepping.
+    if (S.view !== "item" || !S.order) S.order = ordered().map((i) => i.key);
     const opened = itemOf(key);
     if (opened && opened.c) markSeen(opened.c);
     // One comment: the sheet fits it. Pulled up with the others under it,
@@ -868,8 +862,11 @@
     if (!desk.matches && S.view === "item" && S.pos === "q" && it && !it.draft) body.scrollTop = body.scrollHeight;
   }
 
+  // The items in the order kept for one item, or the list's.
+  const inOrder = () => (S.order ? keptOrder(S.order) : ordered());
+
   function step(by) {
-    const all = items();
+    const all = inOrder();
     if (!all.length) return;
     const at = all.findIndex((i) => i.key === S.sel);
     openItem(all[(at + by + all.length) % all.length].key);

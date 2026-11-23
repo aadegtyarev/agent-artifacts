@@ -522,9 +522,9 @@ bottom sheet with four heights:
 
 | Height | Holds |
 | --- | --- |
-| strip | one line: "Review · N" (the comments the person's drafts add, decide or reply to) and **Finish review**; with none, the agent's progress with its badge ("With the agent · N", "Agent is working · N", "Agent answered N · take a look", or "N with the agent · N to check"), else "Comments · N ›", and in comment mode the hint "tap a spot to add" beside it (alone when there are no comments) |
+| strip | one line of words, no icons, its parts joined by " · " and zeros left out: "**N need you**" in bold (the agent's answers, `done`, `wrote` or `asked`, and colleagues' comments awaiting approval, without a decision or reply draft of the person's), "N drafts" (the comments the person's drafts add, decide or reply to) with **Finish review** at the right, and, without drafts, "N in progress" (`waiting` and `working`); with none of these, "N comments"; "›" at the end on a phone when there is no **Finish review**; in comment mode the hint "tap a spot to add" beside "N comments" (alone when there are no comments) |
 | ¼ | one item, the sheet as tall as its content and at most half: the field of a new draft, or the selected comment or draft, with ‹ › to its neighbours |
-| ½ | the list (drafts and comments, text and state only; while the agent has comments and there are no drafts, only those, the rest behind "Others · N ›") or **Finish review**; an item dragged up stays first, whole, with the other comments listed under it (a tap on one brings it to the top at the same height); a new draft dragged up stays itself |
+| ½ | the list (text and state only, in groups, each under "Title · N" and empty ones left out — Need you (the agent's finished work, then its questions, then colleagues' comments awaiting approval), Your drafts (new comments and comments decided or replied to, a rejected one replied to too), In progress, Discussion (nothing waits for the person) and Closed (rejected; an accepted comment leaves the viewer); Discussion and Closed start folded and their title opens them; ‹ › on one item keep the order the list had when it was opened) or **Finish review**; an item dragged up stays first, whole, with the other comments listed under it (a tap on one brings it to the top at the same height); a new draft dragged up stays itself |
 | full | the same as ½, taller |
 
 A drag changes the height only; what the sheet shows stays. A tap changes
@@ -545,8 +545,8 @@ comment, as a small chat with its replies (the agent's marked as the agent),
 **✓ Approve** and **✕ Reject** while it is someone else's awaiting approval,
 **✓ Accept** when the agent is done (`done` or `wrote`), and a reply field.
 A decision shows as one line under the comment with a small **Undo**.
-With two or more waiting, **✓ Accept all · N** (in the list, the agent's
-list and Finish review's "Not decided yet") accepts every piece of the
+With two or more waiting, **✓ Accept all · N** (in the list's Need you
+title and Finish review's "Not decided yet") accepts every piece of the
 agent's finished work (`done`, `wrote`) and approves every colleague's
 comment awaiting approval, as decision drafts in one call
 (`POST /a/{id}/drafts/batch`): all are made or, if one is refused, none,

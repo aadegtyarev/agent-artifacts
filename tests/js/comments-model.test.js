@@ -117,19 +117,9 @@ test("replies of the agent or one's own do not count as unseen", () => {
   assert.equal(m.othersReplies(itemFor(m, 1).c), 0);
 });
 
-test("agentCounts counts the states the strip reads and nothing else", () => {
-  const m = model([
-    comment(1, { agent: "waiting" }), comment(2, { agent: "waiting" }), comment(3, { agent: "working" }),
-    comment(4, { agent: "done" }), comment(5, { agent: "wrote" }), comment(6, { agent: "asked" }),
-    comment(7), comment(8, { agent: "other" }),
-  ]);
-  assert.deepEqual(m.agentCounts(), { waiting: 2, working: 1, done: 1, wrote: 1, asked: 1 });
-  assert.deepEqual(model([]).agentCounts(), { waiting: 0, working: 0, done: 0, wrote: 0, asked: 0 });
-});
-
 test("status leads per agent state, and the rest of the line", () => {
   const leads = {
-    waiting: [null, "with the agent"], working: ["work", "Agent is working"],
+    waiting: [null, "sent, not taken yet"], working: ["work", "Agent is working"],
     done: ["fin", "Done · check it"], wrote: ["fin", "Done, wrote"], asked: ["ask", "Asks you"],
   };
   for (const [agent, lead] of Object.entries(leads)) {
@@ -156,14 +146,6 @@ test("drafts: listed first, marked with the author's letter, their status says s
   assert.deepEqual(m.status(all[0]), [null, "your draft"]);
   assert.deepEqual(m.status(all[0], "on another screen"), [null, "your draft · on another screen"]);
   assert.equal(m.itemOf("c99"), null);
-});
-
-test("lastSent: the latest moment a review reached the agent", () => {
-  assert.equal(model([comment(1)]).lastSent(), null);
-  const latest = ago(3600);
-  const m = model([comment(1, { agent: "done", created_at: ago(7200) }), comment(2, { agent: "waiting", created_at: latest })]);
-  const hm = new Date(latest).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-  assert.deepEqual(m.lastSent(), { at: hm });
 });
 
 test("Accept all picks the agent's finished work to accept and colleagues' pending comments to approve", () => {
@@ -196,4 +178,55 @@ test("Accept all shows from two waiting", () => {
   assert.equal(model([comment(1, { agent: "done" })]).acceptAllShown(), false);
   assert.equal(model([comment(1, { agent: "done" }), comment(2)]).acceptAllShown(), true);
   assert.equal(model([comment(1, { agent: "done" }), comment(2)], [draft("approve", 2)]).acceptAllShown(), false);
+});
+
+test("the list groups by what waits for the person, in a fixed order", () => {
+  const m = model([
+    comment(1), // a colleague's, awaiting approval
+    comment(2, { agent: "asked", mine: true }),
+    comment(3, { agent: "working", mine: true }),
+    comment(4, { agent: "done", mine: true }),
+    comment(5, { mine: true }), // published, nothing waits
+    comment(6, { rejected_by: "alice" }),
+    comment(8, { agent: "waiting", mine: true }),
+    comment(9, { agent: "wrote" }),
+    comment(10), // decided in this review: a draft, not waiting
+    comment(11, { approved_by: "alice" }), // approved and not sent: discussion
+  ], [draft("comment"), draft("approve", 10)]);
+  const shape = m.groups().map((g) => [g.id, g.items.map((i) => i.key)]);
+  assert.deepEqual(shape, [
+    ["need", ["c4", "c9", "c2", "c1"]],
+    ["drafts", [`d${nextId - 2}`, "c10"]],
+    ["agent", ["c3", "c8"]],
+    ["talk", ["c5", "c11"]],
+    ["closed", ["c6"]],
+  ]);
+  assert.deepEqual(m.ordered().map((i) => i.key), shape.flatMap(([, keys]) => keys));
+  assert.deepEqual(m.groupCounts(), { need: 4, drafts: 2, agent: 2, talk: 2, closed: 1 });
+});
+
+test("empty groups are left out", () => {
+  const m = model([comment(1, { mine: true })]);
+  assert.deepEqual(m.groups().map((g) => g.id), ["talk"]);
+  assert.deepEqual(model([]).groups(), []);
+});
+
+test("a rejected comment with a reply draft of the person's is in the drafts, as the strip counts it", () => {
+  const m = model([comment(1, { rejected_by: "alice" })], [draft("reply", 1)]);
+  assert.deepEqual(m.groups().map((g) => [g.id, g.items.map((i) => i.key)]), [["drafts", ["c1"]]]);
+  assert.equal(m.reviewCount(), 1);
+});
+
+test("a kept order holds after a decision moves an item; gone ones drop, new ones follow", () => {
+  const state = { comments: [comment(1, { agent: "done" }), comment(2), comment(3, { mine: true })], drafts: [] };
+  const m = commentsModel(state, { now: () => NOW });
+  const keys = m.ordered().map((i) => i.key);
+  assert.deepEqual(keys, ["c1", "c2", "c3"]);
+  // Accepting c1 moves it to the drafts group in the list's order...
+  state.drafts = [draft("accept", 1)];
+  assert.deepEqual(m.ordered().map((i) => i.key), ["c2", "c1", "c3"]);
+  // ...but stepping keeps the order it started with.
+  assert.deepEqual(m.keptOrder(keys).map((i) => i.key), ["c1", "c2", "c3"]);
+  state.comments = state.comments.filter((c) => c.n !== 3).concat(comment(4));
+  assert.deepEqual(m.keptOrder(keys).map((i) => i.key), ["c1", "c2", "c4"]);
 });
