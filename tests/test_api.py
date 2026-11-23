@@ -952,7 +952,7 @@ def test_a_tap_on_an_empty_spot_lets_go_only_outside_comment_mode():
     assert "e.detail !== 1 || fromLayer(e)\n      || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;" in pins
     assert "area[href],canvas,${WIDGETS" in pins and '"button link tab menuitem' in pins
     assert 'x.matches(ACTS) || getComputedStyle(x).cursor === "pointer"' in pins
-    assert "press.y) <= 10 && performance.now() - press.at <= 500;" in pins
+    assert "press.y) <= 10;" in pins and "press.tap = near(e) && performance.now() - press.at <= 500;" in pins
     viewer_pins = (static / "comments-pins.js").read_text()
     assert 'm.type === "blank" && !page.picking\n      && (!navigator.userActivation || navigator.userActivation.isActive)' in viewer_pins
     assert 'imageBox.addEventListener("click"' in viewer_pins
@@ -962,24 +962,32 @@ def test_a_tap_on_an_empty_spot_lets_go_only_outside_comment_mode():
     comments = (static / "comments.js").read_text()
     blank = comments[comments.index("function blank() {"):]
     blank = blank[:blank.index("\n  }\n")]
-    # As the fold button: a typed reply keeps the comment, with a toast.
-    assert "if (S.mode || !S.sel) return;\n    fold();" in blank
+    assert "if (S.mode || !S.sel || keeps()) return;" in blank and "toast" not in blank
+    keeps = comments[comments.index("function keeps() {"):]
+    assert "fields.reply.value.trim() ||" in keeps[:keeps.index("\n  }\n")]
 
 
-def test_with_a_pin_lit_the_first_press_is_held_back_from_the_page():
-    # Outside pin mode, while a pin the viewer sent is lit (never the new
-    # draft's), the frame keeps the next press off its pins from the page:
-    # the press events stop, a control gets no focus, the click is
-    # cancelled, and only a tap reports blank. A keyboard click is the page's.
+def test_with_a_pin_lit_the_first_tap_is_held_back_from_the_page():
+    # Outside pin mode, while a pin the viewer sent is lit and drawn (never
+    # the new draft's) and the viewer did not say hold: false, the frame
+    # keeps a left press that lifts as a tap from the page: its down events
+    # pass, a move over 10 px or a scroll lets it go, the rest stops, its
+    # click is cancelled and reports blank. A keyboard click is the page's.
     static = Path(__file__).parent.parent / "src" / "agent_artifacts" / "static"
     pins = (static / "pins.js").read_text()
-    assert 'const selected = () => pins.some((p) => p.lit && p.key !== "new");' in pins
-    assert "if (e.isPrimary) held = !picking && !fromLayer(e) && selected();" in pins
-    assert "if (!(picking || held) || fromLayer(e)) return;\n    e.stopImmediatePropagation();" in pins
-    assert '(e.type === "mousedown" && (picking || acts(e.target)))) e.preventDefault();' in pins
+    assert 'hold && pins.some((p) => p.lit && p.key !== "new" && drawn.has(p.key));' in pins
+    assert "held = !picking && e.button === 0 && !fromLayer(e) && selected();" in pins
+    assert "if (held && press && e.isPrimary && !near(e)) held = false;" in pins
+    assert "if (!press.tap) held = false;" in pins
+    assert "{ press = null; held = false; }" in pins
+    assert 'if (!picking && (e.type === "pointerdown" || (e.type === "mousedown" && !(press && press.up)))) return;' in pins
+    assert "hold = m.hold !== false;" in pins
     held = pins[pins.index("if (!held || picking || fromLayer(e) || e.detail === 0) return;"):]
     held = held[:held.index("}, true);")]
     assert "e.stopImmediatePropagation();\n    e.preventDefault();" in held
-    assert 'if (tapped) tell({ type: "blank" });' in held
-    # The tap is followed before anything stops a press, and after the zoom.
+    assert 'tell({ type: "blank" });' in held
+    viewer_pins = (static / "comments-pins.js").read_text()
+    assert "hold: hold() });" in viewer_pins
+    comments = (static / "comments.js").read_text()
+    assert "hold: () => { kept = keeps(); return !kept; }," in comments
     assert pins.index("pageZoom.attach(window") < pins.index("let held = false;") < pins.index("function swallow(e)")

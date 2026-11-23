@@ -783,6 +783,9 @@
     if (r) r.scrollIntoView({ block: "nearest" });
   }
 
+  // Whether a typed reply or edit kept the comment when the pins were last
+  // sent to the frame.
+  let kept = false;
   // Drawn over the image or in the page's frame by comments-pins.js.
   // render(), canPin() and lost() read `page`, which exists only from this
   // line on: nothing above it may call render() while the script first runs.
@@ -794,6 +797,8 @@
     onSpot: place,
     onEscape: escape,
     onBlank: blank,
+    // What the frame was last told is kept, see keptChanged.
+    hold: () => { kept = keeps(); return !kept; },
     // The list and the item say which spots were not found; a field being
     // typed in is not redrawn for that.
     onChange: (spotsOnly) => {
@@ -891,13 +896,19 @@
     render();
   }
 
+  // A typed reply or a changed edit keeps the selected comment.
+  function keeps() {
+    const editing = S.edit && draftById(S.edit);
+    return Boolean(fields.reply.value.trim() || (editing && fields.edit.value !== editing.text));
+  }
+
   // A tap on the content, outside comment mode, lets go of the selected
-  // comment, as the fold button does, and says so when a typed reply or a
-  // changed edit keeps it: with a pin lit, that tap did nothing else (the
-  // page held it back), so it is not left without an answer. With nothing
-  // selected it does nothing.
+  // comment, as the fold button does. With nothing selected, or with a
+  // reply typed or an edit changed, it does nothing, quietly: the person
+  // may only be reading the page, and the page then gets its taps (the
+  // frame is told not to hold them).
   function blank() {
-    if (S.mode || !S.sel) return;
+    if (S.mode || !S.sel || keeps()) return;
     fold();
   }
 
@@ -1341,7 +1352,13 @@
     grow(fields.compose);
     sendButton.disabled = !fields.compose.value.trim();
   });
-  fields.edit.addEventListener("input", () => grow(fields.edit));
+  // The frame holds back a tap only while the comment would let go: told
+  // again when typing changes that.
+  const keptChanged = () => {
+    const now = keeps();
+    if (now !== kept) { kept = now; drawPins(); }
+  };
+  fields.edit.addEventListener("input", () => { grow(fields.edit); keptChanged(); });
   // While a reply is typed, Finish review steps aside: no tap meant for the
   // send arrow lands on it.
   for (const f of [fields.reply, fields.general]) {
@@ -1356,6 +1373,7 @@
   replyButton.addEventListener("mousedown", (e) => e.preventDefault());
   fields.reply.addEventListener("input", () => {
     grow(fields.reply);
+    keptChanged();
     replyButton.disabled = !fields.reply.value.trim();
   });
   // Enter sends only with a hardware keyboard. On a touch screen the

@@ -4,8 +4,8 @@
 // postMessage. It gets keys, short labels (a number or a letter), anchors and
 // styles, never comment texts or names. In pin mode (the viewer's comment
 // mode) it takes each click and cancels it, so a link or a button under it
-// does not fire, and answers with its anchor. Outside it, while a comment is
-// selected, it holds back the next press the same way.
+// does not fire, and answers with its anchor. Outside it, while a comment's
+// pin is lit, it holds back the next tap the same way.
 (() => {
   const viewer = window.parent;
   if (viewer === window) return;
@@ -329,50 +329,61 @@
   // A press is a tap when it lifts within 500 ms and 10 px of where it
   // began; told by the pointer's own events, as a click's point is not
   // always where the finger was. Followed before anything below stops it.
-  // While a comment is selected (its pin lit) outside pin mode, a press off
-  // the pins is held back from the page, its click included: as a tap it
-  // only lets go of the comment (`blank`), and the next press is the
-  // page's. The viewer decides; if it keeps the comment (a reply typed),
-  // the tap still does nothing here.
+  // While a comment's pin is lit and drawn outside pin mode, a primary
+  // press off the pins is held: its down events reach the page (a drag, a
+  // slider or a scroll work as ever, and let it go), but once it lifts as
+  // a tap, the rest of it and its click do not, and it only lets go of the
+  // comment (`blank`). The next press is the page's. While the viewer
+  // would keep the comment (a reply typed, an edit changed), it says
+  // `hold: false` and the page gets its taps.
   let press = null;
   let held = false;
-  const selected = () => pins.some((p) => p.lit && p.key !== "new");
+  let hold = true;
+  const selected = () => hold && pins.some((p) => p.lit && p.key !== "new" && drawn.has(p.key));
   window.addEventListener("pointerdown", (e) => {
-    if (e.isPrimary) held = !picking && !fromLayer(e) && selected();
+    if (e.isPrimary) held = !picking && e.button === 0 && !fromLayer(e) && selected();
     const selection = window.getSelection();
     press = picking || !e.isPrimary || (!held && selection && !selection.isCollapsed) ? null
-      : { x: e.clientX, y: e.clientY, at: performance.now(), tap: false };
+      : { x: e.clientX, y: e.clientY, at: performance.now(), tap: false, up: false };
+  }, { capture: true, passive: true });
+  const near = (e) => Math.hypot(e.clientX - press.x, e.clientY - press.y) <= 10;
+  window.addEventListener("pointermove", (e) => {
+    if (held && press && e.isPrimary && !near(e)) held = false;
   }, { capture: true, passive: true });
   window.addEventListener("pointerup", (e) => {
     if (press && e.isPrimary) {
-      press.tap = Math.hypot(e.clientX - press.x, e.clientY - press.y) <= 10 && performance.now() - press.at <= 500;
+      press.tap = near(e) && performance.now() - press.at <= 500;
+      press.up = true;
+      if (!press.tap) held = false;
     }
   }, { capture: true, passive: true });
   // A scroll took the press: it has no click to hold back.
   window.addEventListener("pointercancel", () => { press = null; held = false; }, true);
 
-  // Pin mode and a held press: the presses around a click stop here too,
-  // so menus that open on a press stay shut, and a control takes no focus;
-  // scrolling is left alone. A held press over text may still select it.
+  // Pin mode, and a held press once it lifted as a tap: the presses around
+  // a click stop here too, so menus that open on a press stay shut, and a
+  // control takes no focus (on a touch screen the mouse events come after
+  // the lift); scrolling is left alone. A held press's down events
+  // (pointerdown, and a mouse's own mousedown) reach the page, as its
+  // touchstart does.
   function swallow(e) {
-    if (!(picking || held) || fromLayer(e)) return;
+    if (fromLayer(e) || !(picking || held)) return;
+    if (!picking && (e.type === "pointerdown" || (e.type === "mousedown" && !(press && press.up)))) return;
     e.stopImmediatePropagation();
-    if (e.type === "dblclick" || e.type === "auxclick"
-      || (e.type === "mousedown" && (picking || acts(e.target)))) e.preventDefault();
+    if (e.type === "dblclick" || e.type === "auxclick" || e.type === "mousedown") e.preventDefault();
   }
   for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "touchend", "dblclick", "auxclick"]) {
     window.addEventListener(type, swallow, true);
   }
-  // A held press's click: cancelled, and only a tap lets go. A keyboard
-  // "click" (no detail) is no press and stays the page's.
+  // A held tap's click: cancelled, and it lets go. A keyboard "click" (no
+  // detail) is no press and stays the page's.
   window.addEventListener("click", (e) => {
     if (!held || picking || fromLayer(e) || e.detail === 0) return;
     held = false;
+    press = null;
     e.stopImmediatePropagation();
     e.preventDefault();
-    const tapped = press && press.tap;
-    press = null;
-    if (tapped) tell({ type: "blank" });
+    tell({ type: "blank" });
   }, true);
   window.addEventListener("click", (e) => {
     if (!picking || fromLayer(e)) return;
@@ -537,6 +548,7 @@
       layer.classList.toggle("pins-big", m.big === true);
       layer.classList.toggle("pins-shaped", m.shaped === true);
       layer.style.setProperty("--dot", dotColour(m.dot));
+      hold = m.hold !== false;
       schedule(true);
     } else if (m.type === "show" && isKey(m.key)) {
       const pin = pins.find((p) => p.key === m.key);

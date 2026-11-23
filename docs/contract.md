@@ -590,15 +590,18 @@ the grip steps ½ and full, a tap on one item's title goes back to the list.
 On a phone each title line ends with a fold button (⌄) at the far right that
 folds the sheet to the strip, away from **Finish review** at the bottom; with a
 reply typed it does not fold and says to send or clear it first.
-Outside comment mode, while a comment's pin is lit, the first tap anywhere on
-the file but a pin (a page, its links, buttons and fields too, or an image
-and the space around it; not a drag or a long press) only does the same:
-the page does not get it (no link opens, no button fires, no field takes the
-focus), the pin is no longer lit, on a phone the sheet folds to the strip and
-on a computer the panel shows the list; the next tap is the page's. A
-selected comment without a lit pin lets go on a tap on an empty spot of the
-file only. With a reply typed or an edit changed the comment stays, the tap
-does nothing else and the viewer says to send or clear it first. With
+Outside comment mode, while a comment's pin is lit on the page, the first tap
+anywhere on the file but a pin (a page, its links, buttons and fields too, or
+an image and the space around it; not a drag, a scroll or a long press, which
+work as ever) only does the same: the page does not get its click (no link
+opens, no button fires; on a touch screen no field takes the focus), the pin
+is no longer lit,
+on a phone the sheet folds to the strip and on a computer the panel shows the
+list. Taps after it reach the page as usual. The page still sees the touch
+begin, so a control that reacts to that alone (a slider's thumb) may move. A
+selected comment without a lit pin on the page lets go on a tap on an empty
+spot of the file only. With a reply typed or an edit changed the comment
+stays and taps reach the page; a tap on an empty spot does nothing. With
 nothing selected, a tap is the page's as always.
 **Finish review** opens at ½. Folding a new draft to the strip drops it, with Undo if text was typed. The keyboard pushes the sheet up and
 the pin stays in sight above it. Buttons show only on the selected item:
@@ -857,13 +860,16 @@ talk only through `postMessage`:
   cancels it, so a link or a button under it does not fire;
 - outside placing, it asks the viewer to open a link to another file or
   project, see [Links between files](#links-between-files);
-- outside placing, while a pin it was sent is lit, it holds back the next
-  press off its pins from the page the same way (the press, its click and a
-  control's focus; not a scroll or a pinch, nor a keyboard click) and, when
-  it was a tap, reports `blank`. With no pin lit, it reports a plain tap on
-  an empty spot of the page (`blank`): not one that moved or was held, not a
-  double click, one with a modifier key or one begun over selected text, not
-  on a pin, and not on
+- outside placing, while a pin it was sent is lit and drawn, and the viewer
+  did not send `hold: false` (it does while a typed reply or a changed edit
+  would keep the comment), it holds back a left press off its pins that
+  lifts as a tap: its down events (pointerdown, touchstart, a mouse's
+  mousedown) reach the page, the rest of it and its click do not (nor, on
+  a touch screen, a control's focus), and it reports `blank`. A press that moves over 10 px, is
+  held or turns into a scroll, a pinch or a keyboard click stays the
+  page's. Otherwise, it reports a plain tap on an empty spot of the page
+  (`blank`): not one that moved or was held, not a double click, one with a
+  modifier key or one begun over selected text, not on a pin, and not on
   anything the page may act on (a link, a control, a canvas, an element
   with a widget role such as `button`, `tab` or `textbox` but not a
   landmark or structure role, an editable element, one in the tab order,
