@@ -892,10 +892,13 @@ terminates TLS, with `client_max_body_size` above the size limit
 `skill/agent-artifacts/`: `SKILL.md`, `admin.md` and `scripts/artifacts_cli.py`,
 a command line over the API in Python's standard library (3.10+; `uv run`
 reads its inline metadata). Usable from any agent that runs shell commands.
-It reads `AGENT_ARTIFACTS_URL` and `AGENT_ARTIFACTS_KEY` from the environment,
-or else from the file `setup` writes with mode 600:
+It reads `AGENT_ARTIFACTS_URL` and `AGENT_ARTIFACTS_KEY` together from the
+environment (one set without the other is a usage error, so the saved key never
+goes to a URL from elsewhere), or else from the file `setup` writes with mode 600:
 `~/.config/agent-artifacts/env`, `%APPDATA%\agent-artifacts\env` on Windows,
-or `AGENT_ARTIFACTS_ENV`. The key never appears in a command line. Files
+or `AGENT_ARTIFACTS_ENV`. The key never appears in a command line. An ID is
+the bare 22-character id or the file's `/a/{id}` or project's `/p/{id}` link;
+anything else exits 2 before any request. Files
 get `upload FILE [NAME]` and `replace ID FILE [NAME]`, both with the options
 `--title TEXT`, `--project ID` and `--section TEXT`, and `set ID [--title
 TEXT] [--project ID|none] [--section TEXT|none]`, which changes the details

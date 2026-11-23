@@ -1,6 +1,7 @@
 """The skill's artifacts_cli.py against a real server on a free port."""
 
 import json
+import os
 import re
 import socket
 import subprocess
@@ -81,7 +82,8 @@ def test_setup_upload_and_new_key(server):
     assert cli(home, "replace", art["id"], str(page))[0] == 0
     assert cli(home, "delete", art["id"])[1].strip() == "deleted"
 
-    code, _, err = cli(home, "me", env={"AGENT_ARTIFACTS_KEY": key})  # the old key, from env
+    old = {"AGENT_ARTIFACTS_URL": url, "AGENT_ARTIFACTS_KEY": key}
+    code, _, err = cli(home, "me", env=old)  # the old key, from env
     assert code == 1 and "unauthorized" in err
 
 
@@ -316,11 +318,107 @@ def test_wait_retries_a_failed_poll_and_stops_on_auth(tmp_path, monkeypatch):
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     mod = _load_cli(monkeypatch, f"http://127.0.0.1:{srv.server_port}", "k", lambda s: None)
     try:
-        event = json.loads(mod.run(["wait", "x"]))
+        event = json.loads(mod.run(["wait", "x" * 22]))
         assert event == {"event": "waiting", "comments": waiting}
         with pytest.raises(SystemExit) as e:
-            mod.run(["wait", "x"])
+            mod.run(["wait", "x" * 22])
         assert e.value.code == 1 and answers == []
     finally:
         srv.shutdown()
         srv.server_close()
+
+
+def test_ids_bare_or_as_links(server):
+    url, store, home = server
+    env = {"AGENT_ARTIFACTS_URL": url, "AGENT_ARTIFACTS_KEY": store.add_agent("alice")}
+    page = home / "a.html"
+    page.write_text("<p>hi</p>")
+    p = json.loads(cli(home, "project-new", "Site", env=env)[1])
+    art = json.loads(cli(home, "upload", str(page), "--project", p["url"], env=env)[1])
+    assert art["project"] == p["id"]
+    assert json.loads(cli(home, "project", p["url"] + "/", env=env)[1])["id"] == p["id"]
+    # A link is not a deleted file to wait reports as gone.
+    out = cli(home, "wait", art["url"], "--timeout", "1", env=env)[1]
+    assert json.loads(out) == {"event": "timeout"}
+    for args in (
+        ("delete", f"{art['id']}/drafts"),  # would reach drop-drafts
+        ("delete", p["url"]),  # a project's link is not a file's
+        ("comments", "nope"),
+        ("project", art["url"]),
+        ("upload", str(page), "--project", "../x"),
+    ):
+        code, _, err = cli(home, *args, env=env)
+        assert code == 2 and "22 letters" in err, args
+    assert cli(home, "delete", art["url"], env=env)[1].strip() == "deleted"
+
+
+def test_url_and_key_come_from_one_place(server):
+    url, store, home = server
+    key = store.add_agent("alice")
+    setup = f"AGENT_ARTIFACTS_URL={url}\nAGENT_ARTIFACTS_KEY={key}\n"
+    assert cli(home, "setup", stdin=setup)[0] == 0
+    # A URL alone in the environment must not get the saved key.
+    code, _, err = cli(home, "me", env={"AGENT_ARTIFACTS_URL": "https://other.example.org"})
+    assert code == 2 and "AGENT_ARTIFACTS_KEY is not" in err
+    code, _, err = cli(home, "me", env={"AGENT_ARTIFACTS_KEY": key})
+    assert code == 2 and "AGENT_ARTIFACTS_URL is not" in err
+    code, out, _ = cli(home, "setup", stdin=setup, env={"AGENT_ARTIFACTS_KEY": "old"})
+    assert code == 0 and "AGENT_ARTIFACTS_KEY in the environment win" in out
+
+
+@pytest.mark.skipif(not hasattr(os, "geteuid") or os.geteuid() == 0, reason="root writes anyway")
+def test_new_key_stops_before_the_change_when_it_cannot_save(server):
+    url, store, home = server
+    key = store.add_agent("alice")
+    cli(home, "setup", stdin=f"AGENT_ARTIFACTS_URL={url}\nAGENT_ARTIFACTS_KEY={key}\n")
+    folder = home / ".config" / "agent-artifacts"
+    folder.chmod(0o500)
+    try:
+        code, _, err = cli(home, "new-key")
+    finally:
+        folder.chmod(0o700)
+    assert code == 1 and "the key is not changed" in err
+    assert json.loads(cli(home, "me")[1])["name"] == "alice"  # the old key still works
+
+
+def test_new_key_printed_when_saving_fails(server, monkeypatch, capsys):
+    import importlib.util
+
+    url, store, home = server
+    key = store.add_agent("alice")
+    env_file = home / "env"
+    env_file.write_text(f"AGENT_ARTIFACTS_URL={url}\nAGENT_ARTIFACTS_KEY={key}\n")
+    spec = importlib.util.spec_from_file_location("artifacts_cli", CLI)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    monkeypatch.delenv("AGENT_ARTIFACTS_URL", raising=False)
+    monkeypatch.delenv("AGENT_ARTIFACTS_KEY", raising=False)
+    monkeypatch.setenv("AGENT_ARTIFACTS_ENV", str(env_file))
+
+    def full(*args):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(mod, "write_settings", full)
+    with pytest.raises(SystemExit) as e:
+        mod.run(["new-key"])
+    out = capsys.readouterr().out
+    assert e.value.code == 1 and "No space left" in out
+    new = out.splitlines()[-1].removeprefix("AGENT_ARTIFACTS_KEY=")
+    env = {"AGENT_ARTIFACTS_URL": url, "AGENT_ARTIFACTS_KEY": new}
+    assert json.loads(cli(home, "me", env=env)[1])["name"] == "alice"
+
+
+def test_output_is_utf8_on_a_narrow_console(server):
+    url, store, home = server
+    env = {"AGENT_ARTIFACTS_URL": url, "AGENT_ARTIFACTS_KEY": store.add_agent("alice")}
+    page = home / "a.html"
+    page.write_text("<p>hi</p>")
+    art_id = json.loads(cli(home, "upload", str(page), env=env)[1])["id"]
+    store.add_draft(art_id, "h", author="p", text="сделай зелёным \U0001f600", anchor=None)
+    store.publish(art_id, "h", author="p", text=None, for_agent=True)
+    r = subprocess.run(  # noqa: S603 (our own script)
+        [sys.executable, str(CLI), "take", art_id],
+        capture_output=True,
+        env={"HOME": str(home), "PYTHONIOENCODING": "cp1252", **env},
+    )
+    assert r.returncode == 0 and "сделай зелёным" in r.stdout.decode()
