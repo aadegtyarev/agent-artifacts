@@ -24,3 +24,5 @@ becomes wireframes, then a mockup on the real code, then code.
    view and the person decides. Archives removed 60 minutes after the first
    download.
 7. **Sign-in and storage providers (Google).** See [providers.md](providers.md).
+
+Current state and open work: [handoff.md](handoff.md).
