@@ -6,8 +6,9 @@ description: Share a file with a person as a link — an HTML page, report, prot
 # agent-artifacts
 
 Upload a file, get a link. Anyone with the link opens it in a browser, with
-no login, and can comment on it. A file lives 48 hours after its last upload
-(`expires_at`); files in a project stay until deleted.
+no login, and can comment on it. A file lives for the time the service is
+set to after its last upload (24 h on art.adsrv.ru now; each upload answers
+with `expires_at`); files in a project stay until deleted.
 
 Everything goes through `scripts/artifacts_cli.py` in this folder (Python,
 no dependencies): `uv run <path>/artifacts_cli.py …`, or `python3`
