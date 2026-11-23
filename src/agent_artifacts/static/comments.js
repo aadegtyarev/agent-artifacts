@@ -891,14 +891,13 @@
     render();
   }
 
-  // A tap on an empty spot of the content, outside comment mode, lets go of
-  // the selected comment, as the fold button does. With nothing selected,
-  // or with a reply typed or an edit changed, it does nothing, quietly: the
-  // person may only be reading the page.
+  // A tap on the content, outside comment mode, lets go of the selected
+  // comment, as the fold button does, and says so when a typed reply or a
+  // changed edit keeps it: with a pin lit, that tap did nothing else (the
+  // page held it back), so it is not left without an answer. With nothing
+  // selected it does nothing.
   function blank() {
     if (S.mode || !S.sel) return;
-    const editing = S.edit && draftById(S.edit);
-    if (fields.reply.value.trim() || (editing && fields.edit.value !== editing.text)) return;
     fold();
   }
 

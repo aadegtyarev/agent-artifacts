@@ -4,7 +4,8 @@
 // postMessage. It gets keys, short labels (a number or a letter), anchors and
 // styles, never comment texts or names. In pin mode (the viewer's comment
 // mode) it takes each click and cancels it, so a link or a button under it
-// does not fire, and answers with its anchor.
+// does not fire, and answers with its anchor. Outside it, while a comment is
+// selected, it holds back the next press the same way.
 (() => {
   const viewer = window.parent;
   if (viewer === window) return;
@@ -322,18 +323,57 @@
     },
   });
 
-  // Pin mode: the presses around a click stop here too, so menus that
-  // open on a press stay shut; scrolling is left alone.
   // The layer's shadow root is closed: from out here its pins are the host.
   const fromLayer = (e) => e.target === host;
+
+  // A press is a tap when it lifts within 500 ms and 10 px of where it
+  // began; told by the pointer's own events, as a click's point is not
+  // always where the finger was. Followed before anything below stops it.
+  // While a comment is selected (its pin lit) outside pin mode, a press off
+  // the pins is held back from the page, its click included: as a tap it
+  // only lets go of the comment (`blank`), and the next press is the
+  // page's. The viewer decides; if it keeps the comment (a reply typed),
+  // the tap still does nothing here.
+  let press = null;
+  let held = false;
+  const selected = () => pins.some((p) => p.lit && p.key !== "new");
+  window.addEventListener("pointerdown", (e) => {
+    if (e.isPrimary) held = !picking && !fromLayer(e) && selected();
+    const selection = window.getSelection();
+    press = picking || !e.isPrimary || (!held && selection && !selection.isCollapsed) ? null
+      : { x: e.clientX, y: e.clientY, at: performance.now(), tap: false };
+  }, { capture: true, passive: true });
+  window.addEventListener("pointerup", (e) => {
+    if (press && e.isPrimary) {
+      press.tap = Math.hypot(e.clientX - press.x, e.clientY - press.y) <= 10 && performance.now() - press.at <= 500;
+    }
+  }, { capture: true, passive: true });
+  // A scroll took the press: it has no click to hold back.
+  window.addEventListener("pointercancel", () => { press = null; held = false; }, true);
+
+  // Pin mode and a held press: the presses around a click stop here too,
+  // so menus that open on a press stay shut, and a control takes no focus;
+  // scrolling is left alone. A held press over text may still select it.
   function swallow(e) {
-    if (!picking || fromLayer(e)) return;
+    if (!(picking || held) || fromLayer(e)) return;
     e.stopImmediatePropagation();
-    if (e.type === "mousedown" || e.type === "dblclick" || e.type === "auxclick") e.preventDefault();
+    if (e.type === "dblclick" || e.type === "auxclick"
+      || (e.type === "mousedown" && (picking || acts(e.target)))) e.preventDefault();
   }
   for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "touchend", "dblclick", "auxclick"]) {
     window.addEventListener(type, swallow, true);
   }
+  // A held press's click: cancelled, and only a tap lets go. A keyboard
+  // "click" (no detail) is no press and stays the page's.
+  window.addEventListener("click", (e) => {
+    if (!held || picking || fromLayer(e) || e.detail === 0) return;
+    held = false;
+    e.stopImmediatePropagation();
+    e.preventDefault();
+    const tapped = press && press.tap;
+    press = null;
+    if (tapped) tell({ type: "blank" });
+  }, true);
   window.addEventListener("click", (e) => {
     if (!picking || fromLayer(e)) return;
     e.stopImmediatePropagation();
@@ -385,10 +425,10 @@
 
   // A link to another file or project of the service: a plain left click
   // asks the viewer to open it in its own tab (the frame cannot show the
-  // viewer page, and has no way to move the tab itself). Pin mode takes the
-  // click before this. A link with a modifier key, a target other than the
-  // frame itself, `download`, or one the page's own script already handled
-  // behaves as before. pages.py puts links.js before this script.
+  // viewer page, and has no way to move the tab itself). Pin mode and a
+  // held press take the click before this. A link with a modifier key, a
+  // target other than the frame itself, `download`, or one the page's own
+  // script already handled behaves as before. pages.py puts links.js before this script.
   window.addEventListener("click", (e) => {
     if (picking || e.defaultPrevented || e.button !== 0
       || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
@@ -403,10 +443,12 @@
     tell({ type: "open", path: to.path, fragment: to.fragment });
   });
 
-  // Outside pin mode, a tap on an empty spot of the page tells the viewer,
-  // which lets go of the selected comment. Only a plain tap: not one that
-  // moved (a scroll or a drag) or was held, not a double click, one with a
-  // modifier key or one begun over selected text (those handle text), and
+  // Outside pin mode, with no pin lit (a selected comment without a pin
+  // here, or folded to the strip), a tap on an empty spot of the page tells
+  // the viewer too, which lets go of the selected comment. Only a plain
+  // tap: not one that moved (a scroll or a drag) or was held, not a double
+  // click, one with a modifier key or one begun over selected text (those
+  // handle text), and
   // not on anything the page may act on: a control, a canvas, an element
   // with a widget role, an editable element, one in the tab order, one
   // with an onclick or a pointer cursor. A click the page's own script
@@ -423,21 +465,7 @@
     }
     return false;
   }
-  // A press is a tap when it lifts within 500 ms and 10 px of where it
-  // began; told by the pointer's own events, as a click's point is not
-  // always where the finger was.
-  let press = null;
-  window.addEventListener("pointerdown", (e) => {
-    const selection = window.getSelection();
-    press = picking || !e.isPrimary || (selection && !selection.isCollapsed) ? null
-      : { x: e.clientX, y: e.clientY, at: performance.now(), tap: false };
-  }, { capture: true, passive: true });
-  window.addEventListener("pointerup", (e) => {
-    if (press && e.isPrimary) {
-      press.tap = Math.hypot(e.clientX - press.x, e.clientY - press.y) <= 10 && performance.now() - press.at <= 500;
-    }
-  }, { capture: true, passive: true });
-  window.addEventListener("pointercancel", () => { press = null; }, true);
+  // A tap (see `press` above) that nothing held back.
   window.addEventListener("click", (e) => {
     const tapped = press && press.tap;
     press = null;

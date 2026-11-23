@@ -962,5 +962,24 @@ def test_a_tap_on_an_empty_spot_lets_go_only_outside_comment_mode():
     comments = (static / "comments.js").read_text()
     blank = comments[comments.index("function blank() {"):]
     blank = blank[:blank.index("\n  }\n")]
-    assert "if (S.mode || !S.sel) return;" in blank and "toast" not in blank
-    assert "fields.reply.value.trim() ||" in blank
+    # As the fold button: a typed reply keeps the comment, with a toast.
+    assert "if (S.mode || !S.sel) return;\n    fold();" in blank
+
+
+def test_with_a_pin_lit_the_first_press_is_held_back_from_the_page():
+    # Outside pin mode, while a pin the viewer sent is lit (never the new
+    # draft's), the frame keeps the next press off its pins from the page:
+    # the press events stop, a control gets no focus, the click is
+    # cancelled, and only a tap reports blank. A keyboard click is the page's.
+    static = Path(__file__).parent.parent / "src" / "agent_artifacts" / "static"
+    pins = (static / "pins.js").read_text()
+    assert 'const selected = () => pins.some((p) => p.lit && p.key !== "new");' in pins
+    assert "if (e.isPrimary) held = !picking && !fromLayer(e) && selected();" in pins
+    assert "if (!(picking || held) || fromLayer(e)) return;\n    e.stopImmediatePropagation();" in pins
+    assert '(e.type === "mousedown" && (picking || acts(e.target)))) e.preventDefault();' in pins
+    held = pins[pins.index("if (!held || picking || fromLayer(e) || e.detail === 0) return;"):]
+    held = held[:held.index("}, true);")]
+    assert "e.stopImmediatePropagation();\n    e.preventDefault();" in held
+    assert 'if (tapped) tell({ type: "blank" });' in held
+    # The tap is followed before anything stops a press, and after the zoom.
+    assert pins.index("pageZoom.attach(window") < pins.index("let held = false;") < pins.index("function swallow(e)")
