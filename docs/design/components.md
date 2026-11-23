@@ -59,11 +59,22 @@ Dragged anywhere, it snaps to the nearer side edge, 8 px in.
 
 | State | Look |
 | --- | --- |
-| rest | translucent, ≡ |
+| rest | translucent, ≡, and two thin corners of Exit full screen (top left, bottom right; the `corners` icon): a double tap leaves full screen |
 | dragged | scale 1.08, `--ink` |
-| menu open | `--ink`, ✕ icon |
+| menu open | `--ink`, ✕ icon, no corners |
 | comment mode | 2 px `--blue` ring inside the edge, 12 px `--blue` bubble top right |
 | long press 500 ms | toggles comment mode, toast "Commenting on" / "Commenting off" |
+| double tap (second press within 300 ms and 20 px of the first tap) | closes the menu the first tap opened and leaves full screen |
+
+**Tip** (`.float-tip`, `role="status"`): on entering full screen, beside the
+button, above it when there is room, else under it, its edge in line with the
+button's side, 8 px from it and from the window's edges. Toast colours
+(`--ink`, white), 15 px, radius 14, max w 300, padding 10 10 10 14. Two
+lines: "Hold — comment mode" (viewer only) and "Double-tap — exit full
+screen"; under them **Hide** (plain, transparent) and **OK** (`--blue-fill`,
+600), h 32 with a 44 px touch area. OK closes it; it shows on three entries
+in all. Hide closes it for good in this browser. Escape, a long press, opening the
+menu or leaving full screen close it too.
 
 ## Dialogs
 

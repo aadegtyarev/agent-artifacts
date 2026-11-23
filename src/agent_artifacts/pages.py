@@ -45,7 +45,8 @@ _env.globals["static"] = {
     for n in (
         "pin.css", "site.css", "theme.js", "copy.js",
         "pin-marks.js", "comments-model.js", "sheet-drag.js", "links.js", "zoom.js",
-        "comments-pins.js", "comments.js", "viewer.js", "menu-dialogs.js", "project.js",
+        "comments-pins.js", "comments.js", "float-tip.js", "viewer.js", "menu-dialogs.js",
+        "project.js",
     )
 }
 

@@ -20,10 +20,12 @@
 <script src="{{ static['zoom.js'] }}"></script>
 <script src="{{ static['comments-pins.js'] }}"></script>
 <script src="{{ static['comments.js'] }}"></script>
+<script src="{{ static['float-tip.js'] }}"></script>
 <script src="{{ static['viewer.js'] }}"></script>
 <script src="{{ static['menu-dialogs.js'] }}"></script>
 {% if in_project %}<script src="{{ static['project.js'] }}"></script>{% endif %}{% endif %}
-{% if project %}<script src="{{ static['viewer.js'] }}"></script>
+{% if project %}<script src="{{ static['float-tip.js'] }}"></script>
+<script src="{{ static['viewer.js'] }}"></script>
 <script src="{{ static['menu-dialogs.js'] }}"></script>
 <script src="{{ static['project.js'] }}"></script>{% endif %}
 </body></html>

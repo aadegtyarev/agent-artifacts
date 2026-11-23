@@ -113,7 +113,7 @@ html:has(> body > .stage.zooms) { touch-action: pan-x pan-y; }
    separators, one dark primary button and blue for sending. Controls are
    32px to the eye and 44px to a finger (an invisible ::before). Blue marks
    what this browser wrote, orange everybody else's. */
-.sheet, .modal, .toast { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Roboto,
+.sheet, .modal, .toast, .float-tip { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Roboto,
   "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
 .sheet { flex: none; display: flex; flex-direction: column; min-height: 0;
   background: var(--bg); font-size: 15px; line-height: 1.35;
@@ -474,8 +474,29 @@ body.commenting .float-mode { display: block; }
 body.commenting .fan-item .when-on { display: inline; }
 body.commenting .fan-item[data-act="comment"] .fan-sq { color: var(--on-color); background: var(--blue-fill);
   box-shadow: inset 0 1.5px 3px var(--shadow-2); }
-.float-button > svg:last-child, .float-button[aria-expanded="true"] .menu-icon { display: none; }
+.float-button > svg:last-child, .float-button[aria-expanded="true"] .menu-icon,
+  .float-button[aria-expanded="true"] .float-hint { display: none; }
 .float-button[aria-expanded="true"] > svg:last-child { display: block; }
+/* The hint that a double tap leaves full screen: two corners of Exit full
+   screen, thin and faint, at the top left and bottom right (the comment
+   mode's bubble keeps the top right). */
+.float-hint { position: absolute; inset: 0; line-height: 0; pointer-events: none; }
+.float-button .float-hint svg { width: 44px; height: 44px; stroke-width: 1; opacity: 0.7; }
+/* The tip beside the floating ≡ on entering full screen: toast colours,
+   placed by viewer.js. */
+.float-tip { position: fixed; z-index: 45; left: 8px; top: 8px; max-width: min(300px, calc(100vw - 16px));
+  padding: 10px 10px 10px 14px; color: var(--on-color); background: var(--ink); border-radius: 14px;
+  box-shadow: 0 4px 16px var(--shadow-1); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+  font-size: 15px; line-height: 1.35; }
+.float-tip-text { margin: 0 4px 0 0; }
+.float-tip-text span { display: block; }
+.float-tip-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.float-tip .btn { position: relative; height: 32px; min-width: 52px; padding: 0 14px; color: var(--on-color);
+  background: transparent; border: 0; border-radius: 10px; font: inherit; font-size: 15px; cursor: pointer; }
+/* 44 px to tap, the button drawn smaller. */
+.float-tip .btn::before { content: ""; position: absolute; inset: -6px -2px; }
+.float-tip .btn.pri { background: var(--blue-fill); font-weight: 600; }
+.float-tip .btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 
 /* The project page: one row per file, a type square, the title, size and
    time; on the right, when something there needs this person (a comment

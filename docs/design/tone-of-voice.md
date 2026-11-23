@@ -101,6 +101,7 @@ image", "“Send”", "on the page".
 | Project page header | "3 files · kept until deleted" |
 | Project row's dot (title, `aria-label`) | "Needs you" (the file needs you) |
 | Viewer header | "12.3 KB · expires 2026-11-24 10:00 UTC" |
+| Full-screen tip | "Hold — comment mode" / "Double-tap — exit full screen" (a gesture, a dash, what it does) |
 
 ## Patterns
 
@@ -110,7 +111,8 @@ Verb first, one or two words: **Copy link**, **Download file**, **Finish
 review**, **Show**, **Save**, **Edit**, **Delete**, **Undo**, **Back**.
 Decisions carry their mark: **✓ Approve**, **✕ Reject**, **✓ Accept**,
 **✓ All · N** (pill), **Accept all · N** (link). Closing a dialog is
-**Done**; skipping the name is **No name**. A menu item that opens a dialog
+**Done**; skipping the name is **No name**. The full-screen tip closes with
+**OK**, or with **Hide** for good. A menu item that opens a dialog
 ends with "…": **Share…**, **Settings…**. A count goes after " · ":
 **Finish review · 3**.
 

@@ -675,3 +675,19 @@ def test_the_agents_project_summary(env):
     assert summary("nan").status_code == 400
     client.delete(f"/api/v1/projects/{p}", headers=auth(keys["alice"]))
     assert summary().status_code == 404
+
+
+def test_double_tap_hint_is_on_the_floating_button_only(env):
+    # The corners say a double tap leaves full screen: the floating ≡'s
+    # gesture, never the header's ≡.
+    client, _, keys = env
+    p = new_project(client, keys["alice"]).json()["id"]
+    a = upload(client, keys["alice"], "a.md", b"# x", project=p).json()["id"]
+    for path in (f"/p/{p}", f"/a/{a}"):
+        page = client.get(path).text
+        inside = {
+            i: re.search(rf'<button [^>]*id="{i}"[^>]*>(.*?)</button>', page).group(1)
+            for i in ("float-button", "menu-button")
+        }
+        assert 'class="float-hint"' in inside["float-button"], path
+        assert "float-hint" not in inside["menu-button"], path

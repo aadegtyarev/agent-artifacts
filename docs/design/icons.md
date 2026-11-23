@@ -12,6 +12,7 @@ Sources: `templates/icons.html` (Jinja macros), the `ICONS` map in
 | ![expand](icons/expand.svg) | `expand` | icons.html | 19 | header Full screen |
 | ![shrink](icons/shrink.svg) | `shrink` | icons.html | 20 | menu Exit full screen |
 | ![menu](icons/menu.svg) | `menu` | icons.html | 19 header, 22 floating | ≡ in the header and the floating ≡ |
+| ![corners](icons/corners.svg) | `corners` | icons.html | 44 (the whole button), stroke 1, 70% | floating ≡ at rest: two corners of Exit full screen, the hint that a double tap leaves full screen |
 | ![close](icons/close.svg) | `close` | icons.html | 22 | floating ≡ while its menu is open |
 | ![files](icons/files.svg) | `files` | icons.html | 20 | menu Project files (dots drawn with stroke 3) |
 | ![external](icons/external.svg) | `external` | icons.html | 20 | menu Open separately |

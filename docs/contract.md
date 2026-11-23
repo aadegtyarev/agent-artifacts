@@ -394,7 +394,16 @@ and **Comment** is a checked item reading **Commenting**; a tap turns the mode
 off. A long press (500 ms, still) on the floating button turns comment mode
 on or off, with a short vibration where the device has one and a toast
 ("Commenting on" / "off"); with no name yet it asks for one first, and the
-mode comes on after it. The click of that press's release is dropped. When the browser leaves full
+mode comes on after it. The click of that press's release is dropped. A
+double tap on the floating button (the second press within 300 ms and 20 px
+of the first tap) leaves full screen: the first tap opens the menu at once
+as usual, the second closes it, and its click is dropped, so a menu item
+under the finger does nothing. Two thin corners of Exit full screen on the
+button hint at it. On entering full screen a tip beside the button says
+"Hold — comment mode" (not on the project page) and "Double-tap — exit full
+screen", with **OK** (closes it) and **Hide** (never again in this browser).
+It shows on three entries at most; Escape, a long press, opening the menu
+or leaving full screen close it. This browser keeps the count (`aa-full-tip` in localStorage). When the browser leaves full
 screen by itself (Escape, a system gesture), the viewer stays in its own full
 screen until Exit full screen.
 
@@ -443,7 +452,8 @@ updated ("2 h ago", then the date). An empty project says "No files yet". The
 header has the project's title, the number of files and "kept until
 deleted", **Full screen** and the "≡" menu with **Share…** (the project
 page's link to copy, no download) and **Settings…**, as in the viewer
-(without comment mode); in full screen **Exit full screen** comes first. The page sends the
+(without comment mode); in full screen **Exit full screen** comes first, and a
+double tap on the floating button and its tip work as there. The page sends the
 same headers as the viewer page (`noindex`, `no-referrer`, its own CSP with
 `frame-ancestors 'none'`). A missing or deleted project gives the `404`
 page.
