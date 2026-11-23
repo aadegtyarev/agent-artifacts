@@ -14,7 +14,7 @@ size. Hidden in full screen.
 | Part | Viewer | Project page |
 | --- | --- | --- |
 | Title (h1, 14 bold, one line, ellipsis) | file title | project title |
-| Second line (12, muted, one line) | "12.3 KB · expires 2026-11-24 10:00 UTC"; in a project: the project title button | "3 files · kept until deleted" |
+| Second line (12, muted; deadline wraps as needed) | "12.3 KB · expires Nov 24, 2026 at 10:00 UTC+03:00"; in a project: the project title button | "3 files · kept until deleted" |
 | Buttons, right, gap 12 | bubble, Full screen, ≡ | Full screen, ≡ |
 
 **Square button** (`.actions .sq`): 32 × 32, radius 9, `--surface` fill, no border,

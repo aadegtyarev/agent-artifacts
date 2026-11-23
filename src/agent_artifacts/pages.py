@@ -46,7 +46,7 @@ _env.globals["static"] = {
         "pin.css", "site.css", "theme.js", "copy.js",
         "pin-marks.js", "comments-model.js", "sheet-drag.js", "links.js", "zoom.js",
         "comments-pins.js", "comments.js", "float-tip.js", "viewer.js", "menu-dialogs.js",
-        "project.js",
+        "project.js", "local-dates.js",
     )
 }
 
@@ -142,6 +142,7 @@ def viewer_page(
         sandbox=SANDBOX,
         size=size(a.size),
         expires=iso(a.expires_at, human=True),
+        expires_iso=iso(a.expires_at),
         in_project=project and project[0],
         rows=project and file_rows(project[1], now),
     )
@@ -177,7 +178,9 @@ def file_rows(files: list[Artifact], now: float) -> list[dict]:
             {
                 "a": a,
                 "type": a.kind.upper(),
-                "detail": f"{size(a.size)} · {ago(a.updated_at, now)}",
+                "size": size(a.size),
+                "date": ago(a.updated_at, now),
+                "date_iso": iso(a.updated_at) if now - a.updated_at >= 86400 else None,
                 # A heading before the first file of each section.
                 "heading": a.section if a.section != section else None,
             }
@@ -194,6 +197,7 @@ def invite_page(invite: Invite) -> HTMLResponse:
         title=f"Invite for {invite.name}",
         name=invite.name,
         expires=iso(invite.expires_at, human=True),
+        expires_iso=iso(invite.expires_at),
     )
 
 

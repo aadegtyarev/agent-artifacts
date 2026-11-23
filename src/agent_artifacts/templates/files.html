@@ -6,7 +6,7 @@
   {%- if row.heading %}
   <h2 class="sec">{{ row.heading }}</h2>
   {%- endif %}
-  <a class="pf" href="/a/{{ row.a.id }}" data-id="{{ row.a.id }}"{% if row.a.id == current %} aria-current="page"{% endif %}><span class="ft">{{ row.type }}</span><span class="tx"><span class="main">{{ row.a.title }}</span><span class="st">{{ row.detail }}</span></span></a>
+  <a class="pf" href="/a/{{ row.a.id }}" data-id="{{ row.a.id }}"{% if row.a.id == current %} aria-current="page"{% endif %}><span class="ft">{{ row.type }}</span><span class="tx"><span class="main">{{ row.a.title }}</span><span class="st">{{ row.size }} · {% if row.date_iso %}<time datetime="{{ row.date_iso }}" data-local-date>{{ row.date }}</time>{% else %}{{ row.date }}{% endif %}</span></span></a>
 {%- else %}
   <p class="empty">No files yet</p>
 {%- endfor %}
