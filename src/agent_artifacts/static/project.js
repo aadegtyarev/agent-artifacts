@@ -47,7 +47,7 @@
     if (withAgent) {
       const agent = document.createElement("span");
       agent.className = "cnt ag";
-      agent.title = `${withAgent} with the agent`;
+      agent.title = `${withAgent} in progress`;
       const pin = document.createElement("span");
       pin.className = "pin mini ag line";
       pin.append(pinMarks.mark("star"));

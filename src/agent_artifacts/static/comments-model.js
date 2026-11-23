@@ -121,7 +121,7 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
   // many replies or when. `lost`: where its pin is when it is not on the
   // content shown, or null.
   const LEADS = {
-    waiting: [null, "with the agent"], working: ["work", "Agent is working"],
+    waiting: [null, "sent, not taken yet"], working: ["work", "Agent is working"],
     done: ["fin", "Done · check it"], wrote: ["fin", "Done, wrote"], asked: ["ask", "Asks you"],
   };
   function status(it, lost = null) {
@@ -168,7 +168,7 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
   // "agent": sent and not answered yet. "talk": published, nothing waits
   // for this person. "closed": accepted or rejected.
   const GROUPS = [
-    ["need", "Need you"], ["drafts", "Your drafts"], ["agent", "With the agent"],
+    ["need", "Need you"], ["drafts", "Your drafts"], ["agent", "In progress"],
     ["talk", "Discussion"], ["closed", "Closed"],
   ];
   function groupOf(it) {

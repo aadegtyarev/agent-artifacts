@@ -129,7 +129,7 @@ test("agentCounts counts the states the strip reads and nothing else", () => {
 
 test("status leads per agent state, and the rest of the line", () => {
   const leads = {
-    waiting: [null, "with the agent"], working: ["work", "Agent is working"],
+    waiting: [null, "sent, not taken yet"], working: ["work", "Agent is working"],
     done: ["fin", "Done · check it"], wrote: ["fin", "Done, wrote"], asked: ["ask", "Asks you"],
   };
   for (const [agent, lead] of Object.entries(leads)) {

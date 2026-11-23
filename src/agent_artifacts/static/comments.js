@@ -407,7 +407,7 @@
     if (n.need) parts.push(el("b", null, `${n.need} need you`));
     if (review) parts.push(`${review} ${review === 1 ? "draft" : "drafts"}`);
     // With Finish review at its side the line has no room for the agent's part.
-    if (n.agent && !review) parts.push(`${n.agent} with the agent`);
+    if (n.agent && !review) parts.push(`${n.agent} in progress`);
     const line = [];
     parts.forEach((p, i) => line.push(...(i ? [" · ", p] : [p])));
     const plain = !parts.length;
