@@ -91,21 +91,6 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
   }
   const itemOf = (key) => items().find((i) => i.key === key) || null;
 
-  // The agent's comments by state, and the latest review sent to it. A
-  // review publishes at one moment, so the moments number the reviews.
-  function agentCounts() {
-    const n = { waiting: 0, working: 0, done: 0, wrote: 0, asked: 0 };
-    for (const c of state.comments) if (c.agent in n) n[c.agent] += 1;
-    return n;
-  }
-  function lastSent() {
-    const times = [...new Set(state.comments.filter((c) => c.agent).map((c) => c.created_at))].sort();
-    if (!times.length) return null;
-    const at = new Date(times[times.length - 1]);
-    const hm = at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-    return { at: now() - at.getTime() < 86400000 ? hm : `${when(at.toISOString())}, ${hm}` };
-  }
-
   function when(iso) {
     const t = new Date(iso);
     const seconds = (now() - t.getTime()) / 1000;
@@ -132,7 +117,6 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
     let lead = null;
     if (dec) lead = ["mine", { approve: "✓ Approve", reject: "✕ Reject", accept: "✓ Accept" }[dec.kind]];
     else if (mine) lead = ["mine", "↩ Your reply"];
-    else if (c.resolved) lead = [null, "accepted"];
     else if (c.rejected_by) lead = [null, "rejected"];
     else if (it.pend) lead = [null, "awaiting approval"];
     else if (LEADS[c.agent]) lead = LEADS[c.agent];
@@ -152,7 +136,7 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
   function acceptable() {
     const out = [];
     for (const it of items()) {
-      if (!it.c || it.c.resolved || actsOn(it.c.n).length) continue;
+      if (!it.c || actsOn(it.c.n).length) continue;
       if (it.c.agent === "done" || it.c.agent === "wrote") out.push([it.c, "accept"]);
       else if (it.pend) out.push([it.c, "approve"]);
     }
@@ -166,7 +150,7 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
   // then its questions, then colleagues' comments awaiting approval.
   // "drafts": this review: new comments, and comments decided or replied to.
   // "agent": sent and not answered yet. "talk": published, nothing waits
-  // for this person. "closed": accepted or rejected.
+  // for this person. "closed": rejected (accepted ones leave the viewer).
   const GROUPS = [
     ["need", "Need you"], ["drafts", "Your drafts"], ["agent", "In progress"],
     ["talk", "Discussion"], ["closed", "Closed"],
@@ -174,8 +158,9 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
   function groupOf(it) {
     if (it.draft) return "drafts";
     const c = it.c;
-    if (c.resolved || c.rejected_by) return "closed";
+    // A reply drafted on a rejected comment is part of the review.
     if (actsOn(c.n).length) return "drafts";
+    if (c.rejected_by) return "closed";
     if (c.agent === "done" || c.agent === "wrote" || c.agent === "asked" || it.pend) return "need";
     if (c.agent === "waiting" || c.agent === "working") return "agent";
     return "talk";
@@ -193,6 +178,15 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
   }
   // The items in the list's order, for ‹ › on one item.
   const ordered = () => groups().flatMap((g) => g.items);
+  // The items in an order kept from before (keys), so a decision made on
+  // one item does not move it while the person steps through them: the
+  // ones gone are left out, new ones come after in the list's order.
+  function keptOrder(keys) {
+    const current = ordered();
+    const byKey = new Map(current.map((it) => [it.key, it]));
+    const kept = keys.filter((k) => byKey.has(k)).map((k) => byKey.get(k));
+    return [...kept, ...current.filter((it) => !keys.includes(it.key))];
+  }
   // How many items each group holds, for the strip.
   function groupCounts() {
     const n = Object.fromEntries(GROUPS.map(([id]) => [id, 0]));
@@ -202,8 +196,8 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
 
   return {
     STAR, initial, liveDrafts, draftById, isComment, commentDrafts, actsOn, decisionOn, repliesOn,
-    reviewCount, othersReplies, markSeen, stateOf, items, itemOf, agentCounts, lastSent, when, status,
-    acceptable, acceptAllShown, groups, ordered, groupCounts,
+    reviewCount, othersReplies, markSeen, stateOf, items, itemOf, when, status,
+    acceptable, acceptAllShown, groups, ordered, keptOrder, groupCounts,
   };
 };
 

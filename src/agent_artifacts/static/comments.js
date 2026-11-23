@@ -82,6 +82,9 @@
     toAgent: true,
     // the list's folded groups (Discussion, Closed) opened by a tap
     opened: new Set(),
+    // the list's order of keys while one item is shown, so ‹ › keep it
+    // after a decision moves the item to another group; null on the list
+    order: null,
     comments: [],
     // drafts: the server's, with `gone` while a Delete waits for its Undo
     drafts: [],
@@ -169,7 +172,7 @@
   const model = commentsModel(S, { pending, seen });
   const {
     liveDrafts, draftById, isComment, actsOn, decisionOn, repliesOn,
-    reviewCount, items, itemOf, when, acceptable, acceptAllShown, groups, ordered, groupCounts,
+    reviewCount, items, itemOf, when, acceptable, acceptAllShown, groups, ordered, keptOrder, groupCounts,
   } = model;
   function markSeen(c) {
     if (!model.markSeen(c)) return;
@@ -357,9 +360,11 @@
 
   // --- Drawing -------------------------------------------------------------------
   function render() {
-    // A field with the focus is put back with its caret after the redraw.
+    // A field with the focus is put back with its caret after the redraw,
+    // and a group's title line with the focus gets it back.
     const active = document.activeElement;
     const kept = Object.values(fields).includes(active) ? active : null;
+    const keptGroup = active && active.classList.contains("sec-fold") ? active.dataset.group : null;
     const caret = kept ? [kept.selectionStart, kept.selectionEnd] : null;
 
     const shown = S.mode || S.comments.length > 0 || liveDrafts().length > 0;
@@ -374,6 +379,8 @@
     // On a phone the strip alone shows nothing else.
     const open = desk.matches || S.pos !== "strip";
     if (S.view === "compose" && !S.compose) S.view = "list";
+    // Off one item, ‹ › take the list's order afresh next time.
+    if (S.view !== "item") S.order = null;
     // Folded, the list starts again with its groups folded.
     if (!desk.matches && S.pos === "strip") S.opened.clear();
     const [content, footer] = open ? views[S.view]() : [[], []];
@@ -384,6 +391,10 @@
     if (kept && kept.isConnected) {
       kept.focus({ preventScroll: true });
       kept.setSelectionRange(...caret);
+    }
+    if (keptGroup) {
+      const head = body.querySelector(`.sec-fold[data-group="${keptGroup}"]`);
+      if (head) head.focus({ preventScroll: true });
     }
     // A field being typed in hides what would sit under the finger (the
     // item's Finish review, the choice of where to send).
@@ -443,10 +454,13 @@
           // Shown open while one of its items is selected, so its row lights up.
           const open = S.opened.has(g.id) || g.items.some((i) => i.key === S.sel);
           const b = button("", () => {
-            if (S.opened.has(g.id)) S.opened.delete(g.id);
-            else S.opened.add(g.id);
+            if (open) {
+              S.opened.delete(g.id);
+              if (g.items.some((i) => i.key === S.sel)) S.sel = null;
+            } else S.opened.add(g.id);
             render();
           }, "sec sec-fold");
+          b.dataset.group = g.id;
           b.append(el("span", null, head), icon(open ? "down" : "right"));
           b.setAttribute("aria-expanded", String(open));
           out.push(b);
@@ -473,8 +487,8 @@
     item() {
       const it = itemOf(S.sel);
       if (!it) return views.list();
-      // ‹ › and the rows under it go in the list's order.
-      const all = ordered();
+      // ‹ › and the rows under it go in the list's order, as it was.
+      const all = inOrder();
       const at = all.findIndex((i) => i.key === it.key);
       const nav = el("div", "nav handle");
       nav.append(
@@ -828,6 +842,8 @@
       fields.reply.value = "";
     }
     S.sel = key;
+    // Entering one item: the list's order is kept while stepping.
+    if (S.view !== "item" || !S.order) S.order = ordered().map((i) => i.key);
     const opened = itemOf(key);
     if (opened && opened.c) markSeen(opened.c);
     // One comment: the sheet fits it. Pulled up with the others under it,
@@ -846,8 +862,11 @@
     if (!desk.matches && S.view === "item" && S.pos === "q" && it && !it.draft) body.scrollTop = body.scrollHeight;
   }
 
+  // The items in the order kept for one item, or the list's.
+  const inOrder = () => (S.order ? keptOrder(S.order) : ordered());
+
   function step(by) {
-    const all = ordered();
+    const all = inOrder();
     if (!all.length) return;
     const at = all.findIndex((i) => i.key === S.sel);
     openItem(all[(at + by + all.length) % all.length].key);

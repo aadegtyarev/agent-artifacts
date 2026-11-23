@@ -141,7 +141,8 @@ body > header, .sheet > *, .toast-box, .fan-item, .modal, .banner > *, .pj > * {
 .sheet .btn:disabled { opacity: 0.35; cursor: default; transform: none; }
 .sheet .btn.big { height: 36px; padding: 0 16px; }
 .sheet .btn:focus-visible, .modal .btn:focus-visible, .toast .btn:focus-visible,
-.sheet .send:focus-visible, .sheet .chev:focus-visible, .sheet .it:focus-visible {
+.sheet .send:focus-visible, .sheet .chev:focus-visible, .sheet .it:focus-visible,
+.sheet .sec-fold:focus-visible {
   outline: 2px solid var(--send); outline-offset: 2px; }
 
 /* Titles and the list: a row is a pin, the text on one line, its state. */
@@ -181,9 +182,6 @@ body > header, .sheet > *, .toast-box, .fan-item, .modal, .banner > *, .pj > * {
 :root[data-theme="dark"] .st b.fin { color: #30d158; } :root[data-theme="dark"] .st b.ask { color: #ff9f0a; }
 :root[data-theme="dark"] .st b.work { color: #7d7aff; }
 .st b.mine { color: var(--accent); }
-.more { display: block; width: 100%; min-height: 44px; margin: 6px 0 0; padding: 0;
-  color: var(--accent); background: none; border: 0;
-  font: inherit; font-size: 15px; text-align: left; cursor: pointer; }
 .addwhole { margin: 10px 0 2px; }
 .foot2 { display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
 .note { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
