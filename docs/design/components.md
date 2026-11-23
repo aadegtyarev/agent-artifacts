@@ -213,8 +213,9 @@ last).
 
 Caption 13 muted, then a pill field (radius 20, 16 px, grows to 120 px) with
 the round send arrow inside at the bottom right; the arrow is disabled while
-the field is empty. Enter sends, Shift+Enter breaks the line. 2000 characters
-at most. Focus: `--bg` with a hairline and a 4 px `--tint-2` ring.
+the field is empty. With a hardware keyboard Enter sends and Shift+Enter
+breaks the line; on a touch screen Enter breaks the line and the arrow sends.
+2000 characters at most. Focus: `--bg` with a hairline and a 4 px `--tint-2` ring.
 
 ### Finish review
 
