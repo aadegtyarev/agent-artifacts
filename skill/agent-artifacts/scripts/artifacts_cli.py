@@ -70,7 +70,7 @@ USAGE = """usage: artifacts_cli.py <command> [args]
                             until the person answers (--asked); the option
                             goes after TEXT or before ID
   wait ID [--every S] [--timeout S]
-                            poll every S seconds (30 by default, 5 at least)
+                            poll every S seconds (10 by default, 5 at least)
                             and print, then exit, on the first of: comments
                             waiting for you {"event": "waiting", "comments"},
                             comments accepted since the start {"event":
@@ -530,7 +530,7 @@ def run(argv: list[str]) -> str | None:
             every, args = _option(args, "--every")
             limit, args = _option(args, "--timeout")
             need(1, "ID [--every SECONDS] [--timeout SECONDS]")
-            every = float(every or 30)
+            every = float(every or 10)
             limit = float(limit if limit is not None else 6 * HOUR)
             if not (every >= 5 and limit >= 0):  # NaN too
                 raise Usage("wait: --every 5 or more seconds, --timeout 0 (no limit) or more")

@@ -259,7 +259,7 @@ def test_wait_waiting_gone_and_timeout(server):
     assert json.loads(cli(home, "wait", art_id, "--timeout", "1", env=env)[1]) == {
         "event": "timeout"
     }
-    assert time.monotonic() - start < 5  # the timeout cuts the 30 s sleep short
+    assert time.monotonic() - start < 5  # the timeout cuts the poll sleep short
     store.add_draft(art_id, "h", author="p", text="plain", anchor=None)
     store.publish(art_id, "h", author="p", text=None)
     store.add_draft(art_id, "h", author="p", text="make it green", anchor=None)
@@ -273,7 +273,8 @@ def test_wait_waiting_gone_and_timeout(server):
     assert json.loads(cli(home, "wait", art_id, env=env)[1]) == {"event": "gone"}
 
 
-def test_wait_accepted_counts_only_new(server, monkeypatch):
+@pytest.mark.parametrize(("options", "interval"), [((), 10), (("--every", "7"), 7)])
+def test_wait_accepted_counts_only_new(server, monkeypatch, options, interval):
     url, store, home = server
     key = store.add_agent("alice")
     page = home / "a.html"
@@ -292,9 +293,9 @@ def test_wait_accepted_counts_only_new(server, monkeypatch):
             store.resolve_comment(art_id, 2, True, owner="alice")
 
     mod = _load_cli(monkeypatch, url, key, sleep)
-    event = json.loads(mod.run(["wait", art_id, "--every", "7"]))
+    event = json.loads(mod.run(["wait", art_id, *options]))
     assert event["event"] == "accepted" and [c["n"] for c in event["comments"]] == [2]
-    assert polls == [7, 7]
+    assert polls == [interval, interval]
 
 
 def test_wait_on_a_project(server, monkeypatch):

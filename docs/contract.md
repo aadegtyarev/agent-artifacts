@@ -1056,10 +1056,10 @@ alone (`none` clears). Projects get `project-new TITLE`, `projects`,
 get the commands `comments ID`, `take ID`, `reply ID N TEXT [--wrote|--asked]`,
 `resolve ID N`, `reopen ID N` and `delete-comment ID N`, and `drop-drafts ID`
 deletes every draft on a file. `wait ID [--every SECONDS] [--timeout SECONDS]`
-polls `GET /api/v1/artifacts/{id}/comments` every 30 seconds (5 at least),
-silently, and exits 0 with one JSON line on the first of: comments waiting
-for the agent and not resolved (`{"event": "waiting", "comments"}`), comments
-resolved since its first poll (`{"event": "accepted", "comments"}`), a 404
+polls `GET /api/v1/artifacts/{id}/comments` silently every 10 seconds by
+default (at least 5). It exits 0 with one JSON line on the first of: comments
+waiting for the agent and not resolved (`{"event": "waiting", "comments"}`),
+comments resolved since its first poll (`{"event": "accepted", "comments"}`), a 404
 (`{"event": "gone"}`) or the timeout, 6 hours by default and 0 for none
 (`{"event": "timeout"}`). On a project (a `/p/` link, or a bare id the
 project summary knows; else a file) it polls `GET
