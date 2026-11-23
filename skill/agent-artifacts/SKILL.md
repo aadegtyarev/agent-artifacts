@@ -80,16 +80,22 @@ the person.
 What works with people reviewing on a phone:
 
 1. **A design system and a tone-of-voice reference before any screen.**
-   For a new interface write both first: colours, type sizes, spacing,
+   For a new interface write them first: colours, type sizes, spacing,
    components and their states; and how the interface speaks — words for
    actions and states, length, form of address, what is never said. For an
-   existing interface describe what it already is in the same two files,
+   existing interface describe what it already is in them first,
    then design the change against them; with the files in place, a small
-   change just follows them. Keep them where they outlive the
-   mockups: in the person's repository (`docs/design-system.md`,
-   `docs/tone-of-voice.md`), or with no repository as Markdown files in
-   the job's project here. Every later mockup follows them; a decision
-   that changes the look or the words goes into them too.
+   change just follows them. Keep them where they outlive the mockups,
+   in the same layout in every project: a folder `docs/design/` in the
+   person's repository with `README.md` (principles and an index),
+   `tokens.md` (colours for both themes, type, spacing, sizes),
+   `components.md` (components and their states), `icons/` (one `.svg`
+   per icon) with `icons.md` (each shown, named, where used) and
+   `tone-of-voice.md` (voice rules, a glossary of the words used and
+   avoided, status words, message patterns); with no repository, the same
+   folder in the folder you work in. Never only here: files on this
+   service are temporary. Every later mockup follows
+   them; a decision that changes the look or the words goes into them too.
 2. **Then wireframes of the flow** — for a new product, a new screen and a
    redesign alike. Numbered steps from the person's first action to the
    result, one schematic screen per step: grey blocks for content, real
@@ -101,7 +107,7 @@ What works with people reviewing on a phone:
    screens around the new part — not a fresh design: what was agreed before
    stays as it was, and only the new part is new. Small changes to a
    running product: screenshots of the real app with the change are enough,
-   made by the two files from step 1.
+   following the files from step 1.
 4. **One page per round**: wireframes and screenshots as images in one HTML
    page (inline `data:` URIs; an interactive mockup is its own HTML file,
    replaced each round), phone width first, both themes when colours matter, a
@@ -120,6 +126,13 @@ What works with people reviewing on a phone:
    id, `reply` to each comment saying what you did. An accepted comment
    (`"event": "accepted"`) is their yes.
 8. Nothing goes live before the person's explicit yes on the mockup.
+
+Beyond screens: when you design a process, a workflow or
+an architecture with the person, keep the agreed result in their project
+— `docs/` in the repository, or in the folder you work in (a flow, the
+decisions and why, open questions) — not only here, so either of you can
+come back to it, change it or build on it after the discussion pages are
+gone.
 
 ## Comments
 
