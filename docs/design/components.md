@@ -245,7 +245,7 @@ breaks the line; on a touch screen Enter breaks the line and the arrow sends.
 | Not decided yet · N | section title with the "Accept all · N" link at the right when two or more; rows of what waits for a yes |
 | In this review | section title (only after Not decided yet); new drafts with where they are, then decided and replied comments, accepted last |
 | Empty | "No drafts: you can publish a general comment only." |
-| General comment | field, min h 60, placeholder "General comment" |
+| General comment | field, min h 60, placeholder "General comment"; on a narrow screen, growing the focused field preserves the reading position and keeps a newly wrapped line at the end in view |
 | Footer | segmented Send to agent / Only publish; Back and **Finish review** (big, primary), disabled with nothing to send |
 
 While a reply or the general comment is typed in, the footer hides the

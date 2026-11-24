@@ -1454,9 +1454,23 @@
     }
   });
   fields.general.addEventListener("input", () => {
-    grow(fields.general);
+    const area = fields.general;
+    if (!desk.matches && document.activeElement === area) {
+      // Measuring with height:auto briefly shrinks the scrollable sheet.
+      // Restore its position instead of relying on the IME to reveal the
+      // caret again after it commits a word. Follow a newly wrapped line at
+      // the end, but don't pull someone editing earlier text to the end.
+      const scroll = body.scrollTop;
+      const before = area.getBoundingClientRect();
+      const viewport = body.getBoundingClientRect();
+      const followEnd = area.selectionStart === area.value.length
+        && before.bottom >= viewport.top && before.bottom <= viewport.bottom + 1;
+      grow(area);
+      const added = followEnd ? Math.max(0, area.getBoundingClientRect().height - before.height) : 0;
+      body.scrollTop = scroll + added;
+    } else grow(area);
     const done = finishButton;
-    if (done && done.isConnected) done.disabled = sending || (!reviewCount() && !fields.general.value.trim());
+    if (done && done.isConnected) done.disabled = sending || (!reviewCount() && !area.value.trim());
   });
   // Enter adds the draft (Shift+Enter is a new line), with a hardware
   // keyboard only, as above.
