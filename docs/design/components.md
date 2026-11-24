@@ -22,7 +22,7 @@ icon 19. Pressed: scale 0.95. Focus: 2 px `--blue` outline.
 
 | Button | States |
 | --- | --- |
-| Bubble | off: `--surface`, title "Comment"; on: white icon on `--blue-fill`, inset shadow, `aria-pressed="true"`, title "Stop commenting" |
+| Bubble | off: `--surface`, title "Comment"; on: white icon on `--blue-fill`, inset shadow, `aria-pressed="true"`, title "Stop commenting"; dot when Need you is nonempty |
 | Full screen | one state |
 | ≡ | menu open: `--line` fill, `aria-expanded="true"` |
 
@@ -38,7 +38,7 @@ A column of items fanned out from its button over a scrim
 icon 20), 44 high, 10 apart. Opened from the header it drops down, right
 aligned; from the floating ≡ it opens up or down, whichever has room, on the
 side the button keeps to (label on the right when the button is on the left).
-It scrolls only when it does not fit.
+It scrolls only when it does not fit. At 900 px and wider the viewer uses the same items in a compact raised vertical list, clamped to the viewport; the project page keeps the fan.
 
 | Order | Item | Viewer | Viewer, full screen | Project page | Project, full screen |
 | --- | --- | --- | --- | --- | --- |
@@ -50,7 +50,13 @@ It scrolls only when it does not fit.
 | 6 | Settings… | yes | yes | yes | yes |
 
 Comment in comment mode: label "Commenting", square white on `--blue-fill` with an
-inset shadow (`aria-checked="true"`).
+inset shadow, a visible check and `aria-checked="true"`. A notification dot on
+the Comment button and full-screen Comment item indicates the same Need you
+group as the strip, not all pins or drafts. On desktop, Comment off folds the
+panel; Comment on opens it. A pin opens its thread while placement is off; its
+fold button or Escape closes the panel without changing mode or losing input.
+On narrow screens the existing sheet heights remain in use; only the strip is
+hidden in full screen with Comment off.
 
 ## Floating ≡ (full screen)
 
@@ -63,8 +69,8 @@ Dragged anywhere, it snaps to the nearer side edge, 8 px in.
 | dragged | scale 1.08, `--ink` |
 | menu open | `--ink`, ✕ icon, no corners |
 | comment mode | 2 px `--blue` ring inside the edge, 12 px `--blue` bubble top right |
-| long press 500 ms | toggles comment mode, toast "Commenting on" / "Commenting off" |
-| double tap (second press within 300 ms and 20 px of the first tap) | closes the menu the first tap opened and leaves full screen |
+| touch long press 500 ms | toggles comment mode, toast "Commenting on" / "Commenting off" |
+| double tap or double click (second press within 300 ms and 20 px of the first) | closes the menu the first tap opened and leaves full screen |
 
 **Tip** (`.float-tip`, `role="status"`): on entering full screen, beside the
 button, above it when there is room, else under it, its edge in line with the
@@ -235,7 +241,7 @@ Caption 13 muted, then a pill field (radius 20, 16 px, grows to 120 px) with
 the round send arrow inside at the bottom right; the arrow is disabled while
 the field is empty. With a hardware keyboard Enter sends and Shift+Enter
 breaks the line; on a touch screen Enter breaks the line and the arrow sends.
-2000 characters at most. Focus: `--bg` with a hairline and a 4 px `--tint-2` ring.
+At 900 px and wider, compose and reply use a smaller-radius field with a separate adjacent arrow, grow within the available panel space and scroll internally at their limit. Enter and Shift+Enter insert a newline; Ctrl/Meta+Enter saves the draft or reply. The item navigation and reply stay visible while the thread scrolls. 2000 characters at most. Focus: `--bg` with a hairline and a 4 px `--tint-2` ring.
 
 ### Finish review
 
@@ -285,7 +291,7 @@ scrolled into view. At the bottom right "Project page ›" (16/600, `--blue`,
 | Where | Text |
 | --- | --- |
 | Strip, no comments | "No comments yet", or in comment mode "Tap a spot to comment." |
-| List, no comments | title "No comments yet"; "Tap a spot to comment." (comment mode), "Nobody has commented yet." (comment mode, no spot possible), "Turn on the speech bubble to comment." (mode off) |
+| List, no comments | title "No comments yet"; "Tap a spot to comment." for touch or "Click a spot to comment." for mouse (comment mode), "Nobody has commented yet." (comment mode, no spot possible), "Turn on the speech bubble to comment." (mode off) |
 | Finish review, no drafts | "No drafts: you can publish a general comment only." |
 | Project, no files | "No files yet" |
 | Archive in the viewer | "Archive: download it to see the contents." |

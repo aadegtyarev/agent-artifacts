@@ -34,6 +34,17 @@
 
   const desk = window.matchMedia("(min-width: 900px)");
   const UNDO_MS = 5000;
+  const desktopPanel = () => desk.matches;
+  function foldPanel(folded) {
+    if (folded && sheet.contains(document.activeElement)) (document.body.classList.contains("full") ? $("float-button") : toggle).focus({ preventScroll: true });
+    document.body.classList.toggle("comments-folded", folded);
+    document.dispatchEvent(new CustomEvent("aa:sheet"));
+  }
+  document.addEventListener("aa:viewer-full", () => {
+    foldPanel(desktopPanel() && !S.mode);
+    render();
+  });
+
 
   // --- Browser storage ---------------------------------------------------------
   // Missing or refused: the author key and the name last as long as the page,
@@ -74,7 +85,7 @@
     // the sheet's height on a phone: strip, m (content), f (full)
     pos: "strip",
     sel: null,
-    // the new draft: {anchor, whole}; its text is in `fields.compose`
+    // the new draft: {anchor, retained}; its text is in `fields.compose`
     compose: null,
     // the id of the draft being edited
     edit: null,
@@ -273,22 +284,25 @@
   // On a phone every view's title line ends with a fold button, at the
   // far right and far from Finish review at the bottom.
   function foldButton() {
-    const b = button("", () => fold(true), "chev fold");
+    const b = button("", () => {
+      if (desk.matches) { foldPanel(true); render(); }
+      else fold(true);
+    }, "chev fold");
     b.append(icon("down"));
-    b.setAttribute("aria-label", "Fold the sheet");
+    b.setAttribute("aria-label", desk.matches ? "Close comments" : "Fold the sheet");
     b.title = "Fold";
     return b;
   }
   function titled(text, extra = null) {
     const ttl = el("h2", "ttl", text);
-    if (desk.matches && !extra) {
+    if (desk.matches && S.mode && !extra) {
       ttl.classList.add("handle");
       return ttl;
     }
     const head = el("div", "head handle");
     head.append(ttl);
     if (extra) head.append(extra);
-    if (!desk.matches) head.append(foldButton());
+    if (!desk.matches || !S.mode) head.append(foldButton());
     return head;
   }
 
@@ -341,6 +355,8 @@
   };
   // The comment the reply field writes to.
   let replyFor = null;
+  let savingDraft = false;
+  let savingReply = false;
   const replyButton = button("", () => addReply(), "send");
   replyButton.append(icon("send"));
   replyButton.setAttribute("aria-label", "Reply");
@@ -419,7 +435,7 @@
     const keptHeading = active && active.matches(".sbody > .handle");
     const caret = kept ? [kept.selectionStart, kept.selectionEnd] : null;
 
-    const shown = S.mode || S.comments.length > 0 || liveDrafts().length > 0 || (!S.loaded && Number(sheet.dataset.count) > 0);
+    const shown = (desktopPanel() && !document.body.classList.contains("comments-folded")) || S.mode || S.compose || S.comments.length > 0 || liveDrafts().length > 0 || (!S.loaded && Number(sheet.dataset.count) > 0);
     sheet.hidden = !shown;
     if (!shown) S.pos = "strip";
     sheet.dataset.pos = desk.matches ? "panel" : S.pos;
@@ -463,12 +479,36 @@
     document.dispatchEvent(new CustomEvent("aa:sheet"));
   }
 
+  let pointerKind = matchMedia("(pointer: coarse)").matches ? "touch" : "mouse";
+  const pinHint = () => `${pointerKind === "touch" ? "Tap" : "Click"} a spot to comment.`;
+  document.addEventListener("pointerdown", updatePointer, true);
+  document.addEventListener("pointermove", updatePointer, true);
+  function updatePointer(e) {
+    const kind = e.pointerType === "touch" ? "touch" : "mouse";
+    if (kind === pointerKind) return;
+    pointerKind = kind;
+    for (const node of [stripText, ...strip.querySelectorAll(".strip-hint"), ...body.querySelectorAll(".empty")]) {
+      if (node.textContent === "Tap a spot to comment." || node.textContent === "Click a spot to comment.") {
+        node.textContent = pinHint();
+      }
+    }
+  }
+
   // The strip: what waits for the person, in bold, then their drafts and
   // what the agent has; words only, the pins are in the list.
   function renderStrip() {
     const pendingCount = !S.loaded ? Number(sheet.dataset.count) : 0;
     const review = reviewCount();
     const n = groupCounts();
+    const attention = desk.matches && n.need > 0;
+    toggle.classList.toggle("needs-attention", attention);
+    toggle.setAttribute("aria-label", attention ? "Comment mode, needs your attention" : "Comment mode");
+    const menuComment = document.querySelector('[data-act="comment"]');
+    if (menuComment) {
+      menuComment.classList.toggle("needs-attention", attention);
+      if (attention) menuComment.setAttribute("aria-describedby", "comment-attention");
+      else menuComment.removeAttribute("aria-describedby");
+    }
     const more = desk.matches || review ? "" : " ›";
     const many = (k) => `${k} ${k === 1 ? "comment" : "comments"}`;
     const parts = [];
@@ -482,13 +522,13 @@
     const plain = !parts.length;
     if (!plain) line.push(more);
     else if (S.comments.length) line.push(`${many(S.comments.length)}${more}`);
-    else if (S.mode && canPin()) line.push("Tap a spot to comment.");
+    else if (S.mode && canPin()) line.push(pinHint());
     else line.push("No comments yet");
     stripText.replaceChildren(...line);
     for (const child of [...strip.children]) if (child !== stripText) child.remove();
     // In comment mode, with comments to list, the hint goes to the right.
     if (plain && S.comments.length && S.mode && canPin()) {
-      strip.append(el("span", "strip-hint", "Tap a spot to comment."));
+      strip.append(el("span", "strip-hint", pinHint()));
     }
     if (review && S.view !== "finish") {
       strip.append(button("Finish review", (e) => { e.stopPropagation(); openFinish(); }, "btn pri"));
@@ -504,7 +544,7 @@
       const out = [titled(pending ? "Loading comments…" : all.length ? `Comments · ${all.length}` : "No comments yet")];
       if (!pending && !all.length) {
         out.push(el("p", "empty", S.mode && canPin()
-          ? "Tap a spot to comment."
+          ? pinHint()
           : S.mode ? "Nobody has commented yet." : "Turn on the speech bubble to comment."));
       }
       for (const g of groups()) {
@@ -561,7 +601,7 @@
       next.append(icon("right"));
       next.setAttribute("aria-label", "Next");
       nav.append(prev, next);
-      if (!desk.matches) nav.append(foldButton());
+      if (!desk.matches || !S.mode) nav.append(foldButton());
 
       const out = [nav, ...(it.draft ? [draftMsg(it)] : thread(it))];
       // Only full height includes the other items.
@@ -584,7 +624,7 @@
       const accepting = !it.draft && (decisionOn(it.c.n) || {}).kind === "accept";
       if (!it.draft && !it.c.rejected_by && !accepting && !S.edit) footer.push(replyPill(it));
       if (review && !S.edit && !desk.matches) footer.push(finishBar(review));
-      return desk.matches ? [[...out, ...footer], []] : [out, footer];
+      return [out, footer];
     },
 
     compose() {
@@ -593,10 +633,10 @@
       if (!stored) out.push(el("p", "note", "This browser keeps nothing: your drafts last only while this page is open."));
       const pill = el("div", "pill");
       pill.append(fields.compose, sendButton);
-      sendButton.disabled = !fields.compose.value.trim();
+      sendButton.disabled = savingDraft || !fields.compose.value.trim();
       // On a phone the field is the sheet's footer, so it stays at the
       // bottom edge, right above the keyboard.
-      return desk.matches ? [[...out, pill], []] : [out, [pill]];
+      return [out, [pill]];
     },
 
     finish() {
@@ -778,7 +818,7 @@
     replyFor = c.n;
     const pill = el("div", "pill");
     pill.append(fields.reply, replyButton);
-    replyButton.disabled = !fields.reply.value.trim();
+    replyButton.disabled = savingReply || !fields.reply.value.trim();
     return pill;
   }
 
@@ -827,6 +867,9 @@
   // view, the sheet stays; otherwise it opens its item. On the new draft's
   // pin, its field.
   function tapPin(key) {
+    const folded = desktopPanel() && document.body.classList.contains("comments-folded");
+    if (key !== "new" && itemOf(key) && protectRetainedCompose()) return;
+    if (folded) foldPanel(false);
     if (key === "new") {
       if (S.compose) {
         if (S.view !== "compose" || S.pos === "strip") go("compose", "m");
@@ -835,6 +878,13 @@
       return;
     }
     if (!itemOf(key)) return;
+    if (folded || (desktopPanel() && !S.mode)) {
+      const fromFrame = frame && document.activeElement === frame;
+      if (openItem(key) && fromFrame && desk.matches && !S.mode) {
+        body.querySelector('.fold[aria-label="Close comments"]')?.focus({ preventScroll: true });
+      }
+      return;
+    }
     if (S.view === "list" && (desk.matches || S.pos !== "strip")) {
       if (S.compose) dropCompose(false);
       S.sel = key;
@@ -894,7 +944,19 @@
     if (S.view === "item") S.view = "list";
   }
 
+  // A composer retained when desktop full-screen placement was turned off
+  // stays protected after leaving full screen or changing the viewport.
+  function protectRetainedCompose() {
+    if (!S.compose?.retained || !fields.compose.value) return false;
+    if (desktopPanel() && document.body.classList.contains("comments-folded")) foldPanel(false);
+    if (S.view !== "compose" || (!desk.matches && S.pos === "strip")) go("compose", "m");
+    fields.compose.focus({ preventScroll: true });
+    toast("Save or discard the draft first");
+    return true;
+  }
+
   function openItem(key) {
+    if (protectRetainedCompose()) return;
     // An edit with typed changes is not dropped by moving to another item.
     if (S.sel !== key && fields.reply.value.trim()) {
       toast("Send or clear the reply first");
@@ -924,6 +986,7 @@
     if (keep) body.scrollTop = 0;
     else toChatEnd();
     revealSoon(key);
+    return true;
   }
 
   // At middle height a comment's chat shows its end: the message being answered sits
@@ -1026,8 +1089,10 @@
   dialog.addEventListener("click", (e) => { if (e.target === dialog) closeName(null); });
 
   function setMode(on, then = null) {
+    if (!on && desktopPanel() && S.compose) S.compose.retained = true;
     S.mode = on;
-    if (!on) {
+    if (desktopPanel()) foldPanel(!on);
+    if (!on && !desktopPanel() && !S.compose?.retained) {
       if (S.compose) dropCompose(false);
       const it = itemOf(S.sel);
       if (!it || S.view === "finish") {
@@ -1036,7 +1101,10 @@
         S.view = "list";
         if (S.pos !== "m") S.pos = "strip";
       }
-    } else if (!canPin() && !desk.matches && S.pos === "strip") {
+    } else if (on && !desk.matches && S.compose) {
+      S.view = "compose";
+      if (S.pos === "strip") S.pos = "m";
+    } else if (on && !canPin() && !desk.matches && S.pos === "strip") {
       // Nothing to tap on: the list, with "About the whole file".
       S.view = "list";
       S.pos = "m";
@@ -1056,6 +1124,11 @@
       if (S.view !== "compose" || S.pos === "strip") go("compose", "m");
       else drawPins();
     } else {
+      if (S.compose && fields.compose.value && (S.compose.retained || document.body.classList.contains("full"))) {
+        go("compose", "m");
+        toast("Save or discard the draft first");
+        return;
+      }
       if (S.compose) dropCompose(true);
       S.compose = { anchor };
       S.sel = null;
@@ -1066,6 +1139,11 @@
   }
 
   function composeWhole() {
+    if (S.compose && fields.compose.value && (S.compose.retained || document.body.classList.contains("full"))) {
+      go("compose", "m");
+      fields.compose.focus({ preventScroll: true });
+      return;
+    }
     if (S.compose) dropCompose(true);
     S.compose = { anchor: null };
     S.sel = null;
@@ -1078,16 +1156,22 @@
     const kept = { compose: S.compose, text: fields.compose.value };
     S.compose = null;
     fields.compose.value = "";
-    if (quiet || !kept.text.trim()) return;
-    toast("Draft discarded", {
-      undo: () => {
-        if (!S.mode) return;
-        S.compose = kept.compose;
-        fields.compose.value = kept.text;
-        go("compose", "m");
-        fields.compose.focus({ preventScroll: true });
-      },
-    });
+    if (quiet || (!kept.text.trim() && !(kept.compose.retained && kept.text))) return;
+    const restore = () => {
+      if (!kept.compose.retained && !S.mode) return;
+      const editing = S.edit && draftById(S.edit);
+      if (kept.compose.retained && ((S.compose && fields.compose.value) || fields.reply.value ||
+          (editing && fields.edit.value !== editing.text) || fields.general.value)) {
+        toast("Save or discard your changes first", { undo: restore });
+        return;
+      }
+      S.compose = kept.compose;
+      fields.compose.value = kept.text;
+      if (desktopPanel() && document.body.classList.contains("comments-folded")) foldPanel(false);
+      go("compose", "m");
+      fields.compose.focus({ preventScroll: true });
+    };
+    toast("Draft discarded", { undo: restore });
   }
 
   // The server refused the name (one kept from an older version, say): it
@@ -1104,12 +1188,17 @@
   async function addDraft() {
     const c = S.compose;
     const text = fields.compose.value;
-    if (!c || !text.trim() || sendButton.disabled) return false;
+    if (!c || !text.trim() || savingDraft) return false;
+    savingDraft = true;
     sendButton.disabled = true;
     try {
       const draft = await call("POST", "/drafts", { author: name, text, anchor: c.anchor });
       changed();
       S.drafts.push(draft);
+      if (S.compose === c && fields.compose.value !== text) {
+        render();
+        return true;
+      }
       if (S.compose === c) {
         S.compose = null;
         fields.compose.value = "";
@@ -1126,7 +1215,8 @@
       if (!nameRefused(e)) toast(errorCopy(e, "Could not save the draft."), { error: true, ms: 8000 });
       return false;
     } finally {
-      sendButton.disabled = !fields.compose.value.trim();
+      savingDraft = false;
+      sendButton.disabled = savingDraft || !fields.compose.value.trim();
     }
   }
 
@@ -1226,13 +1316,14 @@
   async function addReply() {
     const n = replyFor;
     const text = fields.reply.value;
-    if (n === null || !text.trim() || replyButton.disabled) return;
+    if (n === null || !text.trim() || savingReply) return;
+    savingReply = true;
     replyButton.disabled = true;
     try {
       const draft = await call("POST", "/drafts", { author: name, kind: "reply", of: n, text });
       changed();
       S.drafts.push(draft);
-      fields.reply.value = "";
+      if (replyFor === n && fields.reply.value === text) fields.reply.value = "";
       // Replying means "not yet": an acceptance of the same comment goes.
       const dec = decisionOn(n);
       if (dec && dec.kind === "accept") await undoDecision(dec);
@@ -1244,7 +1335,8 @@
     } catch (e) {
       if (!nameRefused(e)) toast(errorCopy(e, "Could not save the reply."), { error: true, ms: 8000 });
     } finally {
-      replyButton.disabled = !fields.reply.value.trim();
+      savingReply = false;
+      replyButton.disabled = savingReply || !fields.reply.value.trim();
     }
   }
 
@@ -1416,7 +1508,7 @@
   // --- Fields ------------------------------------------------------------------
   fields.compose.addEventListener("input", () => {
     grow(fields.compose);
-    sendButton.disabled = !fields.compose.value.trim();
+    sendButton.disabled = savingDraft || !fields.compose.value.trim();
   });
   // The frame holds back a tap only while the comment would let go: told
   // again when typing changes that.
@@ -1440,7 +1532,7 @@
   fields.reply.addEventListener("input", () => {
     grow(fields.reply);
     keptChanged();
-    replyButton.disabled = !fields.reply.value.trim();
+    replyButton.disabled = savingReply || !fields.reply.value.trim();
   });
   // Enter sends only with a hardware keyboard. On a touch screen the
   // keyboard's Enter is a new line, as in the draft's own editor; the send
@@ -1448,7 +1540,8 @@
   const sendsOnEnter = (e) => e.key === "Enter" && !e.shiftKey && !e.isComposing
     && !matchMedia("(pointer: coarse)").matches;
   fields.reply.addEventListener("keydown", (e) => {
-    if (sendsOnEnter(e)) {
+    if ((desk.matches && e.key === "Enter" && (e.ctrlKey || e.metaKey) && !e.isComposing && !e.repeat)
+        || (!desk.matches && sendsOnEnter(e))) {
       e.preventDefault();
       addReply();
     }
@@ -1475,7 +1568,8 @@
   // Enter adds the draft (Shift+Enter is a new line), with a hardware
   // keyboard only, as above.
   fields.compose.addEventListener("keydown", (e) => {
-    if (sendsOnEnter(e)) {
+    if ((desk.matches && e.key === "Enter" && (e.ctrlKey || e.metaKey) && !e.isComposing && !e.repeat)
+        || (!desk.matches && sendsOnEnter(e))) {
       e.preventDefault();
       addDraft();
     }
@@ -1550,6 +1644,10 @@
   // --- Keys, resizes, coming back ---------------------------------------------------
   function escape() {
     if (!dialog.hidden) closeName(null);
+    else if (desktopPanel() && document.body.classList.contains("comments-folded")) return;
+    else if (desk.matches && !S.mode) { foldPanel(true); render(); }
+    else if (S.compose?.retained && (S.view !== "compose" || !sheet.getClientRects().length ||
+        (!desk.matches && S.pos === "strip"))) return;
     else if (S.compose) {
       dropCompose(false);
       if (desk.matches) go("list");
@@ -1618,6 +1716,7 @@
     });
   });
   desk.addEventListener("change", () => {
+    foldPanel(desktopPanel() && !S.mode);
     if (!desk.matches && S.pos === "strip" && S.view !== "list") S.pos = DEFAULT_POS[S.view];
     render();
   });
@@ -1673,6 +1772,12 @@
     }
     const sheetThere = fresh && fresh.getElementById("comments");
     if ((!content && !img) || !sheetThere || sheetThere.dataset.kind !== sheet.dataset.kind) {
+      const editing = S.edit && draftById(S.edit);
+      if ((S.compose && fields.compose.value) || fields.reply.value ||
+          (editing && fields.edit.value !== editing.text)) {
+        toast("Save or discard your changes before showing the new file", { error: true, ms: 6000 });
+        return;
+      }
       location.reload();
       return;
     }
@@ -1734,6 +1839,7 @@
   }
   setInterval(poll, 8000);
 
+  foldPanel(desktopPanel() && !S.mode);
   render();
   load();
 })();

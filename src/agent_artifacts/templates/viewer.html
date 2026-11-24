@@ -22,11 +22,11 @@
 </header>
 {#- The menu of the header's ≡ and of the floating ≡ in full screen: square
     buttons with labels, fanned out over the dimmed page, top to bottom. #}
-<div id="fan" class="fan" hidden>
+<div id="fan" class="fan viewer-fan" hidden>
   <div class="fan-scrim"></div>
   <div id="fan-list" class="fan-list" role="menu" aria-label="Menu">
     {#- Full screen only: the header's buttons, in the header's order. #}
-    <button type="button" role="menuitemcheckbox" aria-checked="false" class="fan-item" data-act="comment" data-when="full"><span class="fan-label"><span class="when-off">Comment</span><span class="when-on">Commenting</span></span><span class="fan-sq">{{ icon.bubble() }}</span></button>
+    <button type="button" role="menuitemcheckbox" aria-checked="false" class="fan-item" data-act="comment" data-when="full"><span class="fan-label"><span class="when-off">Comment</span><span class="when-on">Commenting</span></span><span class="fan-sq">{{ icon.bubble() }}<span class="comment-check" aria-hidden="true">✓</span></span><span id="comment-attention" hidden>Needs your attention</span></button>
     <button type="button" role="menuitem" class="fan-item" data-act="exit" data-when="full"><span class="fan-label">Exit full screen</span><span class="fan-sq">{{ icon.shrink() }}</span></button>
     {%- if in_project %}
     {#- Always: the project's title in the header is easy to miss. #}

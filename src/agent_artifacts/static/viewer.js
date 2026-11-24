@@ -19,18 +19,21 @@
   const LONG_MS = 500; // held this long, still: comment mode on or off
   const PLACE_KEY = "aa-float-button";
   const tip = $("float-tip");
+  let pointerKind = matchMedia("(pointer: coarse)").matches ? "touch" : "mouse";
+  window.addEventListener("pointerdown", (e) => { pointerKind = e.pointerType === "touch" ? "touch" : "mouse"; }, true);
 
   // --- The menu ---------------------------------------------------------------
   let opener = null;
+  let focusedItem = null;
+  document.addEventListener("focusin", (e) => {
+    focusedItem = list.contains(e.target) ? e.target : null;
+  });
 
   function openFan(from) {
     closeTip();
     opener = from;
     fan.hidden = false;
     from.setAttribute("aria-expanded", "true");
-    // Comment shows whether comment mode is on, like the header's bubble.
-    list.querySelector('[data-act="comment"]')?.setAttribute("aria-checked",
-      String(document.body.classList.contains("commenting")));
     place(from);
     items()[0].focus({ preventScroll: true });
   }
@@ -47,7 +50,28 @@
   // Next to its button: under the header's, above or under the floating one,
   // whichever has room, on the side of the edge the button keeps to.
   function place(from) {
+    // These states can change while the menu remains open, including at the breakpoint.
+    list.querySelector('[data-act="comment"]')?.setAttribute("aria-checked",
+      String(document.body.classList.contains("commenting")));
     const box = from.getBoundingClientRect();
+    if (fan.classList.contains("viewer-fan") && window.innerWidth >= 900) {
+      list.classList.remove("left", "scroll");
+      list.style.left = list.style.right = list.style.top = list.style.bottom = "auto";
+      list.style.maxHeight = "none";
+      const width = list.offsetWidth;
+      const height = list.offsetHeight;
+      const left = Math.max(GAP, Math.min(window.innerWidth - width - GAP,
+        from === floatButton && shownSide === "left" ? box.left : box.right - width));
+      const below = window.innerHeight - box.bottom - GAP;
+      const above = box.top - GAP;
+      const down = below >= height || below >= above;
+      const room = Math.max(0, (down ? below : above) - GAP);
+      list.style.left = `${left}px`;
+      if (down) list.style.top = `${box.bottom + GAP}px`;
+      else list.style.bottom = `${window.innerHeight - box.top + GAP}px`;
+      if (height > room) { list.classList.add("scroll"); list.style.maxHeight = `${room}px`; }
+      return;
+    }
     const square = items()[0].querySelector(".fan-sq").getBoundingClientRect().width;
     const inset = (box.width - square) / 2; // squares in line with the button's middle
     const left = from === floatButton && shownSide === "left";
@@ -75,8 +99,23 @@
   fan.querySelector(".fan-scrim").addEventListener("click", () => closeFan());
   // After the new layout, so the button's box is where it now is.
   window.addEventListener("resize", () => requestAnimationFrame(() => {
-    if (!fan.hidden) place(opener);
+    if (!fan.hidden) {
+      place(opener);
+      if (focusedItem && !focusedItem.getClientRects().length) {
+        items()[0].focus({ preventScroll: true });
+      }
+      const focused = document.activeElement;
+      if (fan.classList.contains("viewer-fan") && list.contains(focused)) {
+        focused.scrollIntoView({ block: "nearest", inline: "nearest" });
+      }
+    }
   }));
+
+  list.addEventListener("animationend", (e) => {
+    if (fan.classList.contains("viewer-fan") && !fan.hidden && e.target === document.activeElement) {
+      e.target.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+  });
 
   list.addEventListener("click", (e) => {
     const item = e.target.closest(".fan-item");
@@ -86,7 +125,7 @@
     // list (project.js) and the dialogs (menu-dialogs.js) take the focus
     // themselves and give it back to the button the menu came from.
     const from = opener;
-    closeFan(act === "separate");
+    closeFan(act === "separate" || act === "comment");
     if (act === "exit") exitFull();
     else if (act === "files") {
       document.dispatchEvent(new CustomEvent("aa:files", { detail: { from } }));
@@ -139,6 +178,7 @@
   function enterFull() {
     document.body.classList.add("full");
     floatButton.hidden = false;
+    document.dispatchEvent(new CustomEvent("aa:viewer-full"));
     applyPlace();
     floatButton.focus({ preventScroll: true });
     showTip();
@@ -158,6 +198,7 @@
     closeTip();
     lastTap = null;
     document.body.classList.remove("full");
+    document.dispatchEvent(new CustomEvent("aa:viewer-full"));
     floatButton.hidden = true;
     const current = document.fullscreenElement || document.webkitFullscreenElement;
     const leave = document.exitFullscreen || document.webkitExitFullscreen;
@@ -213,7 +254,10 @@
     floatButton.style.right = side === "right" ? `${right}px` : "auto";
     placeTip();
   }
-  document.addEventListener("aa:sheet", () => { if (!floatButton.hidden && !drag) applyPlace(); });
+  document.addEventListener("aa:sheet", () => {
+    if (!floatButton.hidden && !drag) applyPlace();
+    if (!fan.hidden) place(opener);
+  });
 
   function savePlace() {
     try {
@@ -274,7 +318,7 @@
     // A mouse over the content's frame would move inside the frame instead.
     document.body.classList.add("float-pressed");
     // Held still: comment mode on or off, the button's second action.
-    if (!commentsToggle) return;
+    if (!commentsToggle || (fan.classList.contains("viewer-fan") && e.pointerType !== "touch")) return;
     const held = drag;
     held.timer = setTimeout(() => {
       if (drag !== held || held.moved) return;
@@ -377,6 +421,12 @@
     const state = floatTip.read(raw);
     if (!floatTip.due(state)) return;
     try { localStorage.setItem(floatTip.KEY, floatTip.counted(state)); } catch { /* not kept */ }
+    if (fan.classList.contains("viewer-fan")) {
+      const spans = tip.querySelectorAll(".float-tip-text span");
+      const touch = pointerKind === "touch";
+      if (spans.length > 1) spans[0].hidden = !touch;
+      spans[spans.length - 1].textContent = touch ? "Double-tap — exit full screen" : "Double-click — exit full screen";
+    }
     tip.hidden = false;
     placeTip();
   }
