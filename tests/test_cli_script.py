@@ -373,7 +373,7 @@ def test_subscription_reports_new_file_events_without_restarting(server, monkeyp
 
     mod = _load_cli(monkeypatch, url, key, sleep)
     assert mod.run(["wait", art["url"]]) is None
-    assert sleeps == [10] * 4
+    assert sleeps == [5] * 4
     rows = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
     assert rows == [
         {"event": "waiting", "comments": [{"n": 3}]},
