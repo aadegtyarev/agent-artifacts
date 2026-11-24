@@ -15,14 +15,14 @@ size. Hidden in full screen.
 | --- | --- | --- |
 | Title (h1, 14 bold, one line, ellipsis) | file title | project title |
 | Second line (12, muted; deadline wraps as needed) | "12.3 KB · expires Nov 24, 2026 at 10:00 UTC+03:00"; in a project: the project title button | "3 files · kept until deleted" |
-| Buttons, right, gap 12 | bubble, Full screen, ≡ | Full screen, ≡ |
+| Buttons, right, gap 12 | Comments (desktop only), Full screen, ≡ | Full screen, ≡ |
 
 **Square button** (`.actions .sq`): 32 × 32, radius 9, `--surface` fill, no border,
 icon 19. Pressed: scale 0.95. Focus: 2 px `--blue` outline.
 
 | Button | States |
 | --- | --- |
-| Bubble | Off: `--surface`, title "Comment". On: white icon on `--blue-fill`, inset shadow, `aria-pressed="true"`, title "Stop commenting". See [desktop review attention](#desktop-review-attention). |
+| Comments | Opens or closes the panel (`aria-expanded`), not pin placement; see [desktop review attention](#desktop-review-attention). |
 | Full screen | one state |
 | ≡ | menu open: `--line` fill, `aria-expanded="true"` |
 
@@ -45,36 +45,38 @@ the project page keeps the fan.
 
 | Order | Item | Viewer | Viewer, full screen | Project page | Project, full screen |
 | --- | --- | --- | --- | --- | --- |
-| 1 | Comment / Commenting | — | yes | — | — |
-| 2 | Exit full screen | — | yes | — | yes |
-| 3 | Project files | file in a project | file in a project | — | — |
-| 4 | Open separately | when the raw origin is set | same | — | — |
-| 5 | Share… | yes | yes | yes | yes |
-| 6 | Settings… | yes | yes | yes | yes |
+| 1 | Show comments / Hide comments | yes | yes | — | — |
+| 2 | Add comment | desktop | desktop | — | — |
+| 3 | Full screen / Exit full screen | Full screen on desktop | Exit full screen | — | Exit full screen |
+| 4 | Project files | file in a project | file in a project | — | — |
+| 5 | Open separately | when the raw origin is set | same | — | — |
+| 6 | Share… | yes | yes | yes | yes |
+| 7 | Settings… | yes | yes | yes | yes |
 
-Comment mode uses the label "Commenting", a white icon on `--blue-fill`, an
-inset shadow and `aria-checked="true"`. Turning it on opens the desktop panel;
-turning it off folds the panel. With placement off, selecting a pin opens the
-thread. The fold button or Escape can close that thread panel without losing
-input. On narrow screens, the strip is hidden in full screen with Comment off.
+Show comments opens the panel without enabling placement. **Add comment**
+starts or stops placement and is checked while active. The desktop menu
+shows Shift+C (panel), C (start placement) and F (full screen). Clicking an
+existing pin opens its thread without enabling placement.
 
 ### Desktop review attention
 
 At ≥900 px, the dot indicates a nonempty **Need you** group, not all pins or
-this person's drafts. It is on the header's Comment button in the normal
-viewer. In full screen it moves from the closed floating ≡ to the Comment row
+this person's drafts. It is on the header's Comments button in the normal
+viewer. In full screen it moves from the closed floating ≡ to the panel row
 when the menu opens. The dot and the blue comment-mode mark are separate.
 
 ## Floating ≡ (full screen)
 
 44 × 44, radius 12, `--glass` with a 12 px blur, white 22 px icon.
-Dragged anywhere, it snaps to the nearer side edge, 8 px in.
+In the desktop viewer it only opens or closes the menu. In the narrow viewer
+and on the project page it can be dragged and snaps to the nearer side edge,
+8 px in.
 
 | State | Look |
 | --- | --- |
-| rest | translucent, ≡, and two thin corners of Exit full screen (top left, bottom right; the `corners` icon): a double tap leaves full screen |
+| rest | translucent ≡; in the narrow viewer and project page, the `corners` icon hints that a double tap leaves full screen |
 | dragged | scale 1.08, `--ink` |
-| menu open | `--ink`, ✕ icon, no corners; the desktop Need you dot is on the Comment item instead |
+| menu open | `--ink`, ✕ icon, no corners; the desktop Need you dot is on the panel item instead |
 | desktop, menu closed with Need you | `--dot` at the top right, outside the mode bubble |
 | comment mode | 2 px `--blue` ring inside the edge, 12 px `--blue` bubble top right |
 | touch long press 500 ms | toggles comment mode, toast "Commenting on" / "Commenting off" |
@@ -164,8 +166,9 @@ the [compose variants](#compose), not a separate input family.
 ## Comments sheet (phone) and panel (computer)
 
 Under 900 px a bottom sheet under the content; from 900 px a panel at the
-right, `360px × --ts`, with a hairline on its left, no grip. Heights: see
-[tokens.md](tokens.md#layout). The sheet: grip (36 × 5 bar, 22 high), body
+right with a hairline on its left and a [resize handle](#desktop-panel-handle).
+Sizes: see [tokens.md](tokens.md#layout). The narrow sheet: grip (36 × 5 bar,
+22 high), body
 (scrolls; its title line sticks to the top and is a drag handle), footer.
 On a phone every title line ends with the fold button (⌄).
 
@@ -177,8 +180,18 @@ On a phone every title line ends with the fold button (⌄).
 | compose | caption "New draft" (or "New draft · about the whole file"), field with send | the field itself, so it stays above the keyboard |
 | finish | title "Finish review · N", Not decided yet, In this review, general comment field | Send to agent / Only publish, Back, Finish review |
 
-On a computer the footer's parts sit at the end of the body, and Finish
-review sits in the strip line that heads the panel.
+**Add comment** sits next to the list title. It is primary if there are no
+drafts; while placing pins it has a blue inset outline and `aria-pressed`.
+With drafts, **Finish review** is the primary action at the bottom right of
+the list or thread on both layouts. **Discard** in a new draft offers Undo.
+
+### Desktop panel handle
+
+An 18 × 54 px vertical tab centred on the boundary, with a muted 4 × 24 px
+grip and a blue focus outline. Click, Enter or Space opens or closes the panel.
+Left and Right resize while the open handle has focus. Drag to the right edge
+to fold. The tab stays there and restores the previous width. Closing does not
+discard typed text.
 
 ### Strip
 
@@ -191,7 +204,7 @@ list at middle height; drag: the sheet follows the finger.
 | N drafts | the person has drafts; **Finish review** (primary) at the right |
 | N in progress | sent to the agent and not answered, and no drafts |
 | N comments | none of the above |
-| Tap a spot to comment. / Click a spot to comment. | comment mode on, a spot can be selected: alone without comments, otherwise beside a plain comment count |
+| Tap a spot to comment. / Click a spot to comment. | active placement on a folded narrow sheet, next to the pressed Add comment control instead of counts |
 | No comments yet | no comments otherwise |
 | › | at the end on a phone when there is no Finish review |
 
@@ -317,15 +330,15 @@ scrolled into view. At the bottom right "Project page ›" (16/600, `--blue`,
 | Where | Text |
 | --- | --- |
 | Strip, no comments | "No comments yet", or in comment mode the pointer-specific tap/click hint |
-| List, no comments | title "No comments yet"; "Tap a spot to comment." for touch or "Click a spot to comment." for mouse (comment mode), "Nobody has commented yet." (comment mode, no spot possible), "Turn on the speech bubble to comment." (mode off) |
+| List, no comments | title "No comments yet"; "Tap a spot to comment." for touch or "Click a spot to comment." for mouse (comment mode), "Nobody has commented yet." (comment mode, no spot possible), "Use Add comment to start." (mode off) |
 | Finish review, no drafts | "No drafts: you can publish a general comment only." |
 | Project, no files | "No files yet" |
 | Archive in the viewer | "Archive: download it to see the contents." |
 | No storage | "This browser keeps nothing: your drafts last only while this page is open." |
 
-The narrow sheet stays out of the way when there is nothing to show and
-comment mode is off. The desktop panel can also be folded independently of the
-contents, while pins stay visible.
+Outside full screen the narrow strip stays visible, even with no comments.
+Entering full screen hides the panel and the strip at both widths. Show
+comments opens the panel for reading. Folding it keeps existing pins visible.
 
 ## Invite, key and message pages
 

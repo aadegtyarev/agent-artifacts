@@ -11,6 +11,8 @@
   const $ = (id) => document.getElementById(id);
   const artifact = sheet.dataset.artifact;
   const toggle = $("comments-toggle");
+  const panelHandle = $("panel-handle");
+  const stage = sheet.closest(".stage");
   const strip = $("sheet-strip");
   const stripText = $("strip-text");
   const grip = $("sheet-grip");
@@ -38,12 +40,14 @@
   function foldPanel(folded) {
     if (folded && sheet.contains(document.activeElement)) (document.body.classList.contains("full") ? $("float-button") : toggle).focus({ preventScroll: true });
     document.body.classList.toggle("comments-folded", folded);
+    panelHandle.setAttribute("aria-expanded", String(!folded));
+    panelHandle.setAttribute("aria-label", folded ? "Show comments panel" : "Hide comments panel");
+    if (folded) panelHandle.removeAttribute("aria-keyshortcuts");
+    else panelHandle.setAttribute("aria-keyshortcuts", "ArrowLeft ArrowRight");
+    panelHandle.title = folded ? "Show comments panel" : "Drag to resize or click to hide comments";
     document.dispatchEvent(new CustomEvent("aa:sheet"));
   }
-  document.addEventListener("aa:viewer-full", () => {
-    foldPanel(desktopPanel() && !S.mode);
-    render();
-  });
+  document.addEventListener("aa:viewer-full", () => setPanel(false));
 
 
   // --- Browser storage ---------------------------------------------------------
@@ -285,8 +289,7 @@
   // far right and far from Finish review at the bottom.
   function foldButton() {
     const b = button("", () => {
-      if (desk.matches) { foldPanel(true); render(); }
-      else fold(true);
+      setPanel(false, true);
     }, "chev fold");
     b.append(icon("down"));
     b.setAttribute("aria-label", desk.matches ? "Close comments" : "Fold the sheet");
@@ -433,15 +436,21 @@
     const kept = Object.values(fields).includes(active) ? active : null;
     const keptGroup = active && active.classList.contains("sec-fold") ? active.dataset.group : null;
     const keptHeading = active && active.matches(".sbody > .handle");
+    const keptAdd = active === addComment;
     const caret = kept ? [kept.selectionStart, kept.selectionEnd] : null;
 
-    const shown = (desktopPanel() && !document.body.classList.contains("comments-folded")) || S.mode || S.compose || S.comments.length > 0 || liveDrafts().length > 0 || (!S.loaded && Number(sheet.dataset.count) > 0);
-    sheet.hidden = !shown;
-    if (!shown) S.pos = "strip";
+    const expanded = panelOpen();
+    sheet.hidden = desk.matches ? !expanded : !expanded && document.body.classList.contains("full");
     sheet.dataset.pos = desk.matches ? "panel" : S.pos;
     document.body.classList.toggle("commenting", S.mode);
-    toggle.setAttribute("aria-pressed", String(S.mode));
-    toggle.title = S.mode ? "Stop commenting" : "Comment";
+    document.body.classList.toggle("comments-open", expanded);
+    toggle.setAttribute("aria-expanded", String(expanded));
+    toggle.title = expanded ? "Hide comments" : "Show comments";
+    document.querySelector('[data-act="comments"]').setAttribute("aria-expanded", String(expanded));
+    document.querySelector('[data-act="comment"]').setAttribute("aria-checked", String(S.mode));
+    addComment.setAttribute("aria-pressed", String(S.mode));
+    addComment.classList.toggle("pri", !S.mode && reviewCount() === 0);
+    fields.compose.placeholder = desk.matches ? `Enter: new line · ${macKeys ? "⌘" : "Ctrl"}+Enter: save draft` : "Comment";
 
     renderStrip();
     // On a phone the strip alone shows nothing else.
@@ -468,6 +477,7 @@
       const head = body.querySelector(`.sec-fold[data-group="${keptGroup}"]`);
       if (head) head.focus({ preventScroll: true });
     }
+    if (keptAdd && addComment.isConnected) addComment.focus({ preventScroll: true });
     // A field being typed in hides what would sit under the finger (the
     // item's Finish review, the choice of where to send).
     const typing = document.activeElement === fields.reply || document.activeElement === fields.general;
@@ -502,12 +512,17 @@
     const n = groupCounts();
     const attention = desk.matches && n.need > 0;
     toggle.classList.toggle("needs-attention", attention);
-    toggle.setAttribute("aria-label", attention ? "Comment mode, needs your attention" : "Comment mode");
-    for (const control of [$("float-button"), document.querySelector('[data-act="comment"]')]) {
+    toggle.setAttribute("aria-label", attention ? "Comments, needs your attention" : "Comments");
+    for (const control of [$("float-button"), document.querySelector('[data-act="comments"]')]) {
       if (!control) continue;
       control.classList.toggle("needs-attention", attention);
       if (attention) control.setAttribute("aria-describedby", "comment-attention");
       else control.removeAttribute("aria-describedby");
+    }
+    if (S.mode && !desk.matches && S.pos === "strip") {
+      stripText.textContent = pinHint();
+      strip.replaceChildren(stripText, addComment);
+      return;
     }
     const more = desk.matches || review ? "" : " ›";
     const many = (k) => `${k} ${k === 1 ? "comment" : "comments"}`;
@@ -530,7 +545,7 @@
     if (plain && S.comments.length && S.mode && canPin()) {
       strip.append(el("span", "strip-hint", pinHint()));
     }
-    if (review && S.view !== "finish") {
+    if (review && !desk.matches && S.view !== "finish") {
       strip.append(button("Finish review", (e) => { e.stopPropagation(); openFinish(); }, "btn pri"));
     }
   }
@@ -541,11 +556,11 @@
       const review = reviewCount();
       const all = items();
       const drafts = all.filter((i) => i.draft).length;
-      const out = [titled(pending ? "Loading comments…" : all.length ? `Comments · ${all.length}` : "No comments yet")];
+      const out = [titled(pending ? "Loading comments…" : all.length ? `Comments · ${all.length}` : "No comments yet", addComment)];
       if (!pending && !all.length) {
         out.push(el("p", "empty", S.mode && canPin()
           ? pinHint()
-          : S.mode ? "Nobody has commented yet." : "Turn on the speech bubble to comment."));
+          : S.mode ? "Nobody has commented yet." : "Use Add comment to start."));
       }
       for (const g of groups()) {
         const head = `${g.title} · ${g.items.length}`;
@@ -579,8 +594,7 @@
         out.push(add);
       }
       if (!stored && (S.mode || drafts)) out.push(el("p", "note", "This browser keeps nothing: your drafts last only while this page is open."));
-      // On a computer Finish review is in the strip's line heading the panel.
-      return [out, review && !desk.matches ? [finishBar(review)] : []];
+      return [out, review ? [finishBar(review)] : []];
     },
 
     item() {
@@ -617,19 +631,26 @@
           out.push(other);
         }
       }
-      // The strip is hidden while the sheet is open: Finish review is here,
-      // as in the list (on a computer it heads the panel).
+      // Finish review stays below the discussion, as on the list.
       const review = reviewCount();
       const footer = [];
       const accepting = !it.draft && (decisionOn(it.c.n) || {}).kind === "accept";
       if (!it.draft && !it.c.rejected_by && !accepting && !S.edit) footer.push(replyPill(it));
-      if (review && !S.edit && !desk.matches) footer.push(finishBar(review));
+      if (review && !S.edit) footer.push(finishBar(review));
       return [out, footer];
     },
 
     compose() {
       const c = S.compose;
-      const out = [el("p", "cap handle", c.anchor ? "New draft" : "New draft · about the whole file")];
+      const head = el("div", "head handle");
+      head.append(el("p", "cap ttl", c.anchor ? "New draft" : "New draft · about the whole file"),
+        button("Discard", () => {
+          if (savingDraft) { toast("Still saving. Try again."); return; }
+          c.retained = true;
+          dropCompose(false);
+          go("list", "m");
+        }));
+      const out = [head];
       if (!stored) out.push(el("p", "note", "This browser keeps nothing: your drafts last only while this page is open."));
       const pill = el("div", "pill");
       pill.append(fields.compose, sendButton);
@@ -1007,7 +1028,7 @@
   }
 
   // Back to the strip on a phone, to the list on a computer.
-  function fold(explicit = false) {
+  function fold() {
     // A typed reply would be left without its comment, and the next item
     // would refuse to open: it is sent or cleared first.
     const editing = S.edit && draftById(S.edit);
@@ -1023,7 +1044,7 @@
     S.view = "list";
     S.pos = "strip";
     render();
-    if ((explicit || restoreFocus) && !desk.matches) focusFoldTarget();
+    if (restoreFocus && !desk.matches) focusFoldTarget();
   }
 
   function focusFoldTarget() {
@@ -1088,32 +1109,112 @@
   });
   dialog.addEventListener("click", (e) => { if (e.target === dialog) closeName(null); });
 
-  function setMode(on, then = null) {
-    if (!on && desktopPanel() && S.compose) S.compose.retained = true;
-    S.mode = on;
-    if (desktopPanel()) foldPanel(!on);
-    if (!on && !desktopPanel() && !S.compose?.retained) {
-      if (S.compose) dropCompose(false);
-      const it = itemOf(S.sel);
-      if (!it || S.view === "finish") {
-        S.sel = null;
-        S.edit = null;
-        S.view = "list";
-        if (S.pos !== "m") S.pos = "strip";
-      }
-    } else if (on && !desk.matches && S.compose) {
-      S.view = "compose";
-      if (S.pos === "strip") S.pos = "m";
-    } else if (on && !canPin() && !desk.matches && S.pos === "strip") {
-      // Nothing to tap on: the list, with "About the whole file".
-      S.view = "list";
-      S.pos = "m";
-    }
-    render();
-    if (then) then();
+  function stopPlacement() {
+    if (S.compose) S.compose.retained = true;
+    S.mode = false;
   }
 
-  toggle.addEventListener("click", () => setMode(!S.mode));
+  const panelOpen = () => desk.matches ? !panelIsFolded() : S.pos !== "strip" || S.mode;
+  function setPanel(open, focusStrip = false) {
+    const restoreFocus = !open && (focusStrip || sheet.contains(document.activeElement));
+    if (!open) stopPlacement();
+    if (desk.matches) foldPanel(!open);
+    else if (!open) S.pos = "strip";
+    else if (S.pos === "strip") S.pos = DEFAULT_POS[S.view];
+    render();
+    if (restoreFocus && !desk.matches) focusFoldTarget();
+  }
+
+  function setMode(on) {
+    if (on === S.mode) return;
+    if (on) {
+      S.mode = true;
+      const writing = S.compose || keeps();
+      if (!writing) { S.view = "list"; S.edit = null; }
+      if (desk.matches) foldPanel(false);
+      else S.pos = writing || !canPin() ? "m" : "strip";
+    } else {
+      stopPlacement();
+      if (!desk.matches && S.pos === "strip") S.pos = DEFAULT_POS[S.view];
+    }
+    render();
+  }
+
+  const macKeys = /Mac/.test(navigator.platform || "");
+  const addComment = button("Add comment", () => setMode(!S.mode), "btn add-comment");
+  const addKey = el("kbd", "fan-key desk-viewer", "C");
+  addKey.setAttribute("aria-hidden", "true");
+  addComment.append(addKey);
+  toggle.addEventListener("click", () => setPanel(!panelOpen()));
+  document.addEventListener("aa:comment-mode", (e) => setMode(e.detail?.start || !S.mode));
+
+  // --- Desktop panel handle: visibility and width, independent of placement ----
+  const panelIsFolded = () => document.body.classList.contains("comments-folded");
+  const panelStyle = document.body.style;
+  const preferredWidth = "--panel-preferred";
+  const collapseZone = 32;
+  const widthOfPanel = () => Math.round(sheet.getBoundingClientRect().width);
+  const setPanelWidth = (width) => panelStyle.setProperty(preferredWidth, `${width}px`);
+  let panelDrag = null;
+  let skipPanelClick = false;
+
+  panelHandle.addEventListener("pointerdown", (e) => {
+    if (!e.isPrimary || e.button !== 0 || !desk.matches) return;
+    skipPanelClick = false;
+    if (panelIsFolded()) return;
+    panelDrag = { id: e.pointerId, start: e.clientX, width: widthOfPanel(),
+      previous: panelStyle.getPropertyValue(preferredWidth), moved: false };
+    panelHandle.setPointerCapture(e.pointerId);
+  });
+  const atPanelEdge = (x) => stage.getBoundingClientRect().right - x <= collapseZone;
+  function dragPanelTo(x) {
+    if (!panelDrag.moved && Math.abs(x - panelDrag.start) < 4) return;
+    panelDrag.moved = true;
+    stage.classList.add("panel-resizing");
+    stage.classList.toggle("panel-snap", atPanelEdge(x));
+    setPanelWidth(panelDrag.width + panelDrag.start - x);
+  }
+  panelHandle.addEventListener("pointermove", (e) => {
+    if (panelDrag?.id === e.pointerId) dragPanelTo(e.clientX);
+  });
+  function finishPanelDrag(cancel, x) {
+    const drag = panelDrag;
+    if (!drag) return;
+    if (!cancel) dragPanelTo(x);
+    panelDrag = null;
+    stage.classList.remove("panel-resizing", "panel-snap");
+    if (panelHandle.hasPointerCapture(drag.id)) panelHandle.releasePointerCapture(drag.id);
+    if (!drag.moved) return;
+    skipPanelClick = true;
+    const fold = !cancel && atPanelEdge(x);
+    if (cancel || fold) {
+      if (drag.previous) panelStyle.setProperty(preferredWidth, drag.previous);
+      else panelStyle.removeProperty(preferredWidth);
+    } else setPanelWidth(widthOfPanel());
+    if (fold) setPanel(false);
+  }
+  panelHandle.addEventListener("pointerup", (e) => {
+    if (panelDrag?.id === e.pointerId) finishPanelDrag(false, e.clientX);
+  });
+  for (const event of ["pointercancel", "lostpointercapture"]) {
+    panelHandle.addEventListener(event, (e) => {
+      if (panelDrag?.id === e.pointerId) finishPanelDrag(true);
+    });
+  }
+  desk.addEventListener("change", () => finishPanelDrag(true));
+  panelHandle.addEventListener("click", (e) => {
+    if (!desk.matches || (skipPanelClick && e.detail !== 0)) return;
+    setPanel(!panelOpen());
+  });
+  panelHandle.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && panelDrag) { e.preventDefault(); finishPanelDrag(true); return; }
+    if (!desk.matches || panelDrag || panelIsFolded() || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    setPanelWidth(widthOfPanel() + (e.key === "ArrowLeft" ? 24 : -24));
+    setPanelWidth(widthOfPanel());
+  });
+  panelHandle.hidden = false;
 
   // --- A new draft -----------------------------------------------------------------
   function place(anchor) {
@@ -1431,18 +1532,14 @@
   window.addEventListener("pagehide", () => { flushDeletes(true); });
 
   // --- Finish review -------------------------------------------------------------
-  function openFinish() {
-    const show = async () => {
-      // What is typed for a new draft is added first, not lost.
-      if (S.compose && fields.compose.value.trim()) {
-        if (!(await addDraft())) return;
-      } else if (S.compose) {
-        dropCompose(true);
-      }
-      go("finish", "m");
-    };
-    if (S.mode) show();
-    else setMode(true, show);
+  async function openFinish() {
+    // What is typed for a new draft is added first, not lost.
+    if (S.compose && fields.compose.value.trim()) {
+      if (!(await addDraft())) return;
+    } else if (S.compose) {
+      dropCompose(true);
+    }
+    go("finish", "m");
   }
 
   async function finish() {
@@ -1600,10 +1697,8 @@
     },
     // A drag changes the height only: what the sheet shows stays.
     snap(best) {
-      if (best === "strip") {
-        if (S.compose) dropCompose(false);
-        fold();
-      } else go(S.view, best);
+      if (best === "strip") setPanel(false);
+      else go(S.view, best);
     },
     // A tap on the grip steps the height and keeps the view. A tap on the
     // title line does the same on the list; on one comment it goes back to
@@ -1644,8 +1739,9 @@
   // --- Keys, resizes, coming back ---------------------------------------------------
   function escape() {
     if (!dialog.hidden) closeName(null);
-    else if (desktopPanel() && document.body.classList.contains("comments-folded")) return;
-    else if (desk.matches && !S.mode) { foldPanel(true); render(); }
+    else if (S.mode) setMode(false);
+    else if (desk.matches && panelOpen()) setPanel(false);
+    else if (desk.matches) return;
     else if (S.compose?.retained && (S.view !== "compose" || !sheet.getClientRects().length ||
         (!desk.matches && S.pos === "strip"))) return;
     else if (S.compose) {
@@ -1675,7 +1771,7 @@
         controls[e.shiftKey ? controls.length - 1 : 0].focus();
       }
     }
-    if (e.key === "Escape" && !e.defaultPrevented) escape();
+    if (e.key === "Escape" && !e.defaultPrevented && !e.isComposing) escape();
   });
 
   if (typeof ResizeObserver !== "undefined") {
@@ -1716,8 +1812,12 @@
     });
   });
   desk.addEventListener("change", () => {
-    foldPanel(desktopPanel() && !S.mode);
-    if (!desk.matches && S.pos === "strip" && S.view !== "list") S.pos = DEFAULT_POS[S.view];
+    const wasOpen = document.body.classList.contains("comments-open");
+    foldPanel(desk.matches && !wasOpen);
+    if (!desk.matches) {
+      if (!wasOpen) S.pos = "strip";
+      else if (S.pos === "strip") S.pos = DEFAULT_POS[S.view];
+    }
     render();
   });
   // Others may have commented while this tab was in the background.

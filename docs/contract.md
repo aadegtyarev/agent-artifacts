@@ -312,12 +312,13 @@ no-referrer`.
 
 The header is one bar: the file's title with its size and expiry on a second
 line under it (for a file in a project, the project's title instead, see
-below), and three square buttons. The speech bubble switches comment mode
-(see [Comments](#comments)); while it is on, the bubble is blue and pressed.
-The next one enters **Full screen**. The "≡" button opens the menu: a column
-of square icon buttons with labels, fanned out downwards from it over the
-dimmed page. It holds, top to bottom:
+below). From 900 px on, the Comments bubble opens or closes the panel for
+reading; it is not a placement switch. At all widths **Full screen** sits
+beside the **≡** menu. The narrower viewer shows just those two header buttons.
+The menu holds, top to bottom:
 
+- **Show comments** / **Hide comments** toggles the panel. Desktop also shows
+  **Add comment** and **Full screen**, with their shortcut labels;
 - **Project files** on a file in a project, opening its file list;
 
 - **Open separately**: the file at [the raw origin](#the-raw-origin) in a
@@ -343,7 +344,7 @@ dimmed page. It holds, top to bottom:
     is +30 %. Kept as `agent-artifacts:text-size` (no value for Large) and
     applied before the page is drawn, like the theme. It sizes the service's
     own interface on the viewer and the project page: the header, the menu,
-    the comments sheet or panel (the panel widens with it), the dialogs,
+    the comments sheet or panel (the default panel width scales with Text), the dialogs,
     toasts and banners, and the project's file list. On phones it also sizes
     invite and key pages, and readable interface text is at least 15 px before
     scaling, except the Accept all controls. The file and the pins drawn on it
@@ -385,30 +386,21 @@ to the title. The rows are plain links: the next file opens in the same tab.
 Like the project page, the list is open to whoever has the file's link (see
 [Projects](#projects)). A file outside a project has none of this.
 
-**Full screen** hides the header and asks the browser for full screen where
-the Fullscreen API exists (not on an iPhone). A floating "≡" button takes the
-header's place: translucent, dragged anywhere, it snaps to the nearer side
-edge, and this browser keeps its position for every file. It opens the same
-menu, upwards or downwards where there is room, with the header's buttons
-added on top in the header's order: **Comment** and **Exit full screen**.
-**Project files** remains available for a project file and opens its list at
-the top of the screen. In comment mode the floating
-button has a blue ring inside its edge and a small blue bubble in its corner,
-and **Comment** is a checked item reading **Commenting**; a tap turns the mode
-off. A long press (500 ms, still) on the floating button turns comment mode
-on or off, with a short vibration where the device has one and a toast
-("Commenting on" / "off"). The click of that press's release is dropped. A
-double tap on the floating button (the second press within 300 ms and 20 px
-of the first tap) leaves full screen: the first tap opens the menu at once
-as usual, the second closes it, and its click is dropped, so a menu item
-under the finger does nothing. Two thin corners of Exit full screen on the
-button hint at it. On entering full screen a tip beside the button says
-"Hold — comment mode" (not on the project page) and "Double-tap — exit full
-screen", with **OK** (closes it) and **Hide** (never again in this browser).
-It shows on three entries at most; Escape, a long press, opening the menu
-or leaving full screen close it. This browser keeps the count (`aa-full-tip` in localStorage). When the browser leaves full
-screen by itself (Escape, a system gesture), the viewer stays in its own full
-screen until Exit full screen.
+**Full screen** hides the header, panel and status strip without discarding
+input, and asks the browser for full screen where supported. The floating **≡**
+opens the menu with **Show comments** / **Hide comments** and **Exit full
+screen**. **Project files** remains available for a project file.
+
+In the desktop viewer, the floating button only opens and closes the menu.
+The menu labels the shortcuts: `C` starts placement, `Shift+C` toggles the
+panel, and `F` toggles full screen. These shortcuts do not intercept typing.
+
+In the narrow viewer, the floating button still drags and snaps to the nearer
+side edge. Its blue ring and small bubble show placement mode. A touch hold
+(500 ms) toggles placement; a double tap (within 300 ms and 20 px) exits full
+screen. The second tap does not activate a menu item. The hint is shown at
+most three times unless hidden sooner (`aa-full-tip`). Leaving the browser's
+full screen by itself does not close the viewer's full-screen layout.
 
 The viewer never uses the browser's history: Back belongs to the content. The
 page is as tall as the visible area (`100dvh`, with
@@ -580,7 +572,10 @@ other key, nor the owner agent, sees or changes it. Without browser storage
 the key lives as long as the page, and the viewer says that drafts will not
 outlast it. The name the person gives is kept by the browser too.
 
-**Comment mode.** The bubble turns it on and off. At the first nonempty Finish review submission, the viewer asks for a name once
+**Comment mode.** **Add comment** starts placement and stays pressed. A second
+press or Escape leaves placement without discarding input or closing the panel.
+Closing the panel also ends placement. At the first nonempty Finish review
+submission, the viewer asks for a name once
 ("No name" leaves it `anonymous`). While comment mode is on, a tap
 on the content places a draft pin where a pin is possible (a link or a button
 under it does not fire) and opens the sheet with a field and **Add**. Add
@@ -596,7 +591,7 @@ bottom sheet with three heights:
 
 | Height | Holds |
 | --- | --- |
-| strip | one line of words, no icons, its parts joined by " · " and zeros left out: "**N need you**" in bold (the agent's answers, `done`, `wrote` or `asked`, and colleagues' comments awaiting approval, without a decision or reply draft of the person's), "N drafts" (the comments the person's drafts add, decide or reply to) with **Finish review** at the right, and, without drafts, "N in progress" (`waiting` and `working`); with none of these, "N comments"; "›" at the end on a phone when there is no **Finish review**; in comment mode, when a spot can be pinned and the strip has a plain comment count, the hint "Tap a spot to comment." beside the count (alone when there are no comments) |
+| strip | one line of words, no icons, its parts joined by " · " and zeros left out: "**N need you**" in bold (the agent's answers, `done`, `wrote` or `asked`, and colleagues' comments awaiting approval, without a decision or reply draft of the person's), "N drafts" (the comments the person's drafts add, decide or reply to) with **Finish review** at the right, and, without drafts, "N in progress" (`waiting` and `working`); with none of these, "N comments"; "›" at the end on a phone when there is no **Finish review**; while placing a pin the strip instead shows the placement hint and pressed **Add comment** |
 | middle | list, selected item, compose or Finish review, as tall as its content up to 60% of the visible viewport and the available stage; the body scrolls when capped |
 | full | the same view filling the stage; an item also shows Others below its thread |
 
@@ -608,9 +603,9 @@ the item at middle height. With one item pulled up to full, a tap on a row under
 on a pin or on ‹ › brings that item to the top at the same height. The selected pin is drawn bigger. Dragging the grip or the
 sheet's title line (its buttons too) snaps to the nearest height; a tap on
 the grip steps middle and full, a tap on one item's title goes back to the list.
-On a phone each title line ends with a fold button (⌄) at the far right that
-folds the sheet to the strip, away from **Finish review** at the bottom; with a
-reply typed it does not fold and says to send or clear it first.
+The fold button returns the narrow sheet to the strip and keeps typed text.
+When the narrow viewer is not in full screen the strip remains available,
+including on files with no comments.
 Outside comment mode, while a comment's pin is lit on the page, the first tap
 anywhere on the file but a pin (a page, its links, buttons and fields too, or
 an image and the space around it; not a drag, a scroll or a long press, which
@@ -624,8 +619,10 @@ selected comment without a lit pin on the page lets go on a tap on an empty
 spot of the file only. With a reply typed or an edit changed the comment
 stays and taps reach the page; a tap on an empty spot does nothing. With
 nothing selected, a tap is the page's as always.
-**Finish review** opens at middle height. Folding a new draft to the strip drops it, with Undo if text was typed. The keyboard pushes the sheet up and
-the pin stays in sight above it. Buttons show only on the selected item:
+**Finish review** opens at middle height without starting placement. A typed
+new draft can be discarded explicitly with **Discard** and restored using
+**Undo**. The keyboard pushes the sheet up and the pin stays in sight above
+it. Buttons show only on the selected item:
 **Edit** and **Delete** on the person's own draft or reply; on a published
 comment, as a small chat with its replies (the agent's marked as the agent),
 **✓ Accept** and **✕ Reject** while it is someone else's awaiting approval,
@@ -641,7 +638,13 @@ of the person's is skipped; the agent's questions (`asked`) are left to be
 answered. One **Undo** in the toast takes them all back, again in one call.
 Finish review is not sent while the call is on its way. With
 drafts, **Finish review · N** sits at the bottom of an item too. On a computer the same
-views sit in a panel at the right, and the strip's line heads it.
+views sit in a panel at the right, and the strip's line heads it. At 900 px
+and wider, drag the side handle to resize the panel; release within 32 px
+of the right edge to fold it. Clicking the tab, or pressing Enter or Space
+on it, toggles the panel and restores the width used before folding. Left and
+Right resize while the open panel's handle has focus. These actions do not
+change comment mode or discard drafts. The manually chosen width lasts for
+this page and is clamped to the available space.
 
 **Finish review** shows first, under "Not decided yet", what waits for the
 person's yes with no decision or reply of theirs: the agent's answers

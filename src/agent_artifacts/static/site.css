@@ -397,18 +397,44 @@ body.commenting #image-box img { cursor: crosshair; }
 @media (max-width: 899px) {
   body.visual-compact .sbody > .handle { position: static; }
 }
+.panel-handle { display: none; }
 @media (min-width: 900px) {
-  /* The panel widens with the text, so its lines hold as many words. */
-  .sheet { width: calc(360px * var(--ts)); box-shadow: -0.5px 0 0 var(--hair); }
+  body { --panel-width: clamp(300px, var(--panel-preferred, calc(360px * var(--ts))), min(640px, 60vw)); }
+  .stage { position: relative; }
+  .sheet { width: var(--panel-width); box-shadow: -0.5px 0 0 var(--hair); }
+  .panel-handle { display: flex; position: absolute; z-index: 6; top: 50%;
+    right: calc(var(--panel-width) - 9px); transform: translateY(-50%);
+    width: 18px; min-width: 18px; height: 54px; padding: 0; border: 0;
+    border-radius: 10px; background: var(--surface); cursor: ew-resize; touch-action: none; }
+  .panel-handle::before { content: ""; width: 4px; height: 24px;
+    border-radius: 3px; background: var(--muted); }
+  .panel-handle::after { content: ""; position: absolute; inset: 0 -13px; }
+  .panel-handle:hover, .panel-handle:active { background: var(--surface-2); }
+  .panel-handle:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+  body.comments-folded .panel-handle, .stage.panel-snap .panel-handle { right: 0;
+    border-radius: 10px 0 0 10px; }
+  body.comments-folded .panel-handle { cursor: pointer; }
+  body.comments-folded .panel-handle::after { inset: 0 0 0 -26px; }
+  .stage.panel-snap .panel-handle::before { background: var(--blue); }
+  .stage.panel-resizing { user-select: none; }
+  .stage.panel-resizing iframe { pointer-events: none; }
   .sheet .grip { display: none; }
   .sbody > .handle { position: static; cursor: auto; touch-action: auto; }
   .strip { box-shadow: inset 0 -0.5px 0 var(--hair); }
   .sbody { padding-top: 12px; }
   .sfoot { box-shadow: 0 -0.5px 0 var(--hair); }
   .nav .all { display: inline-flex; }
-  .toast { left: 12px; right: calc(12px + 360px * var(--ts)); bottom: 20px; }
+  .toast { left: 12px; right: calc(12px + var(--panel-width)); bottom: 20px; }
+  body.comments-folded .toast { right: 12px; }
 }
-body.full:not(.commenting) .sheet[data-pos="strip"] { display: none; }
+@media (max-width: 899px) {
+  .desk-viewer { display: none !important; }
+  .strip:has(.add-comment) { flex-wrap: wrap; justify-content: space-between; }
+  .strip:has(.add-comment) .strip-text { flex: auto; }
+}
+.sheet .add-comment[aria-pressed="true"] { color: var(--blue); background: var(--surface);
+  box-shadow: inset 0 0 0 2px var(--blue); }
+.sheet .add-comment[aria-pressed="true"] .fan-key { display: none; }
 @media (min-width: 900px) {
   body.comments-folded .sheet { display: none; }
 }
@@ -482,8 +508,11 @@ body.commenting .float-button { box-shadow: inset 0 0 0 2px var(--blue),
 body.commenting .float-mode { display: block; }
 .float-button { -webkit-touch-callout: none; }
 /* The menu's Comment is pressed in comment mode, like the header's bubble. */
-.fan-item .when-on, body.commenting .fan-item .when-off { display: none; }
-body.commenting .fan-item .when-on { display: inline; }
+.fan-item .when-open, body.comments-open .fan-item .when-folded,
+body.commenting .fan-item .when-off { display: none; }
+body.comments-open .fan-item .when-open { display: inline; }
+.fan-key { margin-left: 8px; font: inherit; color: var(--muted); }
+@media (min-width: 900px) { .viewer-float .float-hint { display: none; } }
 body.commenting .fan-item[data-act="comment"] .fan-sq { color: var(--on-color); background: var(--blue-fill);
   box-shadow: inset 0 1.5px 3px var(--shadow-2); }
 .float-button > svg:last-child, .float-button[aria-expanded="true"] .menu-icon,
@@ -625,10 +654,10 @@ body.commenting .fan-item[data-act="comment"] .fan-sq { color: var(--on-color); 
 @media (min-width: 900px) {
   #comments-toggle.needs-attention::after,
   #float-button.needs-attention[aria-expanded="false"]::after,
-  .fan-item.needs-attention .fan-sq::after {
+  .fan-item[data-act="comments"].needs-attention .fan-sq::after {
     content: ""; position: absolute; width: 9px; height: 9px; border-radius: 50%;
     background: var(--dot); border: 2px solid var(--raised); top: -3px; right: -3px;
     pointer-events: none;
   }
-  .fan-item[data-act="comment"] .fan-sq { position: relative; }
+  .fan-item[data-act="comments"] .fan-sq { position: relative; }
 }

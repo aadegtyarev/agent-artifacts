@@ -15,7 +15,7 @@
   </div>
   <div class="actions">
     {#- Comment mode: on, a tap on the content places a draft pin. #}
-    <button type="button" id="comments-toggle" class="sq" aria-controls="comments" aria-pressed="false" title="Comment" aria-label="Comment mode">{{ icon.bubble() }}</button>
+    <button type="button" id="comments-toggle" class="sq desk-viewer" aria-controls="comments" aria-expanded="false" title="Show comments" aria-label="Comments">{{ icon.bubble() }}</button>
     <button type="button" id="full-button" class="sq" title="Full screen" aria-label="Full screen">{{ icon.expand() }}</button>
     <button type="button" id="menu-button" class="sq" aria-haspopup="menu" aria-controls="fan" aria-expanded="false" title="Menu" aria-label="Menu">{{ icon.menu() }}</button>
   </div>
@@ -26,8 +26,10 @@
   <div class="fan-scrim"></div>
   <div id="fan-list" class="fan-list" role="menu" aria-label="Menu">
     {#- Full screen only: the header's buttons, in the header's order. #}
-    <button type="button" role="menuitemcheckbox" aria-checked="false" class="fan-item" data-act="comment" data-when="full"><span class="fan-label"><span class="when-off">Comment</span><span class="when-on">Commenting</span></span><span class="fan-sq">{{ icon.bubble() }}</span><span id="comment-attention" hidden>Needs your attention</span></button>
-    <button type="button" role="menuitem" class="fan-item" data-act="exit" data-when="full"><span class="fan-label">Exit full screen</span><span class="fan-sq">{{ icon.shrink() }}</span></button>
+    <button type="button" role="menuitem" aria-expanded="false" aria-controls="comments" class="fan-item" data-act="comments"><span class="fan-label"><span class="when-folded">Show comments</span><span class="when-open">Hide comments</span><kbd class="fan-key desk-viewer">Shift+C</kbd></span><span class="fan-sq">{{ icon.bubble() }}</span><span id="comment-attention" hidden>Needs your attention</span></button>
+    <button type="button" role="menuitemcheckbox" aria-checked="false" class="fan-item desk-viewer" data-act="comment"><span class="fan-label">Add comment<kbd class="fan-key when-off">C</kbd></span><span class="fan-sq">{{ icon.bubble() }}</span></button>
+    <button type="button" role="menuitem" class="fan-item desk-viewer" data-act="enter" data-when="normal"><span class="fan-label">Full screen<kbd class="fan-key">F</kbd></span><span class="fan-sq">{{ icon.expand() }}</span></button>
+    <button type="button" role="menuitem" class="fan-item" data-act="exit" data-when="full"><span class="fan-label">Exit full screen<kbd class="fan-key desk-viewer">F</kbd></span><span class="fan-sq">{{ icon.shrink() }}</span></button>
     {%- if in_project %}
     {#- Always: the project's title in the header is easy to miss. #}
     <button type="button" role="menuitem" class="fan-item" data-act="files"><span class="fan-label">Project files</span><span class="fan-sq">{{ icon.files() }}</span></button>
@@ -40,7 +42,7 @@
 </div>
 {#- Full screen: this button takes the header's place. Dragged, it snaps
     to the nearer side edge. #}
-<button type="button" id="float-button" class="float-button" hidden aria-haspopup="menu" aria-controls="fan" aria-expanded="false" title="Menu" aria-label="Menu"><span class="float-mode">{{ icon.bubble() }}</span><span class="float-hint">{{ icon.corners() }}</span>{{ icon.menu() }}{{ icon.close() }}</button>
+<button type="button" id="float-button" class="float-button viewer-float" hidden aria-haspopup="menu" aria-controls="fan" aria-expanded="false" title="Menu" aria-label="Menu"><span class="float-mode">{{ icon.bubble() }}</span><span class="float-hint">{{ icon.corners() }}</span>{{ icon.menu() }}{{ icon.close() }}</button>
 {{ menu.float_tip() }}
 {%- if in_project %}
 {#- The project's files under the header, over a scrim: the project page's
@@ -70,6 +72,7 @@
   <div class="center">Archive: download it to see the contents.</div>
 {%- endif %}
 </main>
+<button type="button" id="panel-handle" class="panel-handle" aria-controls="comments" aria-expanded="false" aria-label="Show comments panel" hidden></button>
 {#- Comments: a bottom sheet on a phone (strip, content, full),
     a panel at the right on a computer. The script fills it; names and
     texts go in as text only. #}

@@ -14,6 +14,7 @@ const dotVisible = locator => locator.evaluate(e => getComputedStyle(e, '::after
    await p.locator('#comments-toggle.needs-attention').waitFor();
    const panel=p.locator('#comments'), main=p.locator('main'), mode=p.locator('[data-act=comment]');
    const floating=p.locator('#float-button'), modeIcon=mode.locator('.fan-sq');
+   const panelAction=p.locator('[data-act=comments]'), attentionIcon=panelAction.locator('.fan-sq');
    assert.equal(await panel.isVisible(),false); assert.equal(await p.locator('#pins .pin').count(),3);
    const offWidth=(await main.boundingBox()).width;
    if (process.env.SHOTS) await p.screenshot({path:`${process.env.SHOTS}/${theme}-ordinary-off.png`});
@@ -29,10 +30,10 @@ const dotVisible = locator => locator.evaluate(e => getComputedStyle(e, '::after
    if (process.env.SHOTS) await p.screenshot({path:`${process.env.SHOTS}/${theme}-full-off.png`});
    await floating.click();
    assert(!(await dotVisible(floating)));
-   assert(await dotVisible(modeIcon));
+   assert(await dotVisible(attentionIcon));
    const offColor=await modeIcon.evaluate(e=>getComputedStyle(e).backgroundColor);
    assert.equal(await mode.getAttribute('aria-checked'),'false');
-   assert.equal(await p.getByRole('menuitem',{name:/^(Show|Hide) comments$/}).count(),0);
+   assert(await panelAction.getByText('Show comments',{exact:true}).isVisible());
    if (process.env.SHOTS) await p.screenshot({path:`${process.env.SHOTS}/${theme}-full-off-menu.png`});
    await mode.click(); assert(await panel.isVisible());
    assert(await dotVisible(floating));
@@ -40,13 +41,14 @@ const dotVisible = locator => locator.evaluate(e => getComputedStyle(e, '::after
    if (process.env.SHOTS) await p.screenshot({path:`${process.env.SHOTS}/${theme}-full-on.png`});
    await floating.click(); assert.equal(await mode.getAttribute('aria-checked'),'true');
    assert(!(await dotVisible(floating)));
-   assert(await dotVisible(modeIcon));
+   assert(await dotVisible(attentionIcon));
    assert.notEqual(await modeIcon.evaluate(e=>getComputedStyle(e).backgroundColor),offColor);
    assert.equal(await mode.locator('.comment-check').count(),0);
    if (process.env.SHOTS) await p.screenshot({path:`${process.env.SHOTS}/${theme}-full-on-menu.png`});
-   await mode.click(); assert(!(await panel.isVisible()));
+   await mode.click(); assert(await panel.isVisible());
+   await floating.click(); await panelAction.click(); assert(!(await panel.isVisible()));
    await p.locator('#pins .pin').first().click(); assert(await panel.isVisible());
-   assert.equal(await p.locator('#comments-toggle').getAttribute('aria-pressed'),'false');
+   assert(!(await p.locator('body').evaluate(e=>e.classList.contains('commenting'))));
    await p.getByRole('button',{name:'Close comments'}).click(); assert(!(await panel.isVisible()));
    await p.locator('#pins .pin').first().click(); await p.keyboard.press('Escape'); assert(!(await panel.isVisible()));
    results[theme]={offWidth,onWidth,pins:3}; assert.deepEqual(errors,[]); await c.close();
@@ -66,7 +68,7 @@ const dotVisible = locator => locator.evaluate(e => getComputedStyle(e, '::after
    await p.locator('#full-button').click(); const tip=p.locator('#float-tip');
    if(await tip.isVisible()) await tip.getByRole('button',{name:'OK'}).click();
    await p.locator('#float-button').click();
-   assert(!(await p.locator('[data-act=comment]').evaluate(e=>e.classList.contains('needs-attention'))));
+   assert(!(await p.locator('[data-act=comments]').evaluate(e=>e.classList.contains('needs-attention'))));
    if (process.env.SHOTS) await p.screenshot({path:`${process.env.SHOTS}/no-need-full-menu.png`});
    await p.keyboard.press('Escape');
    assert(!(await dotVisible(p.locator('#float-button'))));
@@ -95,6 +97,7 @@ const dotVisible = locator => locator.evaluate(e => getComputedStyle(e, '::after
    await p.goto(`${process.env.BASE_URL}/a/${process.env.ARTIFACT_ID}`);
    await p.locator('#comments-toggle.needs-attention').waitFor();
    await p.locator('#comments-toggle').click();
+   await p.getByRole('button',{name:'Add comment',exact:true}).click();
    await p.getByRole('button',{name:'+ About the whole file',exact:true}).click();
    const field=p.getByRole('textbox',{name:'Comment',exact:true}); await field.fill('Retained desktop compose');
    await p.locator('#comments-toggle').click(); assert(!(await p.locator('#comments').isVisible()));
@@ -110,10 +113,10 @@ const dotVisible = locator => locator.evaluate(e => getComputedStyle(e, '::after
   assert(await p.locator('#comments').isVisible()); assert.equal(await p.locator('#pins .pin').count(),3);
   assert.equal(await p.locator('#comments-toggle.needs-attention').count(),0);
   await p.locator('#full-button').tap(); assert(!(await p.locator('#comments').isVisible()));
-  await p.locator('#float-button').tap(); await p.locator('[data-act=comment]').tap(); assert(await p.locator('#comments').isVisible());
+  await p.locator('#float-button').tap(); await p.locator('[data-act=comments]').tap(); assert(await p.locator('#comments').isVisible());
   await p.locator('#float-button').tap();
   assert(!(await dotVisible(p.locator('#float-button'))));
-  assert.equal(await p.locator('[data-act=comment]').getAttribute('aria-checked'),'true');
+  assert.equal(await p.locator('[data-act=comments]').getAttribute('aria-expanded'),'true');
   await p.keyboard.press('Escape');
   await p.setViewportSize({width:1366,height:800}); assert(await p.locator('#comments').isVisible());
   await p.setViewportSize({width:390,height:700}); assert(await p.locator('#comments').isVisible()); await c.close();

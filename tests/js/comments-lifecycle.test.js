@@ -103,17 +103,19 @@ test('seen counts survive two tabs and synchronize without acknowledging other t
   data.set('aa-seen:art', '{invalid'); assert.equal(tab().seen(1), 5);
 });
 
-test('explicit fold click focuses even without prior sheet focus, but refusal and passive fold do not', () => {
+test('explicit close focuses the strip and preserves the draft; passive folding still respects a pending reply', () => {
   let click, focused = 0, rendered = 0;
   const context = { button: (_, fn) => { click = fn; return { append() {}, setAttribute() {} }; }, icon() {},
-    S: { edit: null, sel: 'c1', view: 'item', pos: 'm' }, fields: { reply: { value: '' } },
+    S: { edit: null, sel: 'c1', view: 'item', pos: 'm', mode: true, compose: {} }, fields: { reply: { value: '' } },
     sheet: { contains: () => false }, document: { activeElement: null }, desk: { matches: false },
     render: () => rendered++, toast() {}, focusFoldTarget: () => focused++ };
   vm.createContext(context);
   vm.runInContext(part('  function foldButton()', '  function titled('), context);
-  vm.runInContext(part('  function fold(explicit', '  function focusFoldTarget()'), context);
+  vm.runInContext(part('  function fold()', '  function focusFoldTarget()'), context);
+  vm.runInContext(part('  function stopPlacement()', '  function setMode('), context);
   context.foldButton(); click(); assert.equal(focused, 1); assert.equal(context.S.pos, 'strip');
-  context.S.pos = 'm'; context.fields.reply.value = 'draft'; click();
+  assert.equal(context.S.mode, false); assert.equal(context.S.compose.retained, true);
+  context.S.pos = 'm'; context.fields.reply.value = 'draft'; context.fold();
   assert.equal(context.S.pos, 'm'); assert.equal(focused, 1);
   context.fields.reply.value = ''; context.fold(); assert.equal(focused, 1); assert.equal(rendered, 3);
 });
@@ -166,11 +168,11 @@ test('comment attention follows Need you rather than draft or total counts', () 
   }
 });
 
-test('pending list keeps whole-file compose, local drafts and mobile Finish review', () => {
+test('pending list keeps whole-file compose, local drafts and Finish review on both layouts', () => {
   for (const desktop of [false, true]) for (const review of [0, 1]) {
     const draft = { draft: true };
     const context = { S: { loaded: false, mode: true }, sheet: { dataset: { count: '1' } },
-      desk: { matches: desktop }, stored: true, titled: text => text, reviewCount: () => review,
+      desk: { matches: desktop }, stored: true, titled: text => text, addComment: {}, reviewCount: () => review,
       items: () => review ? [draft] : [], groups: () => review ? [{ id: 'drafts', title: 'Drafts', items: [draft] }] : [],
       FOLDED: new Set(), row: () => 'draft row', status: () => '', finishBar: () => 'Finish review',
       el: (_, __, text) => text === undefined ? { append(x) { this.child = x; } } : text,
@@ -181,6 +183,6 @@ test('pending list keeps whole-file compose, local drafts and mobile Finish revi
     assert.equal(content[0], 'Loading comments…');
     assert.ok(content.some(node => node && node.child === '+ About the whole file'));
     assert.equal(content.includes('draft row'), !!review);
-    assert.equal(footer.includes('Finish review'), !!review && !desktop);
+    assert.equal(footer.includes('Finish review'), !!review);
   }
 });

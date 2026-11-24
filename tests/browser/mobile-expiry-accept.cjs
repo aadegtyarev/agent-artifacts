@@ -48,7 +48,7 @@ const base = process.env.BASE_URL;
       await page.clock.setFixedTime(new Date('2026-11-23T12:00:00Z'));
       if (mode === 'baseline') await page.route('**/static/site.css*', route => route.fulfill({ status: 200, contentType: 'text/css', body: baseline }));
       await page.goto(`${base}/a/${fixture.ids['tap.html']}`);
-      await page.locator('#comments-toggle').click();
+      await page.locator('#sheet-strip').click();
       await page.locator('#strip-text').click();
       if (variant === 'link') {
         await page.getByRole('button', { name: '+ About the whole file' }).click();

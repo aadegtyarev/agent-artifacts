@@ -14,6 +14,7 @@ const fixture = JSON.parse(fs.readFileSync(process.env.FIXTURE_JSON));
       await page.goto(`${process.env.BASE_URL}/a/${fixture.ids[kind === 'compose' ? 'empty.html' : 'mixed.html']}`);
       await page.locator('#comments-toggle').tap();
       if (kind === 'compose') {
+        await page.getByRole('button', { name: 'Add comment', exact: true }).tap();
         await page.getByRole('button', { name: '+ About the whole file', exact: true }).tap();
       } else {
         await page.locator('#sheet-body .it').first().click();
