@@ -48,7 +48,7 @@ test('keyboard and accessibility click activate once and focus current heading o
     const stripText = { setAttribute() {}, addEventListener(type, fn) { handlers[type] = fn; }, click() { handlers.click({ target: this, detail: 0 }); }, closest() { return null; } };
     const strip = { addEventListener(type, fn) { handlers[type] = fn; } };
     const context = { stripText, strip, grip, desk: { matches: desktop }, body: { querySelector: () => heading },
-      drag: { dragged: () => false }, openList: () => opens++, go: () => opens++ };
+      drag: { dragged: () => false }, setPanel: open => { assert.equal(open, true); opens++; } };
     vm.runInNewContext(part('  stripText.setAttribute("role"', '  // --- Keys'), context);
     handlers.keydown({ key: 'Enter', preventDefault() {} });
     assert.equal(opens, 1); assert.equal(focused, desktop ? 'heading' : 'grip');
