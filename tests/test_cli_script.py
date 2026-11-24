@@ -273,7 +273,7 @@ def test_wait_waiting_gone_and_timeout(server):
     assert json.loads(cli(home, "wait", art_id, env=env)[1]) == {"event": "gone"}
 
 
-@pytest.mark.parametrize(("options", "interval"), [((), 10), (("--every", "7"), 7)])
+@pytest.mark.parametrize(("options", "interval"), [((), 5), (("--every", "7"), 7)])
 def test_wait_accepted_counts_only_new(server, monkeypatch, options, interval):
     url, store, home = server
     key = store.add_agent("alice")

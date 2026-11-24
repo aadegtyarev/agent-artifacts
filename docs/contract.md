@@ -1077,7 +1077,7 @@ get the commands `comments ID`, `comment ID TEXT [--anchor JSON]`, `take ID`,
 `reply ID N TEXT [--wrote|--asked]`,
 `resolve ID N`, `reopen ID N` and `delete-comment ID N`, and `drop-drafts ID`
 deletes every draft on a file. `wait ID [--once] [--every SECONDS]
-[--timeout SECONDS]` polls every 10 seconds by default (at least 5).
+[--timeout SECONDS]` polls every 5 seconds by default. `--every` can increase the interval.
 The default is a subscription: it flushes a JSON line per event and keeps
 watching. `waiting` reports threads newly waiting or with a new reply,
 including work already waiting on startup. `accepted` reports resolutions

@@ -25,8 +25,9 @@ only the full URL and local state. All processes must share `XDG_STATE_HOME`
 (or the default state directory: `%LOCALAPPDATA%` on Windows and
 `~/.local/state` elsewhere). Keep the journal on a private local drive;
 on Windows it inherits the directory's access permissions. Collection
-defaults to 10 seconds; `--every`
-accepts at least 5 seconds. Only one collector per scope can hold its lock.
+defaults to 5 seconds; use `--every SECONDS` to choose a longer interval.
+Polling time and rate-limit retries can add to it. Only one collector per
+scope can hold its lock.
 Status reports lock ownership, poll health, timestamps and pending count; an
 active lock alone is not evidence of a healthy poll. Temporary service failures
 are retried. A permanent refusal stops the collector, records the reason and
@@ -43,8 +44,8 @@ own the collector process.
 
 The same commands are available as `artifacts_cli.py watch COMMAND ...`.
 Use `watch pi URL --session SESSION_ID` to bind one Pi adapter per scope;
-it validates the selected live session before each batch and retries failures
-at five-second intervals. Status reports the active binding (or null after it
+it checks the local mailbox every second, validates the selected live
+session before each batch, and retries failures at five-second intervals. Status reports the active binding (or null after it
 exits). The adapter never acknowledges delivery. Stop it before binding another
 session; pending IDs replay on a new attach. `watch follow URL --timeout SECONDS`
 ends a JSON-lines attach at its deadline without stopping the collector; a new

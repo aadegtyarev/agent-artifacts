@@ -76,7 +76,7 @@ USAGE = """usage: artifacts_cli.py <command> [args]
                             subscribe to a file or project (including new files)
                             and flush one JSON line per waiting/accepted event;
                             only IDs, comment numbers or counts, no comment text.
-                            Poll every S seconds (default 10, minimum 5).
+                            Poll every S seconds (default 5, minimum 5).
                             Stop on gone, Ctrl+C, or --timeout (default 0: none).
                             --once: return the first event with the full legacy
                             payload and exit (default timeout: 6 hours).
@@ -111,6 +111,7 @@ A wrong command or argument exits 2; an error from the service exits 1.
 
 URL_VAR, KEY_VAR = "AGENT_ARTIFACTS_URL", "AGENT_ARTIFACTS_KEY"
 MB, HOUR, DAY = 1024 * 1024, 3600, 86400
+WATCH_EVERY = 5
 # settings NAME -> (API field, unit it is given in)
 SETTINGS = {
     "ttl-hours": ("ttl_seconds", HOUR),
@@ -729,7 +730,7 @@ def run(argv: list[str], *, emit: Callable[[dict], None] = event_line) -> str | 
             if once:
                 args.remove("--once")
             need(1, "ID [--once] [--every SECONDS] [--timeout SECONDS]")
-            every = float(every_arg or 10)
+            every = float(every_arg or WATCH_EVERY)
             limit = float(limit_arg if limit_arg is not None else 6 * HOUR if once else 0)
             if not (math.isfinite(every) and math.isfinite(limit) and every >= 5 and limit >= 0):
                 raise Usage("wait: --every 5 or more seconds, --timeout 0 (no limit) or more")

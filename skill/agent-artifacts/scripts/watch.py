@@ -21,6 +21,9 @@ import artifacts_cli as cli
 from watch_lock import acquire, release
 from watch_state import PollConflict, StateFull, WatchState, _origin, read_pending
 
+_PI_MAILBOX_INTERVAL = 1
+_PI_RETRY_INTERVAL = 5
+
 
 def scope(link):
     parts = urllib.parse.urlsplit(link)
@@ -124,23 +127,26 @@ def pi_follow(state, session):
         finally:
             release(guard)
         seen = set()
+        check_session_at = 0.0
         while True:
-            try:
-                sessions = intercom("list").get("sessions")
-                if not isinstance(sessions, list) or not any(
-                    isinstance(row, dict) and row.get("id") == session for row in sessions
-                ):
-                    raise ValueError("session unavailable")
-            except (OSError, ValueError, subprocess.SubprocessError):
-                state.delivery(session, succeeded=False)
-                time.sleep(5)
-                continue
             pending = state.pending()
             seen.intersection_update(event["id"] for event in pending)
-            for item in pending:
-                event_id = item["id"]
-                if event_id in seen:
+            unsent = [item for item in pending if item["id"] not in seen]
+            if unsent or time.monotonic() >= check_session_at:
+                try:
+                    sessions = intercom("list").get("sessions")
+                    if not isinstance(sessions, list) or not any(
+                        isinstance(row, dict) and row.get("id") == session for row in sessions
+                    ):
+                        raise ValueError("session unavailable")
+                except (OSError, ValueError, subprocess.SubprocessError):
+                    state.delivery(session, succeeded=False)
+                    time.sleep(_PI_RETRY_INTERVAL)
                     continue
+                check_session_at = time.monotonic() + _PI_RETRY_INTERVAL
+            delay = _PI_MAILBOX_INTERVAL
+            for item in unsent:
+                event_id = item["id"]
                 if not re.fullmatch(r"[0-9a-f]{32}", event_id):
                     raise ValueError("invalid event ID")
                 event = json.loads(_event(item["event"], state.kind, state.target))
@@ -157,10 +163,11 @@ def pi_follow(state, session):
                         raise ValueError("not delivered")
                 except (OSError, ValueError, subprocess.SubprocessError):
                     state.delivery(session, succeeded=False)
+                    delay = _PI_RETRY_INTERVAL
                     break
                 state.delivery(session, succeeded=True)
                 seen.add(event_id)
-            time.sleep(5)
+            time.sleep(delay)
     finally:
         os.close(fd)
         os.close(guard)
@@ -308,7 +315,12 @@ def main(argv=None):
         p = sub.add_parser(name)
         p.add_argument("link")
         if name == "collect":
-            p.add_argument("--every", type=float, default=10)
+            p.add_argument(
+                "--every",
+                type=float,
+                default=cli.WATCH_EVERY,
+                help="seconds between polls (default: %(default)s, minimum: 5)",
+            )
         if name == "follow":
             p.add_argument("--timeout", type=float, default=0)
         if name == "pi":
