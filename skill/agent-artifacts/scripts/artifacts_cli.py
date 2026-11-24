@@ -406,6 +406,7 @@ _PROJECT_DETAIL_DELAY = 0.6
 class _Subscription:
     def __init__(self, client: Client, target: str, kind: str | None) -> None:
         self.client, self.target, self.kind = client, target, kind
+        self.detail_failure: str | None = None
         self.waiting: dict[str, dict[int, int]] = {}
         self.resolved: set[int] | None = None
         self.since: float | None = None
@@ -413,6 +414,7 @@ class _Subscription:
         self.next_detail: str | None = None
 
     def poll(self, deadline: float | None = None) -> list[dict]:
+        self.detail_failure = None
         if self.kind != "a":
             # Only a bare ID may fall back to a file; not an explicit or
             # previously identified project that just disappeared.
@@ -501,12 +503,16 @@ class _Subscription:
                     waiting.pop(fid, None)
                 elif e.code == 429:
                     # Return partial updates and retry from here next poll.
+                    self.detail_failure = "detail_rate_limited"
                     self.next_detail = fid
                     break
                 elif e.code < 500:
                     raise
+                else:
+                    self.detail_failure = "detail_unavailable"
                 continue
             except (OSError, ValueError, http.client.HTTPException):
+                self.detail_failure = "detail_unavailable"
                 continue
             if fresh := _new_waiting(waiting.get(fid, {}), snapshot):
                 news.append({"id": fid, "waiting": len(fresh)})
@@ -584,6 +590,13 @@ def run(argv: list[str], *, emit: Callable[[dict], None] = event_line) -> str | 
     if argv[0] in ("help", "-h", "--help"):
         return USAGE.rstrip()
     cmd, args = argv[0], argv[1:]
+    if cmd == "watch":
+        import watch
+
+        code = watch.main(args)
+        if code:
+            raise SystemExit(code)
+        return None
     path = env_file()
 
     if cmd == "version":

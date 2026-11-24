@@ -1,0 +1,55 @@
+# Durable local subscriptions
+
+Use `artifacts watch` when a subscription must survive a harness restart.
+It requires POSIX advisory locks. Run the collector independently under a
+user supervisor; the utility does not install one. `wait` and `wait --once`
+remain available for one-process watches and one-result scripts.
+
+```
+artifacts watch collect https://HOST/a/ID
+artifacts watch status https://HOST/a/ID
+artifacts watch follow https://HOST/a/ID
+artifacts watch ack https://HOST/a/ID EVENT_ID
+```
+
+Project URLs (`/p/ID`) also work. Collect uses the existing paired client
+configuration and refuses a different URL origin. Use ordinary hostnames or
+IP literals without percent escapes or IPv6 zone identifiers. Status, follow and ack need
+only the full URL and local state. All processes must share `XDG_STATE_HOME`
+(or the default state directory). Collection defaults to 10 seconds; `--every`
+accepts at least 5 seconds. Only one collector per scope can hold its lock.
+Status reports lock ownership, poll health, timestamps and pending count; an
+active lock alone is not evidence of a healthy poll. Temporary service failures
+are retried. A permanent refusal stops the collector, records the reason and
+leaves pending events in place.
+
+Follow emits JSON lines containing stable `id` and compact `event` fields. It
+prints each pending ID at most once per attach; reconnecting replays any that
+remain unacknowledged. Output, reader exit, and successful transport are not
+acknowledgment. Ack only after the consumer has durably accepted responsibility.
+Events and checkpoints contain IDs and counts, not comment text or keys. The
+underlying API is sampled, not an exact historical event stream. A receiver
+performs `ack` only at its explicit, durable acceptance boundary; it does not
+own the collector process.
+
+The same commands are available as `artifacts_cli.py watch COMMAND ...`.
+Use `watch pi URL --session SESSION_ID` to bind one Pi adapter per scope;
+it validates the selected live session before each batch and retries failures
+at five-second intervals. Status reports the active binding (or null after it
+exits). The adapter never acknowledges delivery. Stop it before binding another
+session; pending IDs replay on a new attach. `watch follow URL --timeout SECONDS`
+ends a JSON-lines attach at its deadline without stopping the collector; a new
+Monitor can attach and catch up. Follow only reads the journal. The deadline
+also applies when the journal is locked or stdout is backed up. A deadline
+can interrupt the final line; consume only complete JSON lines. The notice
+goes to stderr when writable. Both readers are independent of the collector
+and do not change legacy `wait` behavior.
+
+When resuming an interrupted review, run `artifacts watch recover URL` to read
+the numbers of open `working` threads. It does not take, close, reassign or
+acknowledge them. On a project it reads only files reporting open comments,
+with pacing between requests. Decide which work to resume in the receiving
+session. When migrating a link, stop its previous watcher before starting
+the supervised collector and receiver. Confirm the collector's last
+successful poll, pending count, and Pi recipient with `watch status`.
+Stopping or rebinding a process does not delete the local journal.

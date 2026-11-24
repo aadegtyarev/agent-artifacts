@@ -62,7 +62,16 @@ artifacts_cli.py list                                   # your files; also: proj
 Give the person the `url` (the project's for a job) and, outside a project,
 until when it works. **Whenever you share an artifact or project link, start
 one background watcher before ending the turn.** A project watcher covers all
-its files. Start it in the conversation that should receive the result:
+its files. Use the conversation that should receive the result.
+
+For a link with a supervised subscription, use `artifacts watch status <url>`
+to verify the last successful poll and receiver. Don't start a second
+watcher. The receiver acknowledges an event with `watch ack <url> <event-id>`
+after accepting responsibility for it, not merely upon delivery. Use
+`watch recover <url>` to check unfinished work after an interrupted review.
+See the [durable watch guide](https://github.com/aadegtyarev/agent-artifacts/blob/main/docs/reliable-watch-local.md).
+
+For a link without a supervised subscription:
 
 - **Pi with pi-intercom:** use `start_process` to run
   `python3 <skill folder>/scripts/watch_pi.py '<url>'` (or `uv run` in place of
