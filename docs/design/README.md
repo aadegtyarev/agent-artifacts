@@ -1,26 +1,39 @@
 # Design
 
-The look and the words of the service's own interface (the viewer, the
-comments sheet, the project page and the invite pages) as the code has them.
-Every mockup and every UI change follows these files; a change that alters the
-look or the words updates them in the same pull request. Behaviour is in
-[contract.md](../contract.md); these files do not repeat it.
+The shipped interface: the viewer, comments, project pages, invitations and
+key pages. The files people share have their own design. Plans and mockups for
+unshipped screens do not define the shipped interface. The service contract is
+in [contract.md](../contract.md).
 
 ## Principles
 
-- Phone first: designed at phone width, then the computer gets a side panel.
-- The file is the content; the service's chrome stays calm: soft fills, no
-  outlines, hairline separators, muted secondary text.
-- The dark theme is its own palette (dark grey surfaces, lighter raised ones,
-  a lighter blue), not an inversion. The file is shown as its author made it.
-- Text at least 15 px on a phone; the default text size is Large (×1.15).
-- Every control is at least 44 px to a finger, whatever it shows (32 px is
-  the usual visual size).
-- One primary button per view: dark in the light theme, blue in the dark.
-- Every action gets feedback: a pressed state, a toast, a status line or a
-  changed row.
+- Start at phone width. The viewer moves comments to a side panel at 900 px.
+- Keep the file in focus: soft fills, hairline separators and muted secondary
+  text. Keep a visible keyboard focus indicator.
+- Use the light and dark palettes for the service, not for the shared file.
+- Aim for readable text of at least 15 px on phones and a 44 px touch target.
+  Use the existing [component sizes and exceptions](tokens.md#control-sizes):
+  the visible control, touch target and rendered size can differ.
+- Use one primary action per view where possible: dark in the light theme,
+  blue in the dark.
+- Give feedback for every action. For reversible changes, prefer
+  [act, then Undo](tone-of-voice.md#action-feedback-and-undo) to confirmation.
 - Colours of one set share brightness and saturation (OKLCH L and C)
   wherever that makes sense ([tokens.md](tokens.md#one-set-one-brightness)).
+
+## Reuse before adding
+
+1. Find the closest [component](components.md) and use its existing template or
+   markup, CSS variant and tokens. Do not recreate the same button, field or
+   state under a new selector. If two surfaces need the same new variant,
+   extract it once and use it in both.
+2. Base new entry pages on the [invite and key pages](components.md#invite-key-and-message-pages)
+   and reuse the [fields and actions](components.md#buttons) where those fit.
+   Confirm the missing states before introducing a new variant; do not use a
+   dialog container on a full page just to inherit its styles.
+3. For a self-contained mockup, inline the relevant product styles rather than
+   guessing at sizes. Check the result on a phone and a desktop, in both
+   themes, with the default Text size and with it enlarged.
 
 ## Files
 
@@ -41,6 +54,6 @@ files: every colour in the CSS and in the UI files' styles must be in
 interface's text, and every icon in [icons/](icons/) must be in
 [icons.md](icons.md). `tests/test_design.py` runs it on this repository and
 also checks that every pin class in `pin.css` is described in
-[pins.md](pins.md). The rule, in the skill: when a person accepts a change to
-the interface, the same pull request updates these files, the reply says
-what changed in them, and the reviewer checks that they match the code.
+[pins.md](pins.md). The script does not check control dimensions, interaction
+states or contrast. Check those in a browser. Update the matching design files
+in the same pull request as an approved UI change.

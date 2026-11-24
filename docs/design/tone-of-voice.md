@@ -1,8 +1,8 @@
 # Tone of voice
 
-How the service's own interface speaks. The strings below are the ones in the
-code (`static/comments.js`, `comments-model.js`, `menu-dialogs.js`,
-`viewer.js`, `project.js`, `templates/`, `pages.py`).
+How the service's own interface speaks. The examples show current copy from
+the templates, `pages.py`, and the viewer, comments and project scripts.
+Reuse these words for the same action rather than writing a second label.
 
 ## Who we talk to
 
@@ -26,7 +26,7 @@ own language, replies included ([SKILL.md](../../skill/agent-artifacts/SKILL.md)
    and as "N word" in running text ("2 drafts").
 5. Say the state, not the mechanism: "in progress", not "with the agent";
    "Asks you", not "awaiting input".
-6. No exclamation marks, no emoji. ✓ ✕ ↩ are marks on decisions only.
+6. No exclamation marks or emoji. Use ✓ and ✕ for review decisions and ↩ for a draft reply.
 7. An error says what happened, then what to do: "Could not load the new
    file. Try again."
 
@@ -71,10 +71,12 @@ author, "you" when it is mine, "N replies" or the time
 | --- | --- | --- |
 | my draft of a new comment | when, e.g. "2 min ago" (the "Your drafts" group names it) | muted |
 | my decision in this review | ✓ Accept / ✕ Reject | blue |
-| the same, with my reply | ✓ Accept · your reply (etc.) | blue |
-| my reply draft | ↩ Your reply | blue |
+| my decision with a reply draft | ✓ Accept · your reply (or ✕ Reject · your reply) | blue |
+| my reply draft without a decision | ↩ Your reply | blue |
+| unread reply from a colleague on my comment | New reply | red |
 | rejected | rejected | muted |
-| a colleague's, not approved | awaiting approval | muted |
+| a colleague's comment or an agent proposal, not approved | awaiting approval | muted |
+| approved agent proposal, no work in progress | ✓ Approved | green |
 | `waiting` | sent, not taken yet | muted |
 | `working` | Agent is working | purple |
 | `done` | Done · check it | green |
@@ -90,8 +92,8 @@ image", "“Send”", "on the page".
 
 | Place | Text |
 | --- | --- |
-| Strip | "**N need you** · N drafts · N in progress", or "N comments", ending "›" on a phone without Finish review |
-| List title | "Comments · N" / "No comments yet" |
+| Strip | "**N need you** · N drafts" or "**N need you** · N in progress"; omit absent counts. Use "N comments" if nothing needs attention or the server count is still loading. The narrow strip adds "›" where it leads to the list and has no Finish review button. |
+| List title | "Loading comments…" / "Comments · N" / "No comments yet" |
 | Groups | "Need you · N", "Your drafts · N", "In progress · N", "Discussion · N", "Closed · N" |
 | Item navigation | "‹ All", "2 of 7 · on the image"; "Others" over the rest |
 | Compose | "New draft", "New draft · about the whole file" |
@@ -118,14 +120,19 @@ ends with "…": **Share…**, **Settings…**. A count goes after " · ":
 
 ### Empty states
 
-Say what is missing, then how to start, in one sentence each:
-"No comments yet", "Tap a spot to comment.",
-"Turn on the speech bubble to comment.", "Nobody has commented yet.",
-"No files yet", "No drafts: you can publish a general comment only."
+Say what is missing and give a next step when there is one. Use "No comments
+yet", "Turn on the speech bubble to comment.", "Nobody has commented yet.",
+"No files yet", or "No drafts: you can publish a general comment only."
+For a spot on the file use "Tap a spot to comment." or "Click a spot to
+comment." according to the pointer, not the screen width.
 
-### Confirmations
+### Action feedback and Undo
 
-A short past-tense toast, no full stop, Undo where it can be taken back:
+Apply a reversible action without a confirmation prompt. Show the result
+as a short past-tense message and offer **Undo**. Use a confirmation only
+when the stakes justify interrupting the person; say what will happen and
+what cannot be undone. Do not offer an Undo that cannot safely restore the
+previous state. The table shows feedback already in the product:
 
 | Action | Toast |
 | --- | --- |
@@ -183,6 +190,5 @@ Name validation uses only known responses internally to reopen name entry.
 | list position | "N of M" |
 | zero | left out of the strip; a title with nothing shows its empty state |
 
-Use “✓ Accept” for the positive action on a colleague’s pending comment and
-the agent’s completed work; keep “✕ Reject” for the colleague’s comment.
-An unread colleague reply on your comment leads with “New reply”.
+Use **✓ Accept** for a colleague’s pending comment, an agent proposal or
+completed agent work. Use **✕ Reject** for a colleague’s pending comment.

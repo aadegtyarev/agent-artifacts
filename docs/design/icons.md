@@ -2,9 +2,10 @@
 
 Line icons on a 24 × 24 grid: no fill, `currentColor` stroke 2, round caps and
 joins (`.icon` in `site.css`), drawn 18 px unless the place sets another size.
-Sources: `templates/icons.html` (Jinja macros), the `ICONS` map in
-`static/comments.js` and the star in `static/pin-marks.js`. Each file in
-[icons/](icons/) is the same path and viewBox as the code.
+Reuse `templates/icons.html` macros in templates and the shared renderers in
+`static/comments.js` and `static/pin-marks.js` for dynamic icons. The SVGs in
+[icons/](icons/) are reference copies, not a second set of runtime assets.
+Sizes below are before Text scaling.
 
 | Icon | Name | Source | Size | Where |
 | --- | --- | --- | --- | --- |
@@ -25,7 +26,8 @@ Sources: `templates/icons.html` (Jinja macros), the `ICONS` map in
 | ![left](icons/left.svg) | `left` | comments.js | 18 | item view: previous |
 | ![right](icons/right.svg) | `right` | comments.js | 18 item view, 15 group title | item view: next; a folded group title |
 | ![down](icons/down.svg) | `down` | comments.js | 18 fold, 15 group title | fold button (⌄) on a phone; an open group title |
-| ![star](icons/star.svg) | `star` | pin-marks.js | 12 × 12 grid, filled `currentColor`; 20 in a pin, 18 in a list pin, 19 in the agent avatar | the agent: pins, avatar, Settings preview |
+| ![star](icons/star.svg) | `star` | pin-marks.js | 12 × 12 grid, filled `currentColor`; 20 in a normal pin, 18 in a normal list pin, 19 in the agent avatar | agent pins, avatar and Settings preview |
+| ![approved proposal](icons/approved-proposal.svg) | `approved` | pin-marks.js | same grid and size as `star`; the scaled star and check share one mark | approved agent proposal; leaves the badge position free |
 
 ## Text glyphs
 
@@ -33,9 +35,9 @@ Some marks are characters in the label, not icons.
 
 | Glyph | Where |
 | --- | --- |
-| ‹ › | "‹ All" in the item view on a computer; "›" at the end of the strip line, after "Project page" |
+| ‹ › | "‹ All" in the desktop item view; "›" in the narrow strip and "Project page ›" |
 | ≡ | list pin of a person's comment about the whole file |
-| ✓ ✕ | Approve, Reject, Accept and their decision lines; "✓ All · N" |
+| ✓ ✕ | **✓ Accept**, **✕ Reject**, their statuses, and **✓ All · N** |
 | ↩ | "↩ Your reply" status, avatar of an unsent reply |
 | + | "+ About the whole file" |
 | · | separator in titles, counts and status lines |
