@@ -48,9 +48,11 @@ const base = process.env.BASE_URL;
       await page.clock.setFixedTime(new Date('2026-11-23T12:00:00Z'));
       if (mode === 'baseline') await page.route('**/static/site.css*', route => route.fulfill({ status: 200, contentType: 'text/css', body: baseline }));
       await page.goto(`${base}/a/${fixture.ids['tap.html']}`);
-      await page.locator('#sheet-strip').click();
-      await page.locator('#strip-text').click();
+      const narrow = width === 320;
+      await page.locator(narrow ? '#strip-text' : '#comments-toggle').click();
       if (variant === 'link') {
+        await page.getByRole('button', { name: 'Add comment', exact: true }).click();
+        if (narrow) await page.locator('#strip-text').click();
         await page.getByRole('button', { name: '+ About the whole file' }).click();
         await page.locator('.sheet textarea').fill('A draft for finish review');
         await page.locator('.send').click();
