@@ -194,7 +194,9 @@ drawn; kept as `agent-artifacts:text-size`, no value for Large).
 
 `zoom: var(--ts)` is set on: `body > header`, `.sheet > *`, `.toast-box`,
 `.fan-item`, `.modal`, `.banner > *`, `.pj > *`, and on phones `.join`.
-The desktop panel width is `360px × --ts`; the banner's top is `15px + 45px × --ts`.
+The default desktop panel width is `360px × --ts`; manual resizing is
+clamped to the [layout limits](#layout). The banner's top is
+`15px + 45px × --ts`.
 
 Not zoomed: the file (frame or image), the pins on it, the floating ≡ (44 px
 as is), the sheet's own box (its height is set in px by drags), desktop invite
@@ -258,6 +260,7 @@ component instead of setting every visible control to 44 px.
 | Settings segment | h 40 | h 44 |
 | Menu item | h 44; icon box 40 × 40 in the fan, 28 × 28 in the desktop viewer | h 44 |
 | Floating ≡ | 44 × 44 | 44 × 44 |
+| Desktop panel handle | 18 × 54 | 44 × 54 |
 | List row | min h 44 | the row |
 | Folded group title | min h 44 | the row |
 | Project row | min h 60 | the row |
@@ -272,7 +275,7 @@ component instead of setting every visible control to 44 px.
 | Breakpoint | Layout |
 | --- | --- |
 | < 900 px | comments in a bottom sheet under the content |
-| ≥ 900 px | comments in a panel at the right, `360px × --ts` wide; no grip |
+| ≥ 900 px | resizable right comments panel; default `360px × --ts`, min 300 px, max 640 px or 60% of viewport width, whichever is smaller |
 | ≤ 640 px | image fits the width and scrolls; menu labels 15 px; file list full width |
 | ≥ 641 px | file list drop-down 440 px wide, 8 px from the left |
 

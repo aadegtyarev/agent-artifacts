@@ -13,6 +13,9 @@
   const menuButton = $("menu-button");
   const floatButton = $("float-button");
   const commentsToggle = $("comments-toggle");
+  const desk = matchMedia("(min-width: 900px)");
+  const desktopViewer = () => Boolean(commentsToggle) && desk.matches;
+  const commentMode = (start = false) => document.dispatchEvent(new CustomEvent("aa:comment-mode", { detail: { start } }));
   const items = () => [...list.querySelectorAll(".fan-item")].filter((i) => i.getClientRects().length);
   const GAP = 8; // between a button and its menu, and from the window's edges
   const DRAG_PX = 8; // a move shorter than this is a tap
@@ -50,9 +53,6 @@
   // Next to its button: under the header's, above or under the floating one,
   // whichever has room, on the side of the edge the button keeps to.
   function place(from) {
-    // These states can change while the menu remains open, including at the breakpoint.
-    list.querySelector('[data-act="comment"]')?.setAttribute("aria-checked",
-      String(document.body.classList.contains("commenting")));
     const box = from.getBoundingClientRect();
     if (fan.classList.contains("viewer-fan") && window.innerWidth >= 900) {
       list.classList.remove("left", "scroll");
@@ -125,12 +125,14 @@
     // list (project.js) and the dialogs (menu-dialogs.js) take the focus
     // themselves and give it back to the button the menu came from.
     const from = opener;
-    closeFan(act === "separate" || act === "comment");
+    closeFan(["separate", "comments", "comment"].includes(act));
     if (act === "exit") exitFull();
+    else if (act === "enter") enterFull();
     else if (act === "files") {
       document.dispatchEvent(new CustomEvent("aa:files", { detail: { from } }));
     }
-    else if (act === "comment") commentsToggle.click();
+    else if (act === "comments") commentsToggle.click();
+    else if (act === "comment") commentMode();
     else if (act === "share" || act === "settings") {
       document.dispatchEvent(new CustomEvent("aa:dialog", { detail: { name: act, from } }));
     }
@@ -210,6 +212,21 @@
     }
     menuButton.focus({ preventScroll: true });
   }
+
+  document.addEventListener("keydown", (e) => {
+    if (!desktopViewer() || e.defaultPrevented || e.isComposing || e.repeat || e.altKey || e.ctrlKey || e.metaKey) return;
+    const target = e.target;
+    if (target.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="dialog"]')) return;
+    const key = e.key.toLowerCase();
+    if (key !== "c" && (key !== "f" || e.shiftKey)) return;
+    e.preventDefault();
+    closeFan();
+    if (key === "c") {
+      if (e.shiftKey) commentsToggle.click();
+      else commentMode(true);
+    } else if (document.body.classList.contains("full")) exitFull();
+    else enterFull();
+  });
 
   // --- The floating button ----------------------------------------------------
   // Its place: the side edge and the height of its middle, as a share of the
@@ -301,12 +318,12 @@
   // its scrim beside the button: a double tap too, and the item under the
   // finger does nothing.
   window.addEventListener("pointerdown", (e) => {
-    if (e.button !== 0 || !e.isPrimary || floatButton.hidden || floatButton.contains(e.target) || !isDouble(e)) return;
+    if (desktopViewer() || e.button !== 0 || !e.isPrimary || floatButton.hidden || floatButton.contains(e.target) || !isDouble(e)) return;
     e.stopPropagation();
     doubleTap();
   }, true);
   floatButton.addEventListener("pointerdown", (e) => {
-    if (e.button !== 0) return;
+    if (desktopViewer() || !e.isPrimary || e.button !== 0) return;
     if (isDouble(e)) {
       doubleTap();
       return;
@@ -326,7 +343,7 @@
       draggedAt = performance.now(); // its click does not open the menu
       closeTip();
       closeFan(false);
-      commentsToggle.click();
+      commentMode();
       // The press's own click, on letting go, does not land on what this
       // opened; see swallowUntil.
       swallowUntil = Infinity; // until released; releaseSoon sets the end
@@ -409,13 +426,14 @@
     else closeFan();
   });
   window.addEventListener("resize", () => { if (!floatButton.hidden) applyPlace(); });
+  desk.addEventListener("change", () => { if (desktopViewer()) { cancelDrag(); lastTap = null; closeTip(); } });
 
   // --- The tip ----------------------------------------------------------------
   // Shown beside the button on entering full screen, until it has been shown
   // three times or Hide was pressed; OK only closes it. Opening the menu and
   // leaving full screen close it too.
   function showTip() {
-    if (!tip) return;
+    if (!tip || desktopViewer()) return;
     let raw = null;
     try { raw = localStorage.getItem(floatTip.KEY); } catch { /* no storage: shown each time */ }
     const state = floatTip.read(raw);

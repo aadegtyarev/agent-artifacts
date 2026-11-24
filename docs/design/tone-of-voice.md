@@ -57,7 +57,7 @@ dialog; "address" is the network address in the 429 error).
 | This person | you, your ("Your draft", "Your reply") | author key | me, my, user |
 | Personal options | Settings… | Preferences | Options |
 | Passing the link on | Share… | Export | Send |
-| Comment mode | "Comment", "Stop commenting", "Commenting", "Commenting on" / "Commenting off" | annotate mode, edit mode | |
+| Panel and placement | "Show comments" / "Hide comments" for the panel; "Add comment" (pressed during placement); "Commenting on" / "Commenting off" for the touch gesture | annotate mode, edit mode | |
 | The comment's spot | spot ("Tap a spot", "spot not found") | pin point | anchor, element |
 | Time | "just now", "5 min ago", "2 h ago", "Nov 3", "Nov 3, 2025" | timestamps | seconds |
 
@@ -116,12 +116,14 @@ Decisions carry their mark: **✓ Accept**, **✕ Reject**,
 **Done**; skipping the name is **No name**. The full-screen tip closes with
 **OK**, or with **Hide** for good. A menu item that opens a dialog
 ends with "…": **Share…**, **Settings…**. A count goes after " · ":
-**Finish review · 3**.
+**Finish review · 3**. **Discard** is for typed work not yet saved as a draft;
+**Delete** is for a saved draft. On desktop the new comment placeholder says
+"Enter: new line · Ctrl+Enter: save draft" (⌘+Enter on Mac).
 
 ### Empty states
 
 Say what is missing and give a next step when there is one. Use "No comments
-yet", "Turn on the speech bubble to comment.", "Nobody has commented yet.",
+yet", "Use Add comment to start.", "Nobody has commented yet.",
 "No files yet", or "No drafts: you can publish a general comment only."
 For a spot on the file use "Tap a spot to comment." or "Click a spot to
 comment." according to the pointer, not the screen width.

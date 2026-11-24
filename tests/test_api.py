@@ -829,7 +829,7 @@ def test_viewer_page_has_comments_on_every_type(env):
     ):
         art = upload(client, keys["alice"], name, data).json()
         page = client.get(f"/a/{art['id']}")
-        # No comments yet: the sheet waits for comment mode, folded.
+        # Before the viewer boots the server renders an empty folded sheet.
         assert '<aside id="comments" class="sheet" data-pos="strip"' in page.text, name
         assert f'data-pin="{pin}"' in page.text, name
         assert re.search(r'<aside id="comments"[^>]* hidden>', page.text), name
@@ -838,7 +838,7 @@ def test_viewer_page_has_comments_on_every_type(env):
         store.publish(art["id"], "h", author="x", text=None)
         store.resolve_comment(art["id"], 1, True, owner="alice")
         page = client.get(f"/a/{art['id']}")
-        assert 'id="comments-toggle"' in page.text and 'aria-pressed="false"' in page.text, name
+        assert re.search(r'id="comments-toggle"[^>]*aria-expanded="false"', page.text), name
         # The strip counts the comments the viewer shows: open ones.
         assert '<span id="strip-text" class="strip-text">1 comment</span>' in page.text, name
         assert not re.search(r'<aside id="comments"[^>]* hidden>', page.text), name
