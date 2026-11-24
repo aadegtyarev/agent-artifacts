@@ -464,10 +464,12 @@ page.
 On the right of a line, one dot ("Needs you", no number) when something
 on that file needs this person: a comment waiting for their decision
 (`waiting_you`), or their own review not finished yet (`drafts`, their
-drafts there). Its colour is Settings → Dot. The page's script asks for
-them once it is loaded, sending this browser's author key (see
-[Comments](#comments)) if it has one; until the answer, or if the call
-fails, there are none.
+drafts there). Its colour is Settings → Dot. The script refreshes the dots
+when the project page loads, when the file list opens, and every eight
+seconds while the relevant list is visible. Returning to the tab also
+refreshes them. The request sends the browser's author key (see
+[Comments](#comments)) if it has one. The list has no dots before the
+first answer; a failed refresh leaves the last result in place.
 
 | Call | Answer |
 | --- | --- |

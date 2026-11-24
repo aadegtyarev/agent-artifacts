@@ -267,9 +267,10 @@ The project's files in its order, on `--bg`, zoomed by text size.
 | Dot, right | 12 × 12 circle in `--dot`, no number, no icon, vertically centred, 4 from the right edge of the row's padding; title and `aria-label` "Needs you" (`role="img"`, so the link reads "… Needs you"). Shown when a comment on the file waits for this person's decision or they have drafts there, their review not finished; nothing else on the row |
 | Current file (in the drop-down) | `--surface` (`aria-current="page"`) |
 
-The dots appear only after the summary call answers; none while it loads or
-when it fails. 12 px zoomed by the default Large text is about the pin
-badge's 14.
+Dots follow the summary while the project page or file list is visible and
+update without reloading. There are none before the first answer. A failed
+refresh keeps the last result. 12 px zoomed by the default Large text is
+about the pin badge's 14.
 
 ## File list drop-down
 
