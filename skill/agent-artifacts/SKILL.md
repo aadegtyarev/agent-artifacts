@@ -64,11 +64,15 @@ until when it works. **Whenever you share an artifact or project link, start
 one background watcher before ending the turn.** A project watcher covers all
 its files. Use the conversation that should receive the result.
 
-For a link with a supervised subscription, use `artifacts watch status <url>`
-to verify the last successful poll and receiver. Don't start a second
-watcher. The receiver acknowledges an event with `watch ack <url> <event-id>`
-after accepting responsibility for it, not merely upon delivery. Use
-`watch recover <url>` to check unfinished work after an interrupted review.
+For a link with a durable subscription, use `artifacts watch status <url>`
+to verify the last successful poll and receiver. The collector can run in a
+separate terminal on Windows, Linux and macOS; a service is optional. Don't
+start a second watcher. On a `waiting` event, read the listed files. If this
+session is starting work, use `take <id>` so the person sees it was taken.
+If the work belongs to another session, hand it off instead. Acknowledge the
+notification with `watch ack <url> <event-id>` only after accepting responsibility
+or confirming the handoff, not merely upon delivery. Use `watch recover <url>`
+to check unfinished work after an interrupted review.
 See the [durable watch guide](https://github.com/aadegtyarev/agent-artifacts/blob/main/docs/reliable-watch-local.md).
 
 For a link without a supervised subscription:
