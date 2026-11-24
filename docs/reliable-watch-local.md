@@ -1,9 +1,10 @@
 # Durable local subscriptions
 
 Use `artifacts watch` when a subscription must survive a harness restart.
-It requires POSIX advisory locks. Run the collector independently under a
-user supervisor; the utility does not install one. `wait` and `wait --once`
-remain available for one-process watches and one-result scripts.
+The collector runs in an ordinary terminal on Windows, Linux and macOS. No
+service is required. Keep that terminal open, or use a user supervisor if
+you want automatic restarts. The utility does not install one. `wait` and
+`wait --once` remain available for one-process watches and one-result scripts.
 
 ```
 artifacts watch collect https://HOST/a/ID
@@ -12,11 +13,19 @@ artifacts watch follow https://HOST/a/ID
 artifacts watch ack https://HOST/a/ID EVENT_ID
 ```
 
+On Windows without an `artifacts` command on `PATH`, replace `artifacts` with
+`python "C:\path\to\agent-artifacts\scripts\artifacts_cli.py"`. Open a
+second terminal for the reader. `Ctrl+C` stops the reader or collector without
+deleting its journal. Restart `collect` with the same URL to resume sampling.
+
 Project URLs (`/p/ID`) also work. Collect uses the existing paired client
 configuration and refuses a different URL origin. Use ordinary hostnames or
 IP literals without percent escapes or IPv6 zone identifiers. Status, follow and ack need
 only the full URL and local state. All processes must share `XDG_STATE_HOME`
-(or the default state directory). Collection defaults to 10 seconds; `--every`
+(or the default state directory: `%LOCALAPPDATA%` on Windows and
+`~/.local/state` elsewhere). Keep the journal on a private local drive;
+on Windows it inherits the directory's access permissions. Collection
+defaults to 10 seconds; `--every`
 accepts at least 5 seconds. Only one collector per scope can hold its lock.
 Status reports lock ownership, poll health, timestamps and pending count; an
 active lock alone is not evidence of a healthy poll. Temporary service failures

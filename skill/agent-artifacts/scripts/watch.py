@@ -2,7 +2,6 @@
 """Explicit local collector and reconnectable JSON-lines reader; not a service manager."""
 
 import argparse
-import fcntl
 import hashlib
 import http.client
 import json
@@ -12,12 +11,14 @@ import re
 import select
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
 from pathlib import Path
 
 import artifacts_cli as cli
+from watch_lock import acquire, release
 from watch_state import PollConflict, StateFull, WatchState, _origin, read_pending
 
 
@@ -32,11 +33,11 @@ def scope(link):
 
 
 def directory():
-    return (
-        Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
-        / "agent-artifacts"
-        / "reliable-watch"
-    )
+    if os.name == "nt":
+        default = os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local"
+    else:
+        default = Path.home() / ".local/state"
+    return Path(os.environ.get("XDG_STATE_HOME") or default) / "agent-artifacts/reliable-watch"
 
 
 def lock_file(state, role="collector"):
@@ -50,18 +51,14 @@ def lock(state):
     acquired = False
     try:
         while True:
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            if acquire(fd):
                 acquired = True
                 return fd
-            except BlockingIOError:
-                # A short-lived shared status probe is not a collector.
-                try:
-                    fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
-                except BlockingIOError:
-                    return None
-                fcntl.flock(fd, fcntl.LOCK_UN)
-                time.sleep(0.01)
+            # A short-lived shared status probe is not a collector.
+            if not acquire(fd, shared=True):
+                return None
+            release(fd)
+            time.sleep(0.01)
     finally:
         if not acquired:
             os.close(fd)
@@ -70,11 +67,7 @@ def lock(state):
 def collector_active(state):
     fd = lock_file(state)
     try:
-        try:
-            fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
-        except BlockingIOError:
-            return True
-        return False
+        return not acquire(fd, shared=True)
     finally:
         os.close(fd)
 
@@ -93,21 +86,22 @@ def client(origin):
 
 def pi_active(state):
     guard = lock_file(state, "guard")
-    fcntl.flock(guard, fcntl.LOCK_EX)
-    fd = lock_file(state, "pi")
     try:
+        acquire(guard, wait=True)
+        fd = lock_file(state, "pi")
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            try:
-                data = json.loads(os.read(fd, 4096))
-                os.kill(data["pid"], 0)
-                return data["recipient"]
-            except (OSError, ValueError, KeyError, TypeError):
-                return None
-        return None
+            if not acquire(fd):
+                # An OS-owned binding lock is stronger evidence than a PID
+                # lookup (and os.kill(pid, 0) can terminate a Windows process).
+                try:
+                    recipient = json.loads(os.read(fd, 4096))["recipient"]
+                    return recipient if re.fullmatch(r"[A-Za-z0-9_-]{1,128}", recipient) else None
+                except (OSError, ValueError, KeyError, TypeError):
+                    return None
+            return None
+        finally:
+            os.close(fd)
     finally:
-        os.close(fd)
         os.close(guard)
 
 
@@ -120,17 +114,15 @@ def pi_follow(state, session):
     guard = lock_file(state, "guard")
     fd = lock_file(state, "pi")
     try:
-        fcntl.flock(guard, fcntl.LOCK_EX)
+        acquire(guard, wait=True)
         try:
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
+            if not acquire(fd):
                 print("watch: Pi adapter already running", file=sys.stderr)
                 return 1
             os.ftruncate(fd, 0)
             os.write(fd, json.dumps({"pid": os.getpid(), "recipient": session}).encode())
         finally:
-            fcntl.flock(guard, fcntl.LOCK_UN)
+            release(guard)
         seen = set()
         while True:
             try:
@@ -178,7 +170,34 @@ def remaining(deadline):
     return max(0.0, deadline - time.monotonic())
 
 
+def write_before_windows(fd, line, deadline):
+    # Windows select handles sockets, not redirected stdout. A timed CLI
+    # attach can exit with a blocked raw writer; it does not hold Python's
+    # stdout stream lock or change pipe modes visible to other processes.
+    done = threading.Event()
+    error = []
+
+    def write():
+        try:
+            pending = memoryview(line)
+            while pending:
+                pending = pending[os.write(fd, pending) :]
+        except OSError as e:
+            error.append(e)
+        finally:
+            done.set()
+
+    threading.Thread(target=write, daemon=True).start()
+    if not done.wait(remaining(deadline)):
+        return False
+    if error:
+        raise error[0]
+    return True
+
+
 def write_before(fd, line, deadline):
+    if os.name == "nt":
+        return write_before_windows(fd, line, deadline)
     pending = memoryview(line)
     while pending and remaining(deadline):
         try:
@@ -193,6 +212,9 @@ def follow_deadline():
     # The tool's stderr can also be a pipe. A terminal notice must not stall exit.
     try:
         fd = sys.stderr.fileno()
+        if os.name == "nt":
+            write_before_windows(fd, b"watch: follow deadline reached\n", time.monotonic() + 0.03)
+            return 0
         blocking = os.get_blocking(fd)
         os.set_blocking(fd, False)
         try:
@@ -206,8 +228,9 @@ def follow_deadline():
 
 def follow(key, deadline):
     fd = None if deadline is None else sys.stdout.fileno()
-    blocking = None if fd is None else os.get_blocking(fd)
-    if fd is not None:
+    nonblocking = fd is not None and os.name != "nt"
+    if nonblocking:
+        blocking = os.get_blocking(fd)
         os.set_blocking(fd, False)
     try:
         seen = set()
@@ -229,7 +252,7 @@ def follow(key, deadline):
     except BrokenPipeError:
         return 0  # detach without acknowledging anything
     finally:
-        if fd is not None:
+        if nonblocking:
             os.set_blocking(fd, blocking)
 
 

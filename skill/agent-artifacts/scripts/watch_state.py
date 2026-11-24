@@ -158,7 +158,9 @@ def read_pending(directory, key):
         mode = path.stat().st_mode
     except FileNotFoundError:
         return []
-    if (mode | path.parent.stat().st_mode) & 0o077:
+    # Windows permission bits are synthetic; the local per-user directory
+    # inherits its ACL. An explicit state directory must be private too.
+    if os.name != "nt" and (mode | path.parent.stat().st_mode) & 0o077:
         raise PermissionError("watch state must be private")
     try:
         with closing(
@@ -181,12 +183,12 @@ class WatchState:
             raise ValueError("scope must be a file or project")
         directory = Path(directory)
         directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-        if directory.stat().st_mode & 0o077:
+        if os.name != "nt" and directory.stat().st_mode & 0o077:
             raise PermissionError("watch state directory must be private")
         path = directory / "watches.sqlite3"
         fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
         os.close(fd)
-        if path.stat().st_mode & 0o077:
+        if os.name != "nt" and path.stat().st_mode & 0o077:
             raise PermissionError("watch state file must be private")
         self.db = sqlite3.connect(path, timeout=10)
         self.db.execute("PRAGMA foreign_keys=ON")

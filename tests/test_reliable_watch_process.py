@@ -12,14 +12,16 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "skill/agent-artifacts/scripts/watch.py"
+SCRIPTS = ROOT / "skill/agent-artifacts/scripts"
+SCRIPT = SCRIPTS / "watch.py"
 TARGET = "a" * 22
 
+sys.path.insert(0, str(SCRIPTS))
+from watch_lock import acquire, release  # noqa: E402
+from watch_state import WatchState  # noqa: E402
 
-@pytest.mark.skipif(os.name != "posix", reason="the local collector uses POSIX advisory locks")
+
 def test_collector_reader_crash_retry_and_scope_lock(tmp_path):
-    import fcntl
-
     fixture = {"comments": [], "status": 200, "requests": []}
 
     class Handler(BaseHTTPRequestHandler):
@@ -41,12 +43,13 @@ def test_collector_reader_crash_retry_and_scope_lock(tmp_path):
     thread.start()
     origin = f"http://127.0.0.1:{server.server_port}"
     link = f"{origin}/a/{TARGET}"
-    env = dict(
-        os.environ,
-        XDG_STATE_HOME=str(tmp_path),
-        AGENT_ARTIFACTS_URL=origin,
-        AGENT_ARTIFACTS_KEY="fixture-key",
-    )
+    env = dict(os.environ, AGENT_ARTIFACTS_URL=origin, AGENT_ARTIFACTS_KEY="fixture-key")
+    if os.name == "nt":
+        env.pop("XDG_STATE_HOME", None)
+        env["LOCALAPPDATA"] = str(tmp_path)
+    else:
+        env["XDG_STATE_HOME"] = str(tmp_path)
+    offline_env = {k: v for k, v in env.items() if not k.startswith("AGENT_ARTIFACTS_")}
     processes = []
 
     def start(*args):
@@ -70,7 +73,7 @@ def test_collector_reader_crash_retry_and_scope_lock(tmp_path):
         )
 
     def status():
-        result = run("status", link, environment={"XDG_STATE_HOME": str(tmp_path)})
+        result = run("status", link, environment=offline_env)
         assert result.returncode == 0, result.stderr
         return json.loads(result.stdout)
 
@@ -96,13 +99,14 @@ def test_collector_reader_crash_retry_and_scope_lock(tmp_path):
     try:
         assert not status()["collector_active"]
         (lock_path,) = (tmp_path / "agent-artifacts/reliable-watch").glob("*.lock")
-        with lock_path.open("rb") as probe:
-            fcntl.flock(probe, fcntl.LOCK_SH)
+        with lock_path.open("r+b") as probe:
+            assert acquire(probe.fileno(), shared=True)
             assert not status()["collector_active"], "two status probes are not a collector"
             collector = start("collect", link, "--every", "5")
             time.sleep(0.4)
             assert collector.poll() is None, "a status probe did not start a collector"
             assert fixture["requests"] == []
+            release(probe.fileno())
         wait_for(lambda: status()["last_success"] is not None)
         assert status()["collector_active"]
         assert reader() == [] and collector.poll() is None
@@ -129,7 +133,7 @@ def test_collector_reader_crash_retry_and_scope_lock(tmp_path):
         wait_for(lambda: status()["poll_health"] == "ok" and status()["pending"] == 2)
         collector.kill()
         collector.wait(timeout=5)
-        assert not status()["collector_active"]
+        wait_for(lambda: not status()["collector_active"])
         restarted = start("collect", link, "--every", "5")
         wait_for(lambda: status()["collector_active"])
         replay = reader()
@@ -172,3 +176,38 @@ def test_collector_reader_crash_retry_and_scope_lock(tmp_path):
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_timed_reader_exits_even_if_output_is_not_drained(tmp_path):
+    origin = "https://example.test"
+    link = f"{origin}/a/{TARGET}"
+    env = dict(os.environ, XDG_STATE_HOME=str(tmp_path))
+    with_state = WatchState(tmp_path / "agent-artifacts/reliable-watch", origin, "a", TARGET)
+    try:
+        # Enough valid output to fill a pipe even on systems with a large
+        # default buffer. Do not drain stdout until the reader has exited.
+        event = json.dumps({"event": "waiting", "comments": [{"n": n} for n in range(1000)]})
+        with_state._commit(0, "{}", [event] * 500, None)
+        pending = with_state.pending()
+        command = [sys.executable, str(SCRIPT), "follow", link, "--timeout", "0.8"]
+        with subprocess.Popen(  # noqa: S603
+            command, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        ) as reader:
+            try:
+                assert reader.wait(timeout=5) == 0
+                out, err = reader.communicate(timeout=5)
+            finally:
+                if reader.poll() is None:
+                    reader.kill()
+        assert b"deadline reached" in err
+        assert len(out) < len(event) * len(pending)
+        assert with_state.pending() == pending
+        with_state.db.execute("BEGIN EXCLUSIVE")
+        locked = subprocess.run(command, env=env, capture_output=True, timeout=5)  # noqa: S603
+        assert locked.returncode == 0 and not locked.stdout
+        with_state.db.rollback()
+        attached = subprocess.run(command, env=env, capture_output=True, timeout=5)  # noqa: S603
+        assert attached.returncode == 0
+        assert json.loads(attached.stdout.splitlines()[0]) == pending[0]
+    finally:
+        with_state.close()
