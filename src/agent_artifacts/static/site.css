@@ -409,6 +409,9 @@ body.commenting #image-box img { cursor: crosshair; }
   .toast { left: 12px; right: calc(12px + 360px * var(--ts)); bottom: 20px; }
 }
 body.full:not(.commenting) .sheet[data-pos="strip"] { display: none; }
+@media (min-width: 900px) {
+  body.comments-folded .sheet { display: none; }
+}
 @media (prefers-reduced-motion: reduce) { .toast, .strip.pulse .strip-text { transition: none;
   animation: none; } }
 
@@ -597,3 +600,37 @@ body.commenting .fan-item[data-act="comment"] .fan-sq { color: var(--on-color); 
   border: 0; border-radius: 16px; font-weight: 600; }
 .banner .btn::before { content: ""; position: absolute; inset: -6px; }
 @media (max-width: 640px) { .banner { font-size: 15px; } }
+
+/* The viewer keeps one panel and one menu at desktop widths. */
+@media (min-width: 900px) {
+  .sheet .sbody:has(> .nav.handle) { padding-top: 0; }
+  .sheet .sbody > .nav.handle { position: sticky; top: 0; padding-top: 12px; }
+  .sheet .sfoot { flex: 0 1 auto; min-height: 0; max-height: 60%; overflow: auto; }
+  .sheet .pill { display: flex; align-items: flex-end; gap: 8px; }
+  .sheet .pill textarea { flex: 1; min-width: 0; max-height: min(calc(45vh / var(--ts)), 420px);
+    padding: 10px 12px; border-radius: 10px; overflow-y: auto; }
+  .sheet .pill .send { position: relative; right: auto; bottom: auto; flex: none; margin-bottom: 5px; }
+  .viewer-fan .fan-list, .viewer-fan .fan-list.left { align-items: stretch; gap: 0;
+    padding: 4px; background: var(--raised); border-radius: 12px;
+    box-shadow: 0 2px 10px var(--shadow-1); pointer-events: auto; }
+  .viewer-fan .fan-item, .viewer-fan .fan-list.left .fan-item { flex-direction: row-reverse;
+    justify-content: flex-end; gap: 8px; padding: 0 8px; border-radius: 8px; animation: none; }
+  .viewer-fan .fan-item:focus-visible, .viewer-fan .fan-item:hover { background: var(--surface); }
+  .viewer-fan .fan-label { padding: 0; color: var(--fg); background: none; box-shadow: none; }
+  .viewer-fan .fan-sq { width: 28px; height: 28px; background: none; box-shadow: none; }
+}
+
+/* On a phone, the strip already shows Need you and the menu highlights
+   Commenting. Desktop uses a dot and a separate mode check. */
+.comment-check { display: none; }
+@media (min-width: 900px) {
+  #comments-toggle.needs-attention::after, .fan-item.needs-attention .fan-sq::after {
+    content: ""; position: absolute; width: 9px; height: 9px; border-radius: 50%;
+    background: var(--dot); border: 2px solid var(--raised); top: -3px; right: -3px;
+  }
+  .fan-item[data-act="comment"] .fan-sq { position: relative; }
+  .comment-check { position: absolute; bottom: -4px; right: -4px;
+    border-radius: 50%; background: var(--raised); color: var(--blue); font-size: 12px;
+    font-weight: 800; line-height: 16px; width: 16px; text-align: center; }
+  body.commenting .comment-check { display: block; }
+}

@@ -55,7 +55,7 @@ test('draft failure preserves input and re-enables retry; name refusal retains c
   const part = (a, b) => source.slice(source.indexOf(a), source.indexOf(b, source.indexOf(a)));
   const field = { value: 'unsaved words' }, notices = [], removed = [];
   const c = { S: { compose: { anchor: null }, drafts: [] }, fields: { compose: field },
-    sendButton: { disabled: false }, name: 'Old', nameInput: { value: '' }, NAME_KEY: 'name',
+    sendButton: { disabled: false }, savingDraft: false, name: 'Old', nameInput: { value: '' }, NAME_KEY: 'name',
     localStorage: { removeItem: x => removed.push(x) }, toast: x => notices.push(x),
     errorCopy: (e, action) => action + ' Try again.',
     call: async () => { throw { status: 400, nameRejected: true }; } };
