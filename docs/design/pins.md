@@ -33,7 +33,8 @@ file's own canvas. Letters, marks and the ring are white.
 | Mark | When |
 | --- | --- |
 | first letter of the author's name, uppercase | a person's comment; "?" when the name is empty or starts with "*" |
-| star (4-point, [icons/star.svg](icons/star.svg)) | the agent has it, or this person accepted it in the current review |
+| star (4-point, [icons/star.svg](icons/star.svg)) | an agent proposal, the agent has it, or this person accepted it in the current review |
+| star with a check inside the pin | a published approval of an agent proposal |
 | ≡ (text) | list pin of a person's comment about the whole file |
 
 ## Badge
@@ -65,9 +66,11 @@ colleague's reply not yet seen in this browser.
 | my accept draft | own | solid | star | — |
 | any, with an unseen colleague reply | unchanged | unchanged | unchanged | dot |
 
-An agent-authored proposal always has a star, including during and after
-approval. With no agent work state, an unapproved proposal is outlined in
-the agent's colour and an approved one has the filled blue pin.
+An agent-authored proposal always has a star. After approval is published,
+a check appears alongside the star in both the list and the content pin. This
+also distinguishes two filled pins without relying on colour. A local approval
+draft does not show the check. Approval does not suppress the unread dot or
+change the comment's work state.
 
 ## Sizes
 

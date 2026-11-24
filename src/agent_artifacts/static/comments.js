@@ -311,7 +311,7 @@
     const tone = { own: " own", other: "", agent: " ag" }[it.tone] || "";
     const pin = el("span", `pin mini${tone}${it.fill !== "solid" ? ` ${it.fill}` : ""}`);
     // About the whole file: ≡ for a person's; the agent's keeps its star.
-    pin.append(it.anchor || it.label === pinMarks.STAR ? inside(it.label) : document.createTextNode("≡"));
+    pin.append(it.anchor || pinMarks.isStar(it.label) ? inside(it.label) : document.createTextNode("≡"));
     if (it.badge) pin.append(badgeEl(it.badge));
     pin.setAttribute("aria-hidden", "true");
     return pin;

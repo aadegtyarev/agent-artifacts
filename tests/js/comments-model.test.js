@@ -274,10 +274,13 @@ test("agent proposals keep their star and group through approval and replies", (
   ]) {
     const c = comment(1, { author: "agent", by_agent: true, ...extra });
     const m = model([c]);
-    assert.equal(itemFor(m, 1).label, "*");
+    assert.equal(itemFor(m, 1).label, c.approved_by ? "*✓" : "*");
+    if (c.agent === "asked") assert.equal(itemFor(m, 1).badge, "new");
     assert.equal(m.groups().find(g => g.items.length).id, group);
     assert.equal(m.acceptable().length, acceptable ? 1 : 0);
     if (acceptable) assert.equal(m.acceptable()[0][1], "approve");
   }
+  assert.equal(model([comment(1, { by_agent: true })], [draft("approve", 1)]).itemOf("c1").label, "*");
+  assert.equal(model([comment(1, { approved_by: "Pat", agent: "done" })]).itemOf("c1").label, "*");
   assert.notEqual(model([comment(1, { author: "agent" })]).itemOf("c1").label, "*");
 });
