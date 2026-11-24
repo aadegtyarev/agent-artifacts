@@ -1,10 +1,10 @@
 # Components
 
-The parts of the viewer (`/a/{id}`), the project page (`/p/{id}`) and the
-invite pages, with their states. Sizes and colours refer to
-[tokens.md](tokens.md); the words are in [tone-of-voice.md](tone-of-voice.md).
-Behaviour (what a tap does, what the server keeps) is in
-[contract.md](../contract.md#the-viewer-page) and is not repeated here.
+The shipped viewer (`/a/{id}`), project page (`/p/{id}`), and invitation,
+key and message pages. Sizes are before [Text scaling](tokens.md#text-size).
+Use [tokens.md](tokens.md) for shared dimensions and colours,
+[tone-of-voice.md](tone-of-voice.md) for copy, and
+[contract.md](../contract.md#the-viewer-page) for service behaviour.
 
 ## Header
 
@@ -22,7 +22,7 @@ icon 19. Pressed: scale 0.95. Focus: 2 px `--blue` outline.
 
 | Button | States |
 | --- | --- |
-| Bubble | off: `--surface`, title "Comment"; on: white icon on `--blue-fill`, inset shadow, `aria-pressed="true"`, title "Stop commenting"; dot when Need you is nonempty |
+| Bubble | Off: `--surface`, title "Comment". On: white icon on `--blue-fill`, inset shadow, `aria-pressed="true"`, title "Stop commenting". See [desktop review attention](#desktop-review-attention). |
 | Full screen | one state |
 | ≡ | menu open: `--line` fill, `aria-expanded="true"` |
 
@@ -38,7 +38,10 @@ A column of items fanned out from its button over a scrim
 icon 20), 44 high, 10 apart. Opened from the header it drops down, right
 aligned; from the floating ≡ it opens up or down, whichever has room, on the
 side the button keeps to (label on the right when the button is on the left).
-It scrolls only when it does not fit. At 900 px and wider the viewer uses the same items in a compact raised vertical list, clamped to the viewport; the project page keeps the fan.
+It scrolls only when it does not fit. At ≥900 px the viewer uses a compact
+raised list: 44 px rows with an icon on the left, a 28 px icon box, a plain label,
+and `--surface` on hover or keyboard focus. The list is kept within the viewport;
+the project page keeps the fan.
 
 | Order | Item | Viewer | Viewer, full screen | Project page | Project, full screen |
 | --- | --- | --- | --- | --- | --- |
@@ -49,14 +52,18 @@ It scrolls only when it does not fit. At 900 px and wider the viewer uses the sa
 | 5 | Share… | yes | yes | yes | yes |
 | 6 | Settings… | yes | yes | yes | yes |
 
-Comment in comment mode: label "Commenting", square white on `--blue-fill` with an
-inset shadow and `aria-checked="true"`. A desktop notification dot on the
-Comment button, closed floating ≡ or exposed full-screen Comment item indicates
-the same Need you group as the strip, not all pins or drafts. On desktop, Comment off folds the
-panel; Comment on opens it. A pin opens its thread while placement is off; its
-fold button or Escape closes the panel without changing mode or losing input.
-On narrow screens the existing sheet heights remain in use; only the strip is
-hidden in full screen with Comment off.
+Comment mode uses the label "Commenting", a white icon on `--blue-fill`, an
+inset shadow and `aria-checked="true"`. Turning it on opens the desktop panel;
+turning it off folds the panel. With placement off, selecting a pin opens the
+thread. The fold button or Escape can close that thread panel without losing
+input. On narrow screens, the strip is hidden in full screen with Comment off.
+
+### Desktop review attention
+
+At ≥900 px, the dot indicates a nonempty **Need you** group, not all pins or
+this person's drafts. It is on the header's Comment button in the normal
+viewer. In full screen it moves from the closed floating ≡ to the Comment row
+when the menu opens. The dot and the blue comment-mode mark are separate.
 
 ## Floating ≡ (full screen)
 
@@ -85,10 +92,11 @@ menu or leaving full screen close it too.
 
 ## Dialogs
 
-A centred card (`.modal`): max 380 wide, padding 16, radius 16, `--raised`,
-shadow `0 12px 40px` `--shadow-1`, over `--scrim`.
-Title 16/600. Buttons at the bottom right, gap 8; the closing one is primary.
-Inputs and plain buttons use `--field`. A tap on the scrim or Escape closes.
+A card (`.modal`): max 380 wide, padding 16, radius 16, `--raised`, shadow
+`0 12px 40px` `--shadow-1`, over `--scrim`. Share and Settings are centred;
+Name opens near the top to leave room for the keyboard. Title 16/600. Buttons
+at the bottom right, gap 8. Fields and plain buttons use `--field`. A tap on the
+scrim or Escape closes. Use the [shared action and field styles](#buttons).
 
 | Dialog | Content | Buttons |
 | --- | --- | --- |
@@ -100,16 +108,16 @@ Settings controls apply at once; there is no Cancel.
 
 ## Toast
 
-One per page, white text on `--ink`, 13 px, radius 20, min h 36,
-max w 440, blur 20, two lines at most. On a phone 8 px above the sheet (under
-the header when the sheet is full); on a computer at the bottom left of the
-content, beside the panel.
+One per page, white text on `--ink`, radius 20, min h 36, max w 440, blur 20.
+Ordinary messages use at most two lines; errors are not clamped. In the narrow
+viewer it sits 8 px above the sheet, or under the header when the sheet is full.
+In the desktop viewer it sits at the bottom left, beside the panel.
 
 | State | Look | Time |
 | --- | --- | --- |
 | info | as above | 2.6 s (2.5 s from the menu and the project page) |
 | with Undo | **Undo** at the right, 600, `--blue` lightened (60% with white) | at least 5 s |
-| error | `--red-fill` background, Undo white | 8 s (10 s from the menu and the project page; 6 s for a refused name) |
+| error | `--red-fill` background; Undo is white when offered | Most feedback errors: 8 s; menu and project: 10 s; refused name: 6 s |
 
 Inside an open dialog the dialog's own status line speaks instead, because the
 toast sits under the scrim.
@@ -123,7 +131,7 @@ colours, radius 14, centred just under the header; `role="status"`.
 
 | Kind | Class | Look | Used for |
 | --- | --- | --- | --- |
-| Primary | `.btn.pri` | `--pri` with `--on-color`, 600; dark in light theme, blue in dark | Finish review, Accept, Save, Done, Copy link, Show |
+| Primary | `.btn.pri` | Plain button size; `--pri` with `--on-color`, weight 600 | Finish review, Accept, Save, Done, Copy link |
 | Plain | `.btn` | `--surface` (in dialogs `--field`), 14, h 32, radius 10, padding 0 12 | Back, Edit, Delete, Cancel, Reject, No name, + About the whole file |
 | Big | `.btn.big` | h 36, padding 0 16 | Finish review in the Finish review view |
 | Pill | `.all-pill` | `--blue` on `--tint`, 13/600, h 28, radius 14 | "✓ All · N" in the Need you title |
@@ -132,9 +140,19 @@ colours, radius 14, centred just under the header; `role="status"`.
 | Send | `.send` | 30 circle, white arrow on `--blue-fill`; disabled `--line` | inside comment and reply fields |
 | Site button | `button` | `--surface` with a `--line` border, radius 6 | invite and key pages |
 
-States: pressed `scale(0.97)` and `--surface-2`; disabled opacity 0.35; focus
-2 px `--blue` outline, 2 px offset. One primary per view; Accept
-and Finish review can share a sheet (one in the body, one in the footer).
+See [control sizes](tokens.md#control-sizes) for visible and touch dimensions.
+Plain sheet and dialog controls have a 2 px `--blue` keyboard focus outline;
+pressed buttons shrink to 0.97. A disabled sheet button uses opacity 0.35.
+Use the existing variant before adding another. Accept and Finish review can
+share a sheet because one acts on the current comment and the other publishes
+the review.
+
+### Text fields
+
+Reuse the plain dialog field for a short value: minimum height 40, padding
+10 × 12, radius 10, 16/20 text, no border. It uses `--field`, changing to `--bg`
+with a hairline and 4 px `--tint-2` ring on focus. Comment and reply fields use
+the [compose variants](#compose), not a separate input family.
 
 ## Segmented control
 
@@ -169,16 +187,17 @@ list at middle height; drag: the sheet follows the finger.
 
 | Part | Shown when |
 | --- | --- |
-| **N need you** (bold) | the agent answered, a colleague’s comment awaits approval, or a colleague replied unread on this person’s comment, with no draft on it |
+| **N need you** (bold) | the [Need you group](#groups-in-the-list) is nonempty |
 | N drafts | the person has drafts; **Finish review** (primary) at the right |
 | N in progress | sent to the agent and not answered, and no drafts |
 | N comments | none of the above |
-| Tap a spot to comment. | comment mode on, a spot can be tapped: alone without comments, otherwise beside a plain comment count |
+| Tap a spot to comment. / Click a spot to comment. | comment mode on, a spot can be selected: alone without comments, otherwise beside a plain comment count |
 | No comments yet | no comments otherwise |
 | › | at the end on a phone when there is no Finish review |
 
-A draft once added folds the sheet to the strip, whose line pulses once
-(opacity 0.4, 0.6 s).
+The server's comment count stays visible while comments load. Adding a draft
+returns to the list and pulses the strip once. On a narrow screen it also folds
+the sheet to the strip.
 
 ### Groups in the list
 
@@ -187,7 +206,7 @@ Empty groups are left out. ‹ › in the item view follow this order.
 
 | Group | Holds | Start | Title extra |
 | --- | --- | --- | --- |
-| Need you | the agent's finished work, then its questions, then colleagues' comments awaiting approval and unread colleague replies on own comments | open | "✓ All · N" pill when two or more can be accepted |
+| Need you | finished work first, then the agent's questions, then other items that need a decision or attention: proposals, colleagues’ comments awaiting approval and unread replies on own comments | open | "✓ All · N" pill when two or more can be accepted |
 | Your drafts | new comments, and comments with this person's decision or reply draft | open | — |
 | In progress | `waiting`, `working` | open | — |
 | Discussion | published, nothing waits for this person | folded | title is a button with › / ⌄, min h 44 |
@@ -238,11 +257,17 @@ send work to the agent unless the same review sends a reply.
 
 ### Compose
 
-Caption 13 muted, then a pill field (radius 20, 16 px, grows to 120 px) with
-the round send arrow inside at the bottom right; the arrow is disabled while
-the field is empty. With a hardware keyboard Enter sends and Shift+Enter
-breaks the line; on a touch screen Enter breaks the line and the arrow sends.
-At 900 px and wider, compose and reply use a smaller-radius field with a separate adjacent arrow, grow within the available panel space and scroll internally at their limit. Enter and Shift+Enter insert a newline; Ctrl/Meta+Enter saves the draft or reply. The item navigation and reply stay visible while the thread scrolls. 2000 characters at most. Focus: `--bg` with a hairline and a 4 px `--tint-2` ring.
+On a narrow screen the 16 px field is a pill (radius 20) with the round send
+arrow inside. In the open sheet it grows up to 15% of the available viewport
+height, but is at least 40 px before Text scaling. With a hardware keyboard,
+Enter sends and Shift+Enter inserts a newline; on touch, Enter inserts a newline
+and the arrow sends.
+
+At ≥900 px the field uses radius 10 and a separate adjacent arrow. The field
+scrolls internally at its height limit. Enter and Shift+Enter insert a newline;
+Ctrl/Meta+Enter saves the draft or reply. The item header and reply stay visible
+while the thread scrolls. Text limit: 2,000 characters. An empty field disables
+send. Focus matches the [plain field](#text-fields).
 
 ### Finish review
 
@@ -270,7 +295,7 @@ The project's files in its order, on `--bg`, zoomed by text size.
 | Row (`.pf`) | link, min h 60, padding 8 6, gap 14, radius 10, hairline below; pressed or hovered `--surface`; focus 2 px inset outline |
 | Type square | 40 × 40, radius 9, `--surface`, muted 11/700 type ("HTML", "MD", "PNG"…) |
 | Title | 16, one line, ellipsis |
-| Detail | 14 muted, "12.3 KB · 2 h ago" |
+| Detail | muted metadata (12 px, 15 px at ≤640 px), "12.3 KB · 2 h ago" |
 | Dot, right | 12 × 12 circle in `--dot`, no number, no icon, vertically centred, 4 from the right edge of the row's padding; title and `aria-label` "Needs you" (`role="img"`, so the link reads "… Needs you"). Shown when a comment on the file waits for this person's decision or they have drafts there, their review not finished; nothing else on the row |
 | Current file (in the drop-down) | `--surface` (`aria-current="page"`) |
 
@@ -291,19 +316,23 @@ scrolled into view. At the bottom right "Project page ›" (16/600, `--blue`,
 
 | Where | Text |
 | --- | --- |
-| Strip, no comments | "No comments yet", or in comment mode "Tap a spot to comment." |
+| Strip, no comments | "No comments yet", or in comment mode the pointer-specific tap/click hint |
 | List, no comments | title "No comments yet"; "Tap a spot to comment." for touch or "Click a spot to comment." for mouse (comment mode), "Nobody has commented yet." (comment mode, no spot possible), "Turn on the speech bubble to comment." (mode off) |
 | Finish review, no drafts | "No drafts: you can publish a general comment only." |
 | Project, no files | "No files yet" |
 | Archive in the viewer | "Archive: download it to see the contents." |
 | No storage | "This browser keeps nothing: your drafts last only while this page is open." |
 
-The sheet is hidden while comment mode is off and the file has no comments and
-no drafts.
+The narrow sheet stays out of the way when there is nothing to show and
+comment mode is off. The desktop panel can also be folded independently of the
+contents, while pins stay visible.
 
 ## Invite, key and message pages
 
-A single column, max 560, padding 24 16; title 20; plain site buttons
-(padding 8 16, 15 px; at ≤640 px at least 44 × 44). Theme applies;
-On phones Text scales invite and key pages, but not message pages; desktop
-invite and key metrics remain unchanged.
+A single column (`.join`), max 560, padding 24 × 16, title 20. Use the plain
+site button: 15 px text, padding 8 × 16, radius 6, `--surface` with a `--line`
+border. The desktop height fits the label and padding. At ≤640 px the button
+is at least 44 × 44 before [Text scaling](tokens.md#text-size). The read-only
+key field uses the same surface, border and radius, with monospaced text.
+Theme follows the shared palette. Text scales `.join` only at ≤640 px; it does
+not scale message pages.

@@ -8,9 +8,10 @@ the content and the small pins in the comments list; the state comes from
 A pin has a tone (whose), a fill (how far along), a mark inside and at most
 one badge.
 
-Pins take the light values of the tokens in both themes ([tokens.md](tokens.md#where-tokens-do-not-reach)):
-they are drawn inside a page's sandbox, where no tokens reach, and sit on the
-file's own canvas. Letters, marks and the ring are white.
+Pins use the light values of the [palette](tokens.md#where-tokens-do-not-reach)
+in both themes. The same renderer works in the viewer and the shared page's
+isolated pin layer. On a filled pin the mark and ring are white; on an outline
+pin the mark uses the tone.
 
 ## Tone: whose
 
@@ -18,7 +19,7 @@ file's own canvas. Letters, marks and the ring are white.
 | --- | --- | --- | --- |
 | own | `.own` | `#0a64d8` blue (`--blue-fill`) | written from this browser, approved, or decided by this person in the current review |
 | colleague | (none) | `#e8890c` orange (`--orange`) | someone else's |
-| agent | `.ag` | `#5e5ce6` purple (`--purple-fill`) | sent to the agent and not decided yet |
+| agent | `.ag` | `#5e5ce6` purple (`--purple-fill`) | work with an agent state, or an agent proposal not yet approved; a local decision or reply can change the tone |
 
 ## Fill: how far along
 
@@ -34,7 +35,7 @@ file's own canvas. Letters, marks and the ring are white.
 | --- | --- |
 | first letter of the author's name, uppercase | a person's comment; "?" when the name is empty or starts with "*" |
 | star (4-point, [icons/star.svg](icons/star.svg)) | an agent proposal, the agent has it, or this person accepted it in the current review |
-| star with a check inside the pin | a published approval of an agent proposal |
+| [star with a check](icons/approved-proposal.svg) | a published approval of an agent proposal |
 | ≡ (text) | list pin of a person's comment about the whole file |
 
 ## Badge
@@ -45,8 +46,10 @@ at the top right (11 px with a 1.5 px white ring in the list); the ring is
 white everywhere, in both themes. In a page the viewer sends the colour's
 name with the pins (`dot`); pins.js takes only `red`, `green` or `yellow`,
 anything else is red, and sets it on its layer even when red, so the page's
-own `--dot` never reaches the badge. It shows for the agent's question (`asked`) and for a
-colleague's reply not yet seen in this browser.
+own `--dot` never reaches the badge. It shows for an agent question (`asked`)
+unless another state takes precedence, or for an unread reply from a colleague.
+The [desktop review dot](components.md#desktop-review-attention) is a separate
+indicator on the viewer's controls, not a pin badge.
 
 ## States
 
@@ -55,7 +58,10 @@ colleague's reply not yet seen in this browser.
 | spot of the draft being written | own | line | empty | — |
 | new draft | own | line | letter | — |
 | a colleague's, awaiting approval | colleague | line | letter | — |
-| mine or approved, no agent state | own | solid | letter | — |
+| person's comment: mine or approved, no agent state | own | solid | letter | — |
+| agent proposal awaiting approval, no agent state | agent | line | star | — |
+| approval draft on an agent proposal, no agent state | own | solid | star | — |
+| approved agent proposal, no agent state | own | solid | star with check | — |
 | `waiting`, `working` | agent | line | star | — |
 | `asked` | agent | line | star | dot |
 | `done`, `wrote` | agent | solid | star | — |
@@ -107,10 +113,9 @@ the agent's".
 | Agent avatar in a comment's chat | 28 px circle in `--purple-fill`, white star 19 |
 | Person avatar | 28 px circle, initial 13/600 white; `--orange`, `--blue-fill` for this browser; "↩" on an unsent reply |
 | Project page | no pins: a row has only the dot, see [components.md](components.md#project-page) |
-| Floating ≡ in comment mode | 12 px `--blue` bubble at the top right |
+| Floating ≡ in comment mode | 12 px `--blue` bubble at the top right; not the review dot |
 
-A peer reply badge uses the count of replies from other non-agent keys, not
-display names. Opening the thread acknowledges that count in this browser; a
-pin tap that only highlights its list row does not.
-
-A reply arriving while its thread is open stays new until the thread is explicitly opened again; polling, redraw and scrolling do not acknowledge it.
+A peer reply badge counts replies from other non-agent keys, not display
+names. Opening the thread acknowledges the replies already present. A pin tap
+that only highlights a row does not. A reply arriving later remains unread
+until the thread is opened again.

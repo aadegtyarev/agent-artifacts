@@ -2,7 +2,8 @@
 
 Colours, type, text size, spacing, radii and control sizes of the service's own
 interface, as `src/agent_artifacts/static/site.css` and `pin.css` define them.
-Pins have their own page: [pins.md](pins.md).
+Pins have their own page: [pins.md](pins.md). Measurements are base CSS
+pixels, before [Text scaling](#text-size), unless stated otherwise.
 
 ## Colour
 
@@ -64,9 +65,9 @@ nearest L that keeps it.
 
 ### The dot
 
-One notification dot, one colour everywhere it shows: the badge of a pin (on
-the content, in a page, in the list, in the Settings preview) and the dot of
-a project row. Settings → Dot picks it; theme.js sets `data-dot` on `<html>`
+One notification colour for pin badges, project rows and the [desktop comment
+controls](components.md#desktop-review-attention). The meaning depends on the
+component. Settings → Dot picks the colour; `theme.js` sets `data-dot` on `<html>`
 before the page is drawn (`localStorage` `agent-artifacts:dot`: `green` or
 `yellow`; no value, or anything else such as an earlier `blue`, is Red).
 No blue: blue is you, and a blue dot would vanish on the own pin.
@@ -176,9 +177,9 @@ Sizes in use, in CSS px before [text size](#text-size):
 | 12 | 400 | header meta line; project title in the header (600) |
 | 11 | 700 | file type square on the project page |
 
-At ≤640 px, readable interface text is at least 15 px before Text scaling,
-except the Accept all link and pill, which retain their 13 px typography and geometry;
-pin and avatar marks and file type glyphs keep their geometry.
+At ≤640 px, secondary text and control labels normally use at least 15 px
+before Text scaling. The Accept all link and pill keep 13 px. Pin, avatar and
+file type marks keep their own sizes; they are not control labels.
 
 ## Text size
 
@@ -218,7 +219,7 @@ of an SVG, a PDF or an archive, keep the browser's zoom.
 | Message actions | gap 8, top 8; under a thread indented 37 |
 | Section title | margin 12 0 2 (project page 16 0 4) |
 | Menu | 10 between items, 10 between label and square, 8 from its button |
-| Dialog | padding 16; buttons gap 8, top 12; scrim padding 60 12 12 |
+| Dialog | padding 16; buttons gap 8, top 12; scrim padding 60 12 12 for Name, 12 all around for Share and Settings |
 | Toast | 8 above the sheet; on a computer 12 from the edges, 20 from the bottom |
 | Project page | padding 6 14 24; row padding 8 6, gap 14 |
 
@@ -238,26 +239,32 @@ of an SVG, a PDF or an archive, keep the browser's zoom.
 
 ## Control sizes
 
-Visual size and touch target. The touch target comes from an invisible
-`::before` that overhangs the control.
+**Visual** is the size of the drawn control. **Touch** is the target before
+Text scaling; compact controls often extend it with an invisible `::before`.
+A target can be clipped at the edge of its container. Use the matching
+component instead of setting every visible control to 44 px.
 
 | Control | Visual | Touch |
 | --- | --- | --- |
 | Header square button | 32 × 32 | 44 × 44 |
-| Sheet button `.btn` | h 32 (36 for `.big`) | h 46 |
+| Sheet or dialog `.btn` | h 32 | h 46 |
+| Sheet `.btn.big` | h 36 | h 50 |
+| Share: Copy link / Download file | h 40 / h 44 | h 54 / h 58 |
+| Invite and key page button | auto on desktop; min 44 × 44 at ≤640 px | the button |
 | ‹ › and fold | 32 × 32 | 44 × 44 |
 | Send arrow | 30 × 30 | 44 × 44 |
 | Accept all pill | h 28 | h 44 |
 | Segmented option (Finish review) | h 36 | h 44 |
 | Settings segment | h 40 | h 44 |
-| Menu item | h 44, square 40 × 40 | h 44 |
+| Menu item | h 44; icon box 40 × 40 in the fan, 28 × 28 in the desktop viewer | h 44 |
 | Floating ≡ | 44 × 44 | 44 × 44 |
 | List row | min h 44 | the row |
 | Folded group title | min h 44 | the row |
 | Project row | min h 60 | the row |
 | Toast Undo | h 30 | h 44 |
 | Banner Show | h 32 | h 44 |
-| Text field | min h 40 (grows to 120 in a pill) | the field |
+| Dialog text field / sheet textarea | min h 40, padding 10 12; a pill changes the horizontal padding | the field |
+| General comment | min h 60 | the field |
 | Pin on the content | 30 (Large 38) | +10 on each side |
 
 ## Layout
