@@ -134,7 +134,7 @@ test('pending server count retains draft and Finish review in the strip', () => 
     const context = { S: { loaded: false, comments: [], view: 'list' }, sheet: { dataset: { count: String(count) } },
       stripText, strip, desk: { matches: false }, reviewCount: () => review,
       groupCounts: () => ({}), button: text => text, el: (_, __, text) => text,
-      toggle: { classList: { toggle() {} }, setAttribute() {} }, document: { querySelector: () => null } };
+      toggle: { classList: { toggle() {} }, setAttribute() {} }, $: () => null, document: { querySelector: () => null } };
     vm.runInNewContext(part('  function renderStrip()', '  const views ='), context);
     context.renderStrip();
     assert.match(stripText.textContent, new RegExp(`${count} comment${count === 1 ? '' : 's'}`));
@@ -143,24 +143,25 @@ test('pending server count retains draft and Finish review in the strip', () => 
 });
 
 test('comment attention follows Need you rather than draft or total counts', () => {
-  for (const need of [0, 2]) {
+  for (const desktop of [false, true]) for (const need of [0, 2]) {
     const makeControl = () => ({ active: false, attributes: {}, classList: { toggle() {} } });
-    const toggle = makeControl(), menu = makeControl();
-    for (const control of [toggle, menu]) {
+    const toggle = makeControl(), menu = makeControl(), floating = makeControl();
+    for (const control of [toggle, menu, floating]) {
       control.classList.toggle = (_, value) => { control.active = value; };
       control.setAttribute = (key, value) => { control.attributes[key] = value; };
       control.removeAttribute = key => { delete control.attributes[key]; };
     }
     const stripText = { replaceChildren() {} };
     const context = { S: { loaded: true, comments: [], view: 'list' }, sheet: { dataset: {} },
-      stripText, strip: { children: [stripText], append() {} }, desk: { matches: true },
+      stripText, strip: { children: [stripText], append() {} }, desk: { matches: desktop },
       reviewCount: () => 3, groupCounts: () => ({ need, agent: 5 }), button: text => text,
-      el: (_, __, text) => text, toggle, document: { querySelector: () => menu } };
+      el: (_, __, text) => text, toggle, $: id => id === 'float-button' ? floating : null, document: { querySelector: () => menu } };
     vm.runInNewContext(part('  function renderStrip()', '  const views ='), context);
     context.renderStrip();
-    for (const control of [toggle, menu]) {
-      assert.equal(control.active, need > 0);
-      assert.equal(control === toggle ? control.attributes['aria-label'].includes('needs your attention') : control.attributes['aria-describedby'] === 'comment-attention', need > 0);
+    const active = desktop && need > 0;
+    for (const control of [toggle, menu, floating]) {
+      assert.equal(control.active, active);
+      assert.equal(control === toggle ? control.attributes['aria-label'].includes('needs your attention') : control.attributes['aria-describedby'] === 'comment-attention', active);
     }
   }
 });

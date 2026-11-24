@@ -50,9 +50,9 @@ It scrolls only when it does not fit. At 900 px and wider the viewer uses the sa
 | 6 | Settings… | yes | yes | yes | yes |
 
 Comment in comment mode: label "Commenting", square white on `--blue-fill` with an
-inset shadow, a visible check and `aria-checked="true"`. A notification dot on
-the Comment button and full-screen Comment item indicates the same Need you
-group as the strip, not all pins or drafts. On desktop, Comment off folds the
+inset shadow and `aria-checked="true"`. A desktop notification dot on the
+Comment button, closed floating ≡ or exposed full-screen Comment item indicates
+the same Need you group as the strip, not all pins or drafts. On desktop, Comment off folds the
 panel; Comment on opens it. A pin opens its thread while placement is off; its
 fold button or Escape closes the panel without changing mode or losing input.
 On narrow screens the existing sheet heights remain in use; only the strip is
@@ -67,7 +67,8 @@ Dragged anywhere, it snaps to the nearer side edge, 8 px in.
 | --- | --- |
 | rest | translucent, ≡, and two thin corners of Exit full screen (top left, bottom right; the `corners` icon): a double tap leaves full screen |
 | dragged | scale 1.08, `--ink` |
-| menu open | `--ink`, ✕ icon, no corners |
+| menu open | `--ink`, ✕ icon, no corners; the desktop Need you dot is on the Comment item instead |
+| desktop, menu closed with Need you | `--dot` at the top right, outside the mode bubble |
 | comment mode | 2 px `--blue` ring inside the edge, 12 px `--blue` bubble top right |
 | touch long press 500 ms | toggles comment mode, toast "Commenting on" / "Commenting off" |
 | double tap or double click (second press within 300 ms and 20 px of the first) | closes the menu the first tap opened and leaves full screen |
