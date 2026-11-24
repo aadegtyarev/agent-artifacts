@@ -17,8 +17,30 @@ SCRIPT = SCRIPTS / "watch.py"
 TARGET = "a" * 22
 
 sys.path.insert(0, str(SCRIPTS))
+import watch  # noqa: E402
 from watch_lock import acquire, release  # noqa: E402
 from watch_state import WatchState  # noqa: E402
+
+
+@pytest.mark.parametrize(("options", "interval"), [((), 5), (("--every", "12"), 12)])
+def test_collector_interval(tmp_path, monkeypatch, options, interval):
+    origin = "https://example.test"
+
+    class QuietService:
+        url = origin
+
+        def send(self, method, path):
+            assert (method, path) == ("GET", f"/api/v1/artifacts/{TARGET}/comments")
+            return "[]"
+
+    def after_poll(seconds):
+        assert seconds == interval
+        raise KeyboardInterrupt
+
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    monkeypatch.setattr(watch, "client", lambda _: QuietService())
+    monkeypatch.setattr(watch.time, "sleep", after_poll)
+    assert watch.main(["collect", f"{origin}/a/{TARGET}", *options]) == 130
 
 
 def test_collector_reader_crash_retry_and_scope_lock(tmp_path):

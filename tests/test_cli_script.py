@@ -273,7 +273,7 @@ def test_wait_waiting_gone_and_timeout(server):
     assert json.loads(cli(home, "wait", art_id, env=env)[1]) == {"event": "gone"}
 
 
-@pytest.mark.parametrize(("options", "interval"), [((), 10), (("--every", "7"), 7)])
+@pytest.mark.parametrize(("options", "interval"), [((), 5), (("--every", "7"), 7)])
 def test_wait_accepted_counts_only_new(server, monkeypatch, options, interval):
     url, store, home = server
     key = store.add_agent("alice")
@@ -373,7 +373,7 @@ def test_subscription_reports_new_file_events_without_restarting(server, monkeyp
 
     mod = _load_cli(monkeypatch, url, key, sleep)
     assert mod.run(["wait", art["url"]]) is None
-    assert sleeps == [10] * 4
+    assert sleeps == [5] * 4
     rows = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
     assert rows == [
         {"event": "waiting", "comments": [{"n": 3}]},

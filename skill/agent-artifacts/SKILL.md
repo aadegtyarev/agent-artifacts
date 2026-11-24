@@ -66,8 +66,9 @@ its files. Use the conversation that should receive the result.
 
 For a link with a durable subscription, use `artifacts watch status <url>`
 to verify the last successful poll and receiver. The collector can run in a
-separate terminal on Windows, Linux and macOS; a service is optional. Don't
-start a second watcher. On a `waiting` event, read the listed files. If this
+separate terminal on Windows, Linux and macOS; a service is optional. It
+polls every 5 seconds by default; `watch collect <url> --every SECONDS` chooses
+a longer interval. Don't start a second watcher. On a `waiting` event, read the listed files. If this
 session is starting work, use `take <id>` so the person sees it was taken.
 If the work belongs to another session, hand it off instead. Acknowledge the
 notification with `watch ack <url> <event-id>` only after accepting responsibility
@@ -95,7 +96,8 @@ For a link without a supervised subscription:
   into the conversation. If it only reports completion, use `wait --once`
   and start it again after each result. If neither works, say so.
 
-`wait` polls every 10 seconds and emits one JSON line per event. On `waiting`,
+`wait` polls every 5 seconds by default (`--every SECONDS` can increase it)
+and emits one JSON line per event. On `waiting`,
 fetch the comments and handle them as described below; for a project, read
 the listed files. `accepted` needs no action. Don't restart a live
 subscription on either event. Stop on `gone` or when the review is complete.
