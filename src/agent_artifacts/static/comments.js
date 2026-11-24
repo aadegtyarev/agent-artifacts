@@ -503,11 +503,11 @@
     const attention = desk.matches && n.need > 0;
     toggle.classList.toggle("needs-attention", attention);
     toggle.setAttribute("aria-label", attention ? "Comment mode, needs your attention" : "Comment mode");
-    const menuComment = document.querySelector('[data-act="comment"]');
-    if (menuComment) {
-      menuComment.classList.toggle("needs-attention", attention);
-      if (attention) menuComment.setAttribute("aria-describedby", "comment-attention");
-      else menuComment.removeAttribute("aria-describedby");
+    for (const control of [$("float-button"), document.querySelector('[data-act="comment"]')]) {
+      if (!control) continue;
+      control.classList.toggle("needs-attention", attention);
+      if (attention) control.setAttribute("aria-describedby", "comment-attention");
+      else control.removeAttribute("aria-describedby");
     }
     const more = desk.matches || review ? "" : " ›";
     const many = (k) => `${k} ${k === 1 ? "comment" : "comments"}`;
