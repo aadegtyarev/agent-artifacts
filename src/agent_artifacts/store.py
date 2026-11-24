@@ -13,9 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
 import secrets
-import shutil
 import sqlite3
 import time
 from collections.abc import Callable, Iterator
@@ -25,6 +23,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 from . import kinds
+from .storage import DiskStorage
 
 log = logging.getLogger(__name__)
 
@@ -539,10 +538,11 @@ class Store:
         user_quota_bytes: int | None = None,
         ttl_seconds: int = 48 * 3600,
         clock: Callable[[], float] = time.time,
+        storage: DiskStorage | None = None,
     ) -> None:
         self.clock = clock  # the time now, in seconds; tests move it
-        self.files = data_dir / "files"
-        self.files.mkdir(parents=True, exist_ok=True)
+        self.storage = storage if storage is not None else DiskStorage(data_dir)
+        data_dir.mkdir(parents=True, exist_ok=True)
         # Starting values; an admin can override them, see set_settings().
         self.defaults = {
             "user_quota_bytes": user_quota_bytes,
@@ -655,7 +655,7 @@ class Store:
             ids = [r[0] for r in db.execute("SELECT id FROM artifacts WHERE owner = ?", (name,))]
             gone = db.execute("DELETE FROM agents WHERE name = ?", (name,)).rowcount > 0
         for artifact_id in ids:
-            self._unlink(artifact_id)
+            self.storage.delete(artifact_id)
         return gone
 
     def agent_for_key(self, key: str) -> str | None:
@@ -777,12 +777,9 @@ class Store:
         its title; the same for ``project`` and ``section``, which cannot be
         cleared here. Raises what _placed raises, storing nothing."""
         new_id = artifact_id or secrets.token_urlsafe(16)
-        tmp = self.files / f".{new_id}.{secrets.token_hex(4)}.tmp"
-        with open(tmp, "wb") as out:
-            shutil.copyfileobj(src, out)
-        now = self.clock()
         live = "(expires_at IS NULL OR expires_at > ?)"
-        try:
+        with self.storage.stage(new_id, src) as staged:
+            now = self.clock()
             with self._conn(write=True) as db:
                 # Hold the write lock from the size checks to the insert, so two
                 # uploads cannot both fit into the same free space.
@@ -835,9 +832,7 @@ class Store:
                     )
                 db.execute("UPDATE agents SET last_upload_at = ? WHERE name = ?", (now, owner))
                 artifact = self._artifact(db, new_id)
-                os.replace(tmp, self.files / new_id)
-        finally:
-            tmp.unlink(missing_ok=True)
+                self.storage.publish(staged, new_id)
         return artifact
 
     def edit(self, artifact_id: str, *, owner: str, changes: dict) -> Artifact | None:
@@ -1065,7 +1060,7 @@ class Store:
             gone = db.execute(sql, (project_id, owner)).rowcount > 0
         if gone:
             for artifact_id in ids:
-                self._unlink(artifact_id)
+                self.storage.delete(artifact_id)
         return gone
 
     # Comments and drafts; they go with their artifact (ON DELETE CASCADE).
@@ -1494,7 +1489,7 @@ class Store:
             sql = "DELETE FROM artifacts WHERE id = ? AND owner = ?"
             gone = db.execute(sql, (artifact_id, owner)).rowcount > 0
         if gone:
-            self._unlink(artifact_id)
+            self.storage.delete(artifact_id)
         return gone
 
     def purge_expired(self) -> int:
@@ -1530,36 +1525,22 @@ class Store:
         for _, owner, name in lost:
             log.warning("removed %s's %r: its file is missing", owner, name)
         for artifact_id in ids:
-            self._unlink(artifact_id)
+            self.storage.delete(artifact_id)
         # Leftovers of a crash mid-upload: temp files, and files whose row
         # never got committed.
         with self._conn() as db:
             known = {r[0] for r in db.execute("SELECT id FROM artifacts")}
         stale = time.time() - 3600  # file times are the real clock's
-        for f in self.files.iterdir():
-            try:
-                old = f.stat().st_mtime < stale
-            except FileNotFoundError:  # an upload finished or a delete ran meanwhile
-                continue
-            if f.name not in known and old:
-                f.unlink(missing_ok=True)
+        self.storage.cleanup(known, stale)
         return len(ids) + len(lost)
 
     def _lost(self, artifact_id: str) -> bool:
         """Only a file that is not there: a permission or I/O error keeps the row."""
         try:
-            os.stat(self.path(artifact_id))
-        except FileNotFoundError:
-            return True
+            return not self.storage.exists(artifact_id)
         except OSError:
             return False
-        return False
 
-    def path(self, artifact_id: str) -> Path:
-        return self.files / artifact_id
-
-    def _unlink(self, artifact_id: str) -> None:
-        self.path(artifact_id).unlink(missing_ok=True)
 
 
 def _load(db: sqlite3.Connection, where: str, args: dict) -> list[Comment]:

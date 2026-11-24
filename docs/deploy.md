@@ -25,10 +25,13 @@ git clone https://github.com/aadegtyarev/agent-artifacts.git
 cd agent-artifacts
 echo "AA_PUBLIC_URL=https://art.example.org" >> .env
 docker compose up -d --build
-curl -s http://127.0.0.1:8090/health      # prints: ok
+docker compose exec -T app python -m agent_artifacts.healthcheck  # prints: ok
 ```
 
-The container listens on `127.0.0.1:8090`. It runs as an unprivileged user,
+The health check connects to loopback inside the container and sends the authority
+from `AA_PUBLIC_URL` as its Host header, including any non-default port. This is
+also the probe used by Docker. The container listens on `127.0.0.1:8090` on the
+host. It runs as an unprivileged user,
 with a read-only root filesystem and no capabilities. Files, the database and
 uploads in progress live in the `data` volume.
 
@@ -77,10 +80,63 @@ as the comment in the file says.
 4. Add `AA_RAW_URL=https://raw.art.example.org` to `.env` and run
    `docker compose up -d`.
 
+### Workspace browser sign-in (optional)
+
+By default people open links anonymously. To require a verified account in one
+Google Workspace hosted domain, configure all three settings together:
+`AA_GOOGLE_CLIENT_ID`, `AA_GOOGLE_CLIENT_SECRET`, and
+`AA_GOOGLE_HOSTED_DOMAIN` (the exact lowercase hosted domain, not an email
+suffix). Supply the secret through your deployment's secret management, not a
+repository file. Both `AA_PUBLIC_URL` and optional `AA_RAW_URL` must be HTTPS
+origins. Register `https://art.example.org/auth/callback` as an authorized
+redirect URI in the Google OAuth web client; if the raw origin is enabled, also
+register `https://raw.art.example.org/auth/callback`. Substitute your actual
+configured origins. The container needs outbound HTTPS to Google.
+
+In Compose, pass the three values into the container using an override or your
+secret-management integration; merely adding them to `.env` does not pass them
+through automatically. In Workspace mode configure the proxy to preserve the
+configured Host authority (including a non-default port), reject other hosts,
+and keep request URLs and OAuth callback query strings out of logs.
+
+If using the optional raw-origin nginx block, it must also proxy exactly the
+three authentication endpoints below to the app, in addition to the existing
+raw path. Add these locations inside that raw server block:
+
+```nginx
+location = /auth/login {
+    limit_except GET { deny all; }
+    proxy_set_header Host $host;
+    proxy_pass http://127.0.0.1:8090;
+}
+location = /auth/callback {
+    limit_except GET { deny all; }
+    proxy_set_header Host $host;
+    proxy_pass http://127.0.0.1:8090;
+}
+location = /auth/logout {
+    limit_except POST { deny all; }
+    proxy_set_header Host $host;
+    proxy_pass http://127.0.0.1:8090;
+}
+```
+
+These examples assume the default HTTPS port; for a non-default port preserve
+that port in the Host header. The two origins use separate host-only sessions,
+so opening a raw file separately may require another sign-in. Sign-out on one
+host does not sign out the other. Workspace membership does not grant admin
+rights: agent and admin APIs still require their existing bearer keys, and
+invite claims require a Workspace browser session. External reviewers are not
+supported. The Workspace session database is `workspace-auth.sqlite` on the
+data volume; losing it signs users out. Changing the configured hosted domain or
+OAuth client invalidates existing sessions and pending logins for the new policy.
+
 ## 3. Block the container's outbound connections
 
-Optional, recommended. The app never connects anywhere, so a firewall rule can
-make sure a compromised container cannot either. Give the compose network a
+Optional, recommended in public mode. In public mode the app never connects
+anywhere, so a firewall rule can make sure a compromised container cannot either.
+Workspace sign-in needs outbound HTTPS to Google's token and certificate endpoints;
+do not use the blanket outbound block below for a Workspace deployment. Give the compose network a
 fixed bridge name in `compose.override.yaml` next to `compose.yaml`:
 
 ```yaml
@@ -194,7 +250,7 @@ folder`. Put `files/` back.
 ```bash
 git pull
 docker compose up -d --build
-curl -s http://127.0.0.1:8090/health
+docker compose exec -T app python -m agent_artifacts.healthcheck
 ```
 
 Back up the database first: a new release migrates it on its first start

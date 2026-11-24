@@ -14,6 +14,7 @@ import functools
 import hashlib
 import json
 import re
+import unicodedata
 from collections.abc import Awaitable, Callable
 
 from starlette.concurrency import run_in_threadpool
@@ -98,7 +99,7 @@ def comment_routes(store: Store) -> list[Route]:
                 raise _no_artifact()
             return _answer([_draft_json(d) for d in found])
         data = await json_body(request, {"author", "kind", "of", "text", "anchor"})
-        author = _draft_author(data)
+        author = _workspace_author(request) or _draft_author(data)
         kind = data.get("kind", "comment")
         if kind not in DRAFT_KINDS:
             raise ApiError(400, "bad_request", f"kind must be one of {', '.join(DRAFT_KINDS)}")
@@ -135,7 +136,7 @@ def comment_routes(store: Store) -> list[Route]:
         # does it, and either all are made or none.
         artifact_id, key = request.path_params["id"], _author_key(request)
         data = await json_body(request, {"author", "decisions"}, {"decisions"})
-        author = _draft_author(data)
+        author = _workspace_author(request) or _draft_author(data)
         decisions = _list(data["decisions"], "decisions")
         made = []
         for d in decisions:
@@ -187,8 +188,10 @@ def comment_routes(store: Store) -> list[Route]:
 
     async def review(request: Request) -> Response:
         artifact_id, key = request.path_params["id"], _author_key(request)
-        data = await json_body(request, {"author", "text", "agent"}, {"author"})
-        author = _author(data)
+        identity_author = _workspace_author(request)
+        required = set() if identity_author else {"author"}
+        data = await json_body(request, {"author", "text", "agent"}, required)
+        author = identity_author or _author(data)
         text = _text(data["text"]) if "text" in data else None
         for_agent = _bool(data.get("agent", False), "agent")
         try:
@@ -397,6 +400,10 @@ def _answer(content: object, status: int = 200) -> JSONResponse:
 def _author_key(request: Request, *, required: bool = True) -> str | None:
     """The SHA-256 of the X-Author-Key header; 400 if required and missing
     or malformed, else None."""
+    identity = getattr(request.state, "workspace_identity", None)
+    if identity is not None:
+        subject = b"workspace-google-sub\0" + identity.subject.encode("utf-8")
+        return hashlib.sha256(subject).hexdigest()
     key = request.headers.get("x-author-key", "")
     if _AUTHOR_KEY_RE.fullmatch(key):
         return hashlib.sha256(key.encode()).hexdigest()
@@ -460,6 +467,21 @@ def one_line(v: object, field: str, at_most: int) -> str:
     if isinstance(v, str) and _LINE_BREAKS.search(v):
         raise ApiError(400, "bad_request", f"{field} must be one line")
     return _string(v, field, at_most)
+
+
+def _workspace_author(request: Request) -> str | None:
+    identity = getattr(request.state, "workspace_identity", None)
+    if identity is None:
+        return None
+    for candidate in (identity.name, identity.email, "Workspace user"):
+        name = unicodedata.normalize("NFC", candidate)
+        name = _REFUSED.sub(" ", name)
+        name = _LINE_BREAKS.sub(" ", name)
+        name = re.sub(r"[\u200e\u200f\u061c\u200b-\u200d\u2060\ufeff]", "", name)
+        name = " ".join(name.split())[:MAX_AUTHOR].strip()
+        if name:
+            return name
+    return "Workspace user"
 
 
 def _draft_author(data: dict) -> str:

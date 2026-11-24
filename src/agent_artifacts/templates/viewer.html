@@ -76,7 +76,7 @@
 {#- Comments: a bottom sheet on a phone (strip, content, full),
     a panel at the right on a computer. The script fills it; names and
     texts go in as text only. #}
-<aside id="comments" class="sheet" data-pos="strip" aria-label="Comments" data-count="{{ a.open_comments }}" data-artifact="{{ a.id }}" data-kind="{{ kind.name }}" data-pin="{{ kind.pin or '' }}" data-url="{{ url }}"{% if not a.open_comments %} hidden{% endif %}>
+<aside id="comments" class="sheet" data-pos="strip" aria-label="Comments" data-count="{{ a.open_comments }}" data-artifact="{{ a.id }}" data-kind="{{ kind.name }}" data-pin="{{ kind.pin or '' }}" data-url="{{ url }}"{% if workspace_author %} data-workspace-author="{{ workspace_author }}" data-workspace-marker="{{ workspace_marker }}"{% endif %}{% if not a.open_comments %} hidden{% endif %}>
   <div id="sheet-grip" class="grip" role="button" tabindex="0" aria-label="Change sheet height"></div>
   <div id="sheet-strip" class="strip"><span id="strip-text" class="strip-text">{% if a.open_comments %}{{ a.open_comments }} comment{% if a.open_comments != 1 %}s{% endif %}{% endif %}</span></div>
   <div id="sheet-body" class="sbody"></div>
@@ -84,13 +84,13 @@
 </aside>
 </div>
 {#- Asked once, on the first nonempty review submission. #}
-<div id="name-dialog" class="scrim" hidden>
+{% if not workspace_author %}<div id="name-dialog" class="scrim" hidden>
   <form id="name-form" class="modal" role="dialog" aria-modal="true" aria-labelledby="name-title" novalidate>
     <h2 id="name-title">What should we call you?</h2>
     <input id="name-input" type="text" maxlength="64" autocomplete="name" placeholder="Name" aria-labelledby="name-title">
     <div class="buttons"><button type="button" id="name-skip" class="btn">No name</button><button type="submit" class="btn pri">Done</button></div>
   </form>
-</div>
-{{ menu.dialogs(url, "/a/" ~ a.id ~ "/download") }}
+</div>{% endif %}
+{{ menu.dialogs(url, "/a/" ~ a.id ~ "/download", workspace_author) }}
 <div id="toast" class="toast" role="status" aria-live="polite"><div class="toast-box"><span id="toast-text"></span><button type="button" id="toast-undo" class="btn" hidden>Undo</button></div></div>
 {% endblock %}
