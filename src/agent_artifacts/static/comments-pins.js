@@ -21,7 +21,7 @@ const commentsPins = ({
   pinType, image, imageBox, imageLink, pinLayer, frame,
   pins, picking, onPin, onSpot, onEscape, onBlank, onChange, hold,
 }) => {
-  const { badge: badgeEl, inside, STAR } = pinMarks;
+  const { badge: badgeEl, inside, nameOf } = pinMarks;
   const TONES = { own: " own", other: "", agent: " ag" };
   // The script in a page's frame: `ready` once it said so, `off` once it
   // clearly is not coming; `missing`: keys of pins it did not find.
@@ -66,8 +66,7 @@ const commentsPins = ({
       // Percentages of the layer, which is the size of the image.
       pin.style.left = `${p.anchor.x * 100}%`;
       pin.style.top = `${p.anchor.y * 100}%`;
-      pin.setAttribute("aria-label", p.key === "new" ? "The spot of the new draft"
-        : p.label === STAR ? "The agent's comment" : `Comment by ${p.label}`);
+      pin.setAttribute("aria-label", nameOf(p.label));
       return pin;
     });
     pinLayer.replaceChildren(...drawn);

@@ -72,7 +72,7 @@ const commentsModel = (state, { pending = new Set(), seen = {}, now = Date.now }
       if (c.agent === "asked") badge = "new";
     } else if (pend) fill = "line";
     if (c.by_agent) {
-      label = STAR;
+      label = c.approved_by ? "*✓" : STAR;
       if (!dec && !c.approved_by) tone = "agent";
     }
     if (unseen(c)) badge = "new";

@@ -6,11 +6,14 @@
 const pinMarks = (() => {
   const MARK = {
     star: "M6 .6C6.45 4 8 5.55 11.4 6 8 6.45 6.45 8 6 11.4 5.55 8 4 6.45.6 6 4 5.55 5.55 4 6 .6z",
+    check: "M4.7 8.8 5.9 7.6 7.8 9.5 10.8 6.5 12 7.7 7.8 11.9Z",
   };
   // The only badge: "new", a plain dot.
   const BADGES = { new: "" };
   // The label that stands for the agent's star inside a pin.
   const STAR = "*";
+  const APPROVED = "*✓";
+  const isStar = (label) => label === STAR || label === APPROVED;
   // The dot's colour by its name in Settings' Dot; any other name is red.
   // The values of tokens.md (--dot-red, --dot-green, --dot-yellow):
   // inside a page no tokens reach.
@@ -23,11 +26,17 @@ const pinMarks = (() => {
     const svg = document.createElementNS(ns, "svg");
     svg.setAttribute("viewBox", "0 0 12 12");
     svg.setAttribute("aria-hidden", "true");
-    const path = document.createElementNS(ns, "path");
-    path.setAttribute("d", MARK[name]);
-    // Filled in the colour of the text around it.
-    path.style.cssText = "fill:currentColor;stroke:none";
-    svg.append(path);
+    const path = (d) => {
+      const node = document.createElementNS(ns, "path");
+      node.setAttribute("d", MARK[d]);
+      node.style.cssText = "fill:currentColor;stroke:none";
+      return node;
+    };
+    if (name === "approved") {
+      const star = path("star");
+      star.setAttribute("transform", "translate(0 .1) scale(.68)");
+      svg.append(star, path("check"));
+    } else svg.append(path(name));
     return svg;
   }
 
@@ -38,8 +47,12 @@ const pinMarks = (() => {
     return span;
   }
 
-  // A pin's inside: its letter, or the star.
-  const inside = (label) => (label === STAR ? mark("star") : document.createTextNode(label));
+  // Keep approval inside the mark so the unread dot can still use the corner.
+  const inside = (label) => isStar(label)
+    ? mark(label === APPROVED ? "approved" : "star") : document.createTextNode(label);
 
-  return { BADGES, STAR, mark, badge, inside, dotColour };
+  const nameOf = (label) => label === APPROVED ? "Approved agent proposal"
+    : isStar(label) ? "The agent's comment" : label ? `Comment by ${label}` : "The spot of the new draft";
+
+  return { BADGES, isStar, mark, badge, inside, nameOf, dotColour };
 })();
