@@ -4,7 +4,11 @@ const assert = require('node:assert/strict');
 const base=process.env.BASE_URL;
 async function menu(p,name) { await p.locator('#float-button').press('Enter'); await p.locator(`[data-act="${name}"]`).press('Enter'); }
 async function full(p) { await p.locator('#full-button').click(); const tip=p.locator('#float-tip'); if(await tip.isVisible()) await tip.getByRole('button',{name:'OK'}).click(); }
-async function pin(p) { const box=await p.locator('main iframe').boundingBox(); await p.mouse.click(box.x+box.width/2+155,box.y+150); }
+async function pin(p) {
+ const box=await p.frameLocator('main iframe').locator('#preview').boundingBox();
+ // This fixture's anchor is (.75, .3) on #preview; hit the pin itself.
+ await p.mouse.click(box.x+box.width*.75+15,box.y+box.height*.3-15);
+}
 async function makePage(browser,id=process.env.ARTIFACT_ID) {
  const p=await browser.newPage({viewport:{width:1366,height:800}});
  await p.addInitScript(()=>{if(window===window.top){localStorage.setItem('agent-artifacts:author-key','aaaaaaaaaaaaaaaaaaaaaa');localStorage.setItem('agent-artifacts:name','Alex');}});

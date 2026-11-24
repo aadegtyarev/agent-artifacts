@@ -890,7 +890,7 @@
   function tapPin(key) {
     const folded = desktopPanel() && document.body.classList.contains("comments-folded");
     if (key !== "new" && itemOf(key) && protectRetainedCompose()) return;
-    if (folded) foldPanel(false);
+    if (folded) setPanel(true);
     if (key === "new") {
       if (S.compose) {
         if (S.view !== "compose" || S.pos === "strip") go("compose", "m");
@@ -969,7 +969,7 @@
   // stays protected after leaving full screen or changing the viewport.
   function protectRetainedCompose() {
     if (!S.compose?.retained || !fields.compose.value) return false;
-    if (desktopPanel() && document.body.classList.contains("comments-folded")) foldPanel(false);
+    if (desk.matches && !panelOpen()) setPanel(true);
     if (S.view !== "compose" || (!desk.matches && S.pos === "strip")) go("compose", "m");
     fields.compose.focus({ preventScroll: true });
     toast("Save or discard the draft first");
@@ -1680,21 +1680,11 @@
   });
 
   // --- The sheet: tap and drag -------------------------------------------------------
-  // A tap on the strip opens the list. The drag itself is in sheet-drag.js;
-  // here is what a height or a tap means for what the sheet shows.
-  function openList() {
-    go("list", "m");
-  }
-
+  // The drag itself is in sheet-drag.js; resize without changing the active view.
   const drag = sheetDrag({
     sheet, strip, grip, desk,
     pos: () => S.pos,
-    // From the strip the sheet opens on the list as it is pulled.
-    open() {
-      S.pos = "m";
-      S.view = "list";
-      render();
-    },
+    open() { setPanel(true); },
     // A drag changes the height only: what the sheet shows stays.
     snap(best) {
       if (best === "strip") setPanel(false);
@@ -1728,8 +1718,7 @@
   });
   strip.addEventListener("click", (e) => {
     if (e.target.closest("button") || drag.dragged()) return;
-    if (desk.matches) go("list");
-    else openList();
+    setPanel(true);
     if (e.detail === 0) {
       const target = desk.matches ? body.querySelector(".handle") : grip;
       if (target) { if (desk.matches) target.tabIndex = -1; target.focus({ preventScroll: true }); }
