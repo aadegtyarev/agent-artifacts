@@ -3,8 +3,8 @@
 // Project files in full screen). A row's dot, "needs you", comes from
 // /p/{id}/summary, asked with this browser's author key (the one comments.js
 // keeps): a comment waiting for this person's decision, or their own review
-// not finished yet (live drafts). Until it answers, and if it fails, the
-// rows show none.
+// not finished yet (live drafts). Only refresh a visible list; keep its
+// last result when a refresh fails.
 (() => {
   const list = document.getElementById("files");
   if (!list) return;
@@ -28,11 +28,13 @@
   }
 
   // --- The dots ---------------------------------------------------------------
-  let key = null;
-  try {
-    key = localStorage.getItem("agent-artifacts:author-key");
-  } catch { /* no storage: asked as a stranger */ }
-  const headers = /^[A-Za-z0-9_-]{22}$/.test(key || "") ? { "X-Author-Key": key } : {};
+  function authorHeaders() {
+    try {
+      const key = localStorage.getItem("agent-artifacts:author-key");
+      if (/^[A-Za-z0-9_-]{22}$/.test(key || "")) return { "X-Author-Key": key };
+    } catch { /* no storage: asked as a stranger */ }
+    return {};
+  }
 
   const some = (n) => Number.isInteger(n) && n > 0;
   function dot() {
@@ -44,23 +46,41 @@
     return el;
   }
 
-  // On the project page at once; under a file's header when first opened,
-  // so a file's page does not ask for them on every load.
-  let asked = false;
-  function loadDots() {
-    if (asked) return;
-    asked = true;
-    fetch(`/p/${list.dataset.project}/summary`, { headers, cache: "no-store" })
-    .then((r) => (r.ok ? r.json() : null))
-    .then((summary) => {
-      if (!summary || typeof summary !== "object") return;
+  const visible = () => !document.hidden && (!drop || !drop.hidden);
+  let dotsTimer = null;
+  let loadingDots = false;
+  let refreshDots = false;
+
+  async function loadDots() {
+    clearTimeout(dotsTimer);
+    if (!visible()) return;
+    if (loadingDots) {
+      refreshDots = true;
+      return;
+    }
+    loadingDots = true;
+    try {
+      const r = await fetch(`/p/${list.dataset.project}/summary`, {
+        headers: authorHeaders(), cache: "no-store",
+      });
+      const summary = r.ok ? await r.json() : null;
+      if (!visible() || !summary || typeof summary !== "object" || Array.isArray(summary)) return;
       for (const row of list.querySelectorAll(".pf[data-id]")) {
         const s = summary[row.dataset.id];
-        if (s && (some(s.waiting_you) || some(s.drafts))) row.append(dot());
+        const shown = row.querySelector(".dot");
+        if (s && (some(s.waiting_you) || some(s.drafts))) {
+          if (!shown) row.append(dot());
+        } else if (shown) shown.remove();
       }
-    })
-    .catch(() => { /* no dots */ });
+    } catch { /* keep the last summary and retry */ }
+    finally {
+      loadingDots = false;
+      if (visible()) dotsTimer = setTimeout(loadDots, refreshDots ? 0 : 8000);
+      refreshDots = false;
+    }
   }
+  document.addEventListener("visibilitychange", loadDots);
+  window.addEventListener("pageshow", (e) => { if (e.persisted) loadDots(); });
 
   // --- The list under a file's header -----------------------------------------
   // Opened by the project's title in the header, or in full screen by the
@@ -83,9 +103,9 @@
 
   function open(from) {
     opener = from;
-    loadDots();
     place();
     drop.hidden = false;
+    loadDots();
     button.setAttribute("aria-expanded", "true");
     const current = list.querySelector('[aria-current="page"]');
     if (current) current.scrollIntoView({ block: "nearest" });
@@ -97,6 +117,7 @@
     // A tap on the scrim takes the focus off the list: it goes back too.
     const inside = drop.contains(document.activeElement) || document.activeElement === document.body;
     drop.hidden = true;
+    clearTimeout(dotsTimer);
     button.setAttribute("aria-expanded", "false");
     if (restore && inside && opener && opener.getClientRects().length) {
       opener.focus({ preventScroll: true });
