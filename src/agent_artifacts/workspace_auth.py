@@ -16,6 +16,7 @@ import sqlite3
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import LiteralString
 from urllib.parse import urlsplit
@@ -40,6 +41,7 @@ SESSION_TTL = 8 * 60 * 60
 _RANDOM = re.compile(r"[A-Za-z0-9_-]{43}")
 _MAIN_RETURN = re.compile(rf"(?:/|/a/{ID_RE}(?:/(?:raw|download))?|/p/{ID_RE}|/join/{TOKEN_RE})")
 _RAW_RETURN = re.compile(rf"/a/{ID_RE}/raw")
+ACCOUNT_ENTRY_PATHS = frozenset(("/account", "/account/claim"))
 _AUTH_HEADERS = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
 
 
@@ -84,6 +86,20 @@ def _cookie(response: Response, name: str, value: str, ttl: int) -> None:
 
 def _clear_cookie(response: Response, name: str) -> None:
     response.delete_cookie(name, path="/", secure=True, httponly=True, samesite="lax")
+
+
+def _device_id(token_hash: str) -> str:
+    # A list item identifier, not the session token, its stored hash, or the
+    # page marker. Only list or remove devices of a verified subject.
+    digest = hashlib.sha256(b"workspace-device-v1\0" + token_hash.encode("ascii")).digest()
+    return base64.urlsafe_b64encode(digest[:16]).rstrip(b"=").decode("ascii")
+
+
+@dataclass(frozen=True)
+class WorkspaceDevice:
+    id: str
+    current: bool
+    created_at: float
 
 
 class WorkspaceAuthStore:
@@ -167,44 +183,72 @@ class WorkspaceAuthStore:
             db.execute("DELETE FROM sessions WHERE token_hash = ? AND origin = ?",
                        (self._hash(token), origin))
 
+    def devices(self, token: str, origin: str, subject: str) -> list[WorkspaceDevice]:
+        current = self._hash(token)
+        with self._db() as db:
+            rows = db.execute("SELECT token_hash, expires FROM sessions WHERE origin = ? AND subject = ? "
+                              "AND expires > ? ORDER BY expires, token_hash",
+                              (origin, subject, self.clock())).fetchall()
+        if not any(key == current for key, _ in rows):
+            return []
+        return [WorkspaceDevice(_device_id(key), key == current, expires - SESSION_TTL) for key, expires in rows]
+
+    def revoke_device(self, token: str, origin: str, subject: str, device_id: str) -> bool | None:
+        current = self._hash(token)
+        now = self.clock()
+        with self._db() as db:
+            rows = db.execute("SELECT token_hash FROM sessions WHERE origin = ? AND subject = ? AND expires > ?",
+                              (origin, subject, now)).fetchall()
+            target = next((key for (key,) in rows if _device_id(key) == device_id), None)
+            if target is None:
+                return None
+            removed = db.execute(
+                "DELETE FROM sessions WHERE token_hash = ? AND origin = ? AND subject = ? AND expires > ? "
+                "AND EXISTS (SELECT 1 FROM sessions WHERE token_hash = ? AND origin = ? AND subject = ? AND expires > ?)",
+                (target, origin, subject, now, current, origin, subject, now),
+            ).rowcount
+        return (target == current) if removed else None
+
 
 class WorkspaceAuth:
     """Endpoints and session lookup for exactly one configured origin."""
 
     def __init__(self, store: WorkspaceAuthStore, oidc: GoogleOIDC, *, origin: str,
-                 raw: bool = False) -> None:
+                 raw: bool = False, accounts: bool = False) -> None:
         self.store = store
         self.oidc = oidc
         self.origin = origin
         self.raw = raw
+        self.accounts = accounts and not raw
         self.callback_uri = origin + CALLBACK_PATH
         if self.callback_uri not in oidc.callbacks:
             raise ValueError("origin is not a configured OIDC callback origin")
 
     def _destination(self, value: str) -> bool:
         pattern = _RAW_RETURN if self.raw else _MAIN_RETURN
-        return bool(len(value) <= 256 and pattern.fullmatch(value))
+        return bool(len(value) <= 256 and (pattern.fullmatch(value)
+                    or (self.accounts and value in ACCOUNT_ENTRY_PATHS)))
 
     async def sign_in(self, request: Request) -> Response:
         path = request.url.path
         values = request.query_params.getlist("return") if path == "/auth/login" else []
         if len(values) > 1 or (values and not self._destination(values[0])):
             return self._sign_in_failed(400)
-        destination = values[0] if values else "/"
+        destination = values[0] if values else "/account" if self.accounts else "/"
         identity = await self.identity(request)
         if identity and destination != "/":
             return RedirectResponse(destination, status_code=303, headers=_AUTH_HEADERS)
         if identity:
-            return pages.sign_in_page(self.store.hosted_domain, destination,
-                                      email=identity.email, title="Signed in")
+            return pages.sign_in_page(self.store.hosted_domain, destination, email=identity.email,
+                                      title="Signed in", account_mode=self.accounts)
         title = "Signed out" if path == "/auth/signed-out" else "Sign in"
-        return pages.sign_in_page(self.store.hosted_domain, destination, title=title)
+        return pages.sign_in_page(self.store.hosted_domain, destination, title=title, account_mode=self.accounts)
 
     def _sign_in_failed(self, status: int, destination: str = "/") -> Response:
         if self.raw:
             return _response(status, "Login failed" if status == 401 else "Invalid login")
-        return pages.sign_in_page(self.store.hosted_domain, destination,
-                                  title="Could not sign in", status=status)
+        return pages.sign_in_page(self.store.hosted_domain, destination, title="Could not sign in",
+                                  status=status, account_mode=self.accounts)
 
     async def login(self, request: Request) -> Response:
         values = request.query_params.getlist("return")
@@ -275,6 +319,17 @@ class WorkspaceAuth:
     def page_marker(self, request: Request) -> str:
         # Only call after identity() has verified this request's session cookie.
         return _page_marker(request.cookies[SESSION_COOKIE])
+
+    def devices(self, request: Request, subject: str) -> list[WorkspaceDevice]:
+        token = request.cookies.get(SESSION_COOKIE)
+        return self.store.devices(token, self.origin, subject) if _valid_token(token) else []
+
+    def revoke_device(self, request: Request, subject: str, device_id: str) -> bool | None:
+        token = request.cookies.get(SESSION_COOKIE)
+        return self.store.revoke_device(token, self.origin, subject, device_id) if _valid_token(token) else None
+
+    def clear_session(self, response: Response) -> None:
+        _clear_cookie(response, SESSION_COOKIE)
 
     async def logout(self, request: Request) -> Response:
         origins = request.headers.getlist("origin")

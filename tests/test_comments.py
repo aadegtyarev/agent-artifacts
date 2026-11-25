@@ -723,16 +723,30 @@ def dump(path):
 
 
 def v1_store(tmp_path, monkeypatch):
-    """A store whose database stops at version 1; undo the patch to go on.
-    It has the later artifact columns too, so today's code can fill them;
-    drop the title before going on (version 4 drops the rest)."""
+    """Seed the frozen schema directly; current queries need newer tables."""
     monkeypatch.setattr(store_module, "_MIGRATIONS", store_module._MIGRATIONS[:1])
     store = Store(tmp_path, max_total_bytes=10**6)
+    store.add_agent("old")
+    now = time.time()
     with store._conn() as db:
-        db.execute("ALTER TABLE comments ADD COLUMN by_agent INTEGER NOT NULL DEFAULT 0")
-        for column in ("title TEXT", "project TEXT", "section TEXT", "added_at REAL"):
-            db.execute(f"ALTER TABLE artifacts ADD COLUMN {column}")
+        db.execute("INSERT INTO artifacts (id, owner, name, kind, size, created_at, expires_at) "
+                   "VALUES (?, 'old', 'a.txt', 'txt', 1, ?, ?)", (ART, now, now + 48 * 3600))
+    (tmp_path / "files" / ART).write_bytes(b"x")
     return store
+
+
+def v1_comment(db, n, text, *, sent=False, resolved=False, agent=None, approved=None, read_at=None):
+    now = time.time()
+    db.execute("INSERT INTO comments (artifact_id, n, author, text, author_key_hash, created_at, "
+               "for_agent, resolved_at, agent, approved_by, read_at) VALUES (?, ?, 'p', ?, 'h', ?, ?, ?, ?, ?, ?)",
+               (ART, n, text, now, int(sent), now if resolved else None, agent, approved, read_at))
+    db.execute("UPDATE artifacts SET comment_seq = ? WHERE id = ?", (n, ART))
+
+
+def v1_pending_draft(db):
+    now = time.time()
+    db.execute("INSERT INTO drafts (artifact_id, id, author_key_hash, author, text, created_at, updated_at) "
+               "VALUES (?, ?, 'h', 'p', 'pending', ?, ?)", (ART, "d" * 22, now, now))
 
 
 def make_old_database(tmp_path, schema, comment_seq):
@@ -808,18 +822,11 @@ def test_a_database_from_before_chats_keeps_its_drafts(tmp_path, monkeypatch):
     # Made at version 1, then the chat columns and table taken away: the
     # schema of f21924c, with a draft and a comment in it.
     store = v1_store(tmp_path, monkeypatch)
-    store.add_agent("old")
-    art = store.put(io.BytesIO(b"x"), owner="old", name="a.txt", kind="txt", size=1)
-    store.add_draft(art.id, "h", author="p", text="published", anchor=None)
-    store.publish(art.id, "h", author="p", text=None)
-    for text in ("sent", "sent, resolved"):  # 2 and 3, sent to the agent
-        store.add_draft(art.id, "h", author="p", text=text, anchor=None)
-    store.publish(art.id, "h", author="p", text=None, for_agent=True)
-    store.resolve_comment(art.id, 3, True, owner="old")
-    store.add_draft(art.id, "h", author="p", text="pending", anchor=None)
     with store._conn() as db:
-        # What that code marked on a review sent to the agent.
-        db.execute("UPDATE comments SET for_agent = 1 WHERE n IN (2, 3)")
+        v1_comment(db, 1, "published")
+        v1_comment(db, 2, "sent", sent=True)
+        v1_comment(db, 3, "sent, resolved", sent=True, resolved=True)
+        v1_pending_draft(db)
         db.execute("DROP TABLE replies")
         for table, column in (
             ("drafts", "kind"),
@@ -827,8 +834,6 @@ def test_a_database_from_before_chats_keeps_its_drafts(tmp_path, monkeypatch):
             ("comments", "approved_by"),
             ("comments", "rejected_by"),
             ("comments", "agent"),
-            ("comments", "by_agent"),
-            ("artifacts", "title"),
         ):
             db.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
         db.execute("PRAGMA user_version = 0")  # made before numbered versions
@@ -836,25 +841,25 @@ def test_a_database_from_before_chats_keeps_its_drafts(tmp_path, monkeypatch):
     store = Store(tmp_path, max_total_bytes=10**6)
     assert db_schema(tmp_path) == todays_schema(tmp_path)
     # What was sent to the agent and is still open waits for it.
-    _, found = store.comments(art.id, owner="old")
+    _, found = store.comments(ART, owner="old")
     assert [(c.n, c.agent) for c in found] == [
         (1, None),
         (2, "waiting"),
         (3, None),
     ]
     Store(tmp_path, max_total_bytes=10**6)  # only when the column is added
-    store.take(art.id, owner="old")
-    _, found = store.comments(art.id, owner="old")
+    store.take(ART, owner="old")
+    _, found = store.comments(ART, owner="old")
     assert found[1].agent == "working"
     Store(tmp_path, max_total_bytes=10**6)
-    _, found = store.comments(art.id, owner="old")
+    _, found = store.comments(ART, owner="old")
     assert found[1].agent == "working"
-    [d] = store.drafts(art.id, "h")
+    [d] = store.drafts(ART, "h")
     assert (d.kind, d.of_n, d.text) == ("comment", None, "pending")
-    store.add_draft(art.id, "k", author="q", text="", anchor=None, kind="approve", of_n=1)
-    [c] = store.publish(art.id, "k", author="q", text=None)
+    store.add_draft(ART, "k", author="q", text="", anchor=None, kind="approve", of_n=1)
+    [c] = store.publish(ART, "k", author="q", text=None)
     assert (c.n, c.approved_by) == (1, "q")
-    assert [c.n for c in store.publish(art.id, "h", author="p", text=None)] == [4]
+    assert [c.n for c in store.publish(ART, "h", author="p", text=None)] == [4]
 
 
 def test_a_counter_added_behind_existing_comments_starts_after_them(tmp_path):
@@ -890,18 +895,11 @@ def test_todays_database_without_a_version_is_only_stamped(tmp_path, monkeypatch
     # Production before numbered versions: version 1's schema, user_version
     # 0, plus an unused column left by an older one.
     store = v1_store(tmp_path, monkeypatch)
-    store.add_agent("old")
-    art = store.put(io.BytesIO(b"x"), owner="old", name="a.txt", kind="txt", size=1)
-    for text in ("taken", "resolved"):
-        store.add_draft(art.id, "h", author="p", text=text, anchor=None)
-    store.publish(art.id, "h", author="p", text=None, for_agent=True)
-    store.take(art.id, owner="old")
-    store.resolve_comment(art.id, 2, True, owner="old")
-    store.add_draft(art.id, "h", author="p", text="pending", anchor=None)
     with store._conn() as db:
-        db.execute("ALTER TABLE comments DROP COLUMN by_agent")
+        v1_comment(db, 1, "taken", sent=True, agent="working")
+        v1_comment(db, 2, "resolved", sent=True, resolved=True, agent="working")
+        v1_pending_draft(db)
         db.execute("ALTER TABLE comments ADD COLUMN edited_at REAL")
-        db.execute("ALTER TABLE artifacts DROP COLUMN title")
         db.execute("PRAGMA user_version = 0")
     before, _ = dump(tmp_path)
 
@@ -915,22 +913,16 @@ def test_todays_database_without_a_version_is_only_stamped(tmp_path, monkeypatch
 
 def test_version_2_drops_for_agent_and_read_at_and_keeps_the_rest(tmp_path, monkeypatch):
     store = v1_store(tmp_path, monkeypatch)
-    store.add_agent("old")
-    art = store.put(io.BytesIO(b"x"), owner="old", name="a.txt", kind="txt", size=1)
-    for text in ("working", "resolved"):  # 1 and 2
-        store.add_draft(art.id, "h", author="p", text=text, anchor=None)
-    store.publish(art.id, "h", author="p", text=None, for_agent=True)
-    store.take(art.id, owner="old")
-    store.agent_reply(art.id, 2, "done", "done", owner="old")
-    store.resolve_comment(art.id, 2, True, owner="old")
-    store.add_draft(art.id, "h", author="p", text="waiting", anchor=None)  # 3
-    store.publish(art.id, "h", author="p", text=None, for_agent=True)
-    store.add_draft(art.id, "h", author="p", text="only published", anchor=None)  # 4
-    store.publish(art.id, "h", author="p", text=None)
-    store.add_draft(art.id, "k", author="q", text="me too", anchor=None, kind="reply", of_n=4)
-    store.add_draft(art.id, "k", author="q", text="", anchor=None, kind="approve", of_n=4)
-    store.publish(art.id, "k", author="q", text=None)
-    store.add_draft(art.id, "h", author="p", text="pending", anchor=None)
+    with store._conn() as db:
+        v1_comment(db, 1, "working", sent=True, agent="working", read_at=70)
+        v1_comment(db, 2, "resolved", sent=True, resolved=True, agent="done", read_at=70)
+        v1_comment(db, 3, "waiting", sent=True, agent="waiting", read_at=70)
+        v1_comment(db, 4, "only published", approved="q")
+        db.execute("INSERT INTO replies (artifact_id, n, author, text, created_at, by_agent) "
+                   "VALUES (?, 2, 'agent', 'done', ?, 1)", (ART, time.time()))
+        db.execute("INSERT INTO replies (artifact_id, n, author, text, created_at, author_key_hash) "
+                   "VALUES (?, 4, 'q', 'me too', ?, 'k')", (ART, time.time()))
+        v1_pending_draft(db)
     kept = (
         "SELECT artifact_id, n, author, text, anchor, author_key_hash, created_at, "
         "written_at, resolved_at, approved_by, rejected_by, agent FROM comments ORDER BY n",
@@ -940,10 +932,6 @@ def test_version_2_drops_for_agent_and_read_at_and_keeps_the_rest(tmp_path, monk
         "FROM artifacts",
     )
     with store._conn() as db:
-        # What version 1's code wrote: sent to the agent, read by the owner.
-        db.execute("ALTER TABLE comments DROP COLUMN by_agent")
-        db.execute("UPDATE comments SET for_agent = 1, read_at = 70 WHERE n IN (1, 2, 3)")
-        db.execute("ALTER TABLE artifacts DROP COLUMN title")
         before = [db.execute(sql).fetchall() for sql in kept]
     assert [r[-1] for r in before[0]] == ["working", "done", "waiting", None]
     monkeypatch.undo()
@@ -956,8 +944,8 @@ def test_version_2_drops_for_agent_and_read_at_and_keeps_the_rest(tmp_path, monk
         assert [db.execute(sql).fetchall() for sql in kept] == before
         assert db.execute("PRAGMA foreign_key_check").fetchall() == []
     # The work goes on: the waiting one is taken, the decided one stays.
-    assert [c.n for c in store.take(art.id, owner="old")] == [3]
-    _, found = store.comments(art.id, owner="old")
+    assert [c.n for c in store.take(ART, owner="old")] == [3]
+    _, found = store.comments(ART, owner="old")
     assert [(c.n, c.agent, c.approved_by, len(c.replies)) for c in found] == [
         (1, "working", None, 0),
         (2, "done", None, 1),

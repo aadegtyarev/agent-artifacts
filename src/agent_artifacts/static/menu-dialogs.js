@@ -10,7 +10,7 @@
   const $ = (id) => document.getElementById(id);
   const root = document.documentElement;
   const dialogs = { share: $("share-dialog"), settings: $("settings-dialog") };
-  if (!dialogs.share || !dialogs.settings) return;
+  if (!dialogs.share) return;
 
   const read = (key) => {
     try { return localStorage.getItem(key); } catch { return null; }
@@ -50,11 +50,11 @@
 
   document.addEventListener("aa:dialog", (e) => {
     const { name, from } = e.detail || {};
-    if (Object.prototype.hasOwnProperty.call(dialogs, name)) open(name, from);
+    if (Object.prototype.hasOwnProperty.call(dialogs, name) && dialogs[name]) open(name, from);
   });
   // A tap on the scrim closes; a drag that only ends there (selecting the
   // link or the name) does not.
-  for (const scrim of Object.values(dialogs)) {
+  for (const scrim of Object.values(dialogs).filter(Boolean)) {
     let pressed = null;
     scrim.addEventListener("pointerdown", (e) => { pressed = e.target; });
     scrim.addEventListener("click", (e) => {
@@ -63,7 +63,7 @@
       if (onScrim || e.target.closest("[data-close]")) close();
     });
   }
-  $("settings-form").addEventListener("submit", (e) => {
+  $("settings-form")?.addEventListener("submit", (e) => {
     e.preventDefault();
     close();
   });
@@ -96,6 +96,12 @@
   // The toast sits under the dialog's scrim, so the dialog says it itself.
   const link = $("share-link");
   const note = $("share-note");
+  document.addEventListener("click", (e) => {
+    const button = e.target.closest?.("[data-share-link]");
+    if (!button) return;
+    link.value = button.dataset.shareLink;
+    open("share", button);
+  });
   link.addEventListener("focus", () => link.select());
   $("share-copy").addEventListener("click", () => {
     const copied = navigator.clipboard
@@ -113,6 +119,7 @@
   $("share-download")?.addEventListener("click", () => close());
 
   // --- Settings -------------------------------------------------------------------
+  if (!dialogs.settings) return;
   const form = $("settings-form");
   const nameInput = $("settings-name");
   const NAME_KEY = "agent-artifacts:name";

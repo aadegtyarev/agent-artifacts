@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% import "menu.html" as menu %}
+{% macro share(kind, id, title, origin) %}
+  <button type="button" class="btn" data-share-link="{{ origin }}/{{ kind }}/{{ id }}" aria-haspopup="dialog" aria-label="Share {{ title }}">Share…</button>
+{% endmacro %}
+{% macro deletion(kind, id, title) %}
+  <form method="post" action="/account/delete">
+    <input type="hidden" name="kind" value="{{ kind }}">
+    <input type="hidden" name="target" value="{{ id }}">
+    <button type="submit" class="btn" aria-label="Delete {{ title }}">Delete</button>
+  </form>
+{% endmacro %}
+{% macro row_actions(kind, item, origin) %}
+  <div class="account-row-actions">
+    {{ share('p' if kind == 'project' else 'a', item.id, item.title, origin) }}{{ deletion(kind, item.id, item.title) }}
+  </div>
+{% endmacro %}
+{% block body %}
+{% if deletions %}
+<aside id="account-deletions" class="toast toast-top on" aria-label="Recently deleted">
+  <div class="toast-stack">
+    {% for entry, remaining_ms in deletions %}
+    <form id="account-undo-{{ entry.id }}" method="post" action="/account/undo" class="toast-box" data-undo-ms="{{ remaining_ms }}">
+      <span class="toast-text" role="status">Deleted {% if entry.kind == 'project' %}1 project, {% endif %}{{ entry.files }} {{ 'file' if entry.files == 1 else 'files' }} · {{ entry.title }}</span>
+      <input type="hidden" name="deletion" value="{{ entry.id }}">
+      <button type="submit" class="btn toast-undo" aria-label="Undo deletion of {{ entry.title }}">Undo</button>
+    </form>
+    {% endfor %}
+  </div>
+</aside>
+{% endif %}
+<main class="join account-page">
+  <h1 tabindex="-1">Your account</h1>
+  {% if email %}<p>{{ email }}</p>{% endif %}
+  {% if notice %}<p role="status">{{ notice }}</p>{% endif %}
+  <section aria-labelledby="account-projects">
+    <h2 id="account-projects">Projects</h2>
+    {% for project, files in projects %}
+    <div class="account-row"><h3><a href="/p/{{ project.id }}">{{ project.title }}</a></h3>{{ row_actions('project', project, origin) }}</div>
+    {% if files %}<ul>{% for file in files %}<li><div class="account-row"><a href="/a/{{ file.id }}">{{ file.title }}</a>{{ row_actions('file', file, origin) }}</div></li>{% endfor %}</ul>
+    {% else %}<p class="meta">No files yet</p>{% endif %}
+    {% else %}<p class="meta">No projects yet</p>{% endfor %}
+  </section>
+  <section aria-labelledby="account-files">
+    <h2 id="account-files">Files without a project</h2>
+    {% if standalone %}<ul>{% for file in standalone %}<li><div class="account-row"><a href="/a/{{ file.id }}">{{ file.title }}</a>{{ row_actions('file', file, origin) }}</div></li>{% endfor %}</ul>
+    {% else %}<p class="meta">No files yet</p>{% endif %}
+  </section>
+  <section aria-labelledby="account-devices">
+    <h2 id="account-devices">Devices</h2>
+    {% if pairing %}
+    {% if code %}<p>Enter <strong class="account-code">{{ code }}</strong> on the other device. The code works once and expires in 5 minutes.</p>{% endif %}
+    <form method="post" action="/account/devices/connect"><button type="submit" class="btn pri">Connect another device</button></form>
+    {% endif %}
+    <ul class="account-devices">
+      {% for device in devices %}
+      <li>
+        <span>{% if device.current %}This device{% else %}Browser{% endif %}{% if device.since %}<span class="meta"> · Connected {{ device.since }}</span>{% endif %}</span>
+        <form method="post" action="/account/devices/sign-out">
+          <input type="hidden" name="device" value="{{ device.id }}">
+          <button type="submit" class="btn">{% if device.current %}Sign out{% else %}Sign out device{% endif %}</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% if pairing %}
+    <details class="account-details">
+      <summary>Account recovery</summary>
+      <p>Save a recovery code in case you lose access to every device. Creating a code replaces the previous one.</p>
+      <form method="post" action="/account/recovery/key"><button type="submit" class="btn">{% if has_recovery %}Replace recovery code{% else %}Get a recovery code{% endif %}</button></form>
+    </details>
+    {% endif %}
+  </section>
+  <section aria-labelledby="account-agents">
+    <h2 id="account-agents">Agent keys</h2>
+    {% if agents %}<ul class="account-agent-list">
+      {% for agent in agents %}
+      <li>
+        <strong>{{ agent.name }}</strong>
+        {% if agent.admin %}<p class="meta">Managed by an administrator</p>
+        {% elif agent.active %}
+        <form method="post" action="/account/agents/revoke">
+          <input type="hidden" name="name" value="{{ agent.name }}">
+          <button type="submit" class="btn" aria-label="Revoke key for {{ agent.name }}">Revoke key</button>
+        </form>
+        {% else %}
+        <p class="meta">Key revoked</p>
+        <form method="post" action="/account/agents/key">
+          <input type="hidden" name="name" value="{{ agent.name }}">
+          <button type="submit" class="btn" aria-label="Issue new key for {{ agent.name }}">Issue new key</button>
+        </form>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>{% else %}<p class="meta">No linked agents yet</p>{% endif %}
+    <details class="account-details">
+      <summary>Issue an agent key</summary>
+      <form method="post" action="/account/agents/key" class="account-form">
+        <label for="agent-name">Agent name</label>
+        <input id="agent-name" type="text" name="name" maxlength="64" autocomplete="off" spellcheck="false" required>
+        <button type="submit" class="btn pri">Issue key</button>
+      </form>
+    </details>
+    <p><a href="/account/claim">Link an agent</a></p>
+  </section>
+  <footer class="account-footer"><a href="https://github.com/aadegtyarev/agent-artifacts" rel="noreferrer">GitHub</a></footer>
+</main>
+{{ menu.share_dialog('', company_only=email is not none) }}
+{% endblock %}

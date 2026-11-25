@@ -10,7 +10,6 @@ thread pool, since a write may wait for another one's lock.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import secrets
@@ -22,14 +21,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
 
-from . import kinds
+from . import accounts, kinds, trash
+from .credentials import NAME_RE as NAME_RE, hash_key as hash_key, new_key as _new_key
 from .storage import DiskStorage
 
 log = logging.getLogger(__name__)
 
 ID_RE = r"[A-Za-z0-9_-]{22}"
-# Not starting with a dot: "." and ".." would never reach the app in a URL.
-NAME_RE = r"[A-Za-z0-9_-][A-Za-z0-9_.-]{0,63}"
 TOKEN_RE = r"[A-Za-z0-9_-]{43}"  # noqa: S105 (a pattern, not a secret)
 
 # The schema at version 1, the first numbered one. Frozen: databases stamped 1
@@ -250,6 +248,19 @@ def _migrate_to_v6(db: sqlite3.Connection) -> None:
     db.execute("ALTER TABLE comments ADD COLUMN by_agent INTEGER NOT NULL DEFAULT 0")
 
 
+def _migrate_to_v7(db: sqlite3.Connection) -> None:
+    # Add ownership and browser credentials alongside the existing agent rows.
+    # Do not assign any of the existing agents to an account here.
+    for statement in _statements(accounts.SCHEMA):
+        db.execute(statement)
+    db.execute("INSERT INTO account_pair_salt VALUES (1, ?)", (secrets.token_bytes(16),))
+
+
+def _migrate_to_v8(db: sqlite3.Connection) -> None:
+    for statement in _statements(trash.SCHEMA):
+        db.execute(statement)
+
+
 def _repair_comment_seq(db: sqlite3.Connection) -> None:
     """A counter behind its comments (added to a database that had comments,
     or comments written by an older version after a rollback) would hand out
@@ -271,6 +282,8 @@ _MIGRATIONS: tuple[Callable[[sqlite3.Connection], None], ...] = (
     _migrate_to_v4,
     _migrate_to_v5,
     _migrate_to_v6,
+    _migrate_to_v7,
+    _migrate_to_v8,
 )
 
 
@@ -333,7 +346,7 @@ _ARTIFACT_SQL = (
     "COALESCE(a.replaced_at, a.created_at), "
     # Rows written by older code after a rollback have no title.
     "COALESCE(a.title, a.name), a.project, a.section "
-    "FROM artifacts a"
+    "FROM visible_artifacts a"
 )
 
 MAX_COMMENTS = 200
@@ -387,7 +400,7 @@ _COMMENT_SQL = (
     "a.replaced_at IS NOT NULL AND COALESCE(c.written_at, c.created_at) < a.replaced_at, "
     "COALESCE(c.author_key_hash = :key, 0), "
     "c.approved_by, c.rejected_by, c.agent, c.by_agent "
-    "FROM comments c JOIN artifacts a ON a.id = c.artifact_id "
+    "FROM comments c JOIN visible_artifacts a ON a.id = c.artifact_id "
     "WHERE c.artifact_id = :id AND (a.expires_at IS NULL OR a.expires_at > :now)"
 )
 
@@ -415,7 +428,7 @@ _DRAFT_COLUMNS = "id, author, text, anchor, created_at, updated_at, kind, of_n"
 # One author key's live drafts on a live artifact.
 _DRAFT_SQL = (
     "SELECT d.id, d.author, d.text, d.anchor, d.created_at, d.updated_at, d.kind, d.of_n "
-    "FROM drafts d JOIN artifacts a ON a.id = d.artifact_id "
+    "FROM drafts d JOIN visible_artifacts a ON a.id = d.artifact_id "
     "WHERE d.artifact_id = :id AND d.author_key_hash = :key "
     "AND (a.expires_at IS NULL OR a.expires_at > :now) AND d.updated_at > :stale"
 )
@@ -424,7 +437,7 @@ _DRAFT_SQL = (
 # The draft :draft of the author key :key, live on a live artifact.
 _OWN_DRAFT = (
     "artifact_id = :id AND id = :draft AND author_key_hash = :key AND updated_at > :stale "
-    "AND EXISTS (SELECT 1 FROM artifacts WHERE id = :id "
+    "AND EXISTS (SELECT 1 FROM visible_artifacts WHERE id = :id "
     "AND (expires_at IS NULL OR expires_at > :now))"
 )
 
@@ -486,8 +499,12 @@ class Project:
 
 _PROJECT_SQL = (
     "SELECT p.id, p.owner, p.title, p.created_at, COUNT(a.id), COALESCE(SUM(a.size), 0) "
-    "FROM projects p LEFT JOIN artifacts a ON a.project = p.id"
+    "FROM visible_projects p LEFT JOIN visible_artifacts a ON a.project = p.id"
 )
+
+
+class DeletionPending(Exception):
+    """A project has a file still inside its independent Undo window."""
 
 
 class NameTaken(Exception):
@@ -509,14 +526,6 @@ class QuotaExceeded(Exception):
         super().__init__(f"{used} of {quota} bytes used")
         self.used = used
         self.quota = quota
-
-
-def _new_key() -> str:
-    return "aa_" + secrets.token_urlsafe(32)
-
-
-def hash_key(key: str) -> str:
-    return hashlib.sha256(key.encode()).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -560,6 +569,8 @@ class Store:
             _migrate(db)
         finally:
             db.close()
+        self.accounts = accounts.Accounts(self._conn, self.clock)
+        self.trash = trash.Trash(self._conn, self.clock, self.accounts.bound_account, DRAFT_TTL_SECONDS)
 
     @contextmanager
     def _conn(self, *, write: bool = False) -> Iterator[sqlite3.Connection]:
@@ -633,7 +644,8 @@ class Store:
                 "SELECT a.name, a.admin, a.quota_bytes, a.last_upload_at, "
                 "COALESCE(SUM(f.size), 0), COUNT(f.id) FROM agents a "
                 "LEFT JOIN artifacts f ON f.owner = a.name "
-                "AND (f.expires_at IS NULL OR f.expires_at > :now) "
+                "AND (f.expires_at IS NULL OR f.expires_at > :now OR EXISTS "
+                "(SELECT 1 FROM account_deletions d WHERE d.artifact_id = f.id)) "
                 "WHERE :name IS NULL OR a.name = :name GROUP BY a.name ORDER BY a.name",
                 {"now": self.clock(), "name": name},
             ).fetchall()
@@ -778,6 +790,9 @@ class Store:
         cleared here. Raises what _placed raises, storing nothing."""
         new_id = artifact_id or secrets.token_urlsafe(16)
         live = "(expires_at IS NULL OR expires_at > ?)"
+        # Keep pending bytes in the quotas, even when a file's original
+        # lifetime would have elapsed during its Undo window.
+        retained = "(" + live + " OR id IN (SELECT artifact_id FROM account_deletions))"
         with self.storage.stage(new_id, src) as staged:
             now = self.clock()
             with self._conn(write=True) as db:
@@ -789,13 +804,13 @@ class Store:
                 if quota is not None:
                     own = db.execute(
                         f"SELECT COALESCE(SUM(size), 0) FROM artifacts "  # noqa: S608
-                        f"WHERE owner = ? AND id != ? AND {live}",
+                        f"WHERE owner = ? AND id != ? AND {retained}",
                         (owner, new_id, now),
                     ).fetchone()[0]
                     if own + size > quota:
                         raise QuotaExceeded(own, quota)
                 used = db.execute(
-                    f"SELECT COALESCE(SUM(size), 0) FROM artifacts WHERE id != ? AND {live}",  # noqa: S608
+                    f"SELECT COALESCE(SUM(size), 0) FROM artifacts WHERE id != ? AND {retained}",  # noqa: S608
                     (new_id, now),
                 ).fetchone()[0]
                 if used + size > settings["max_total_bytes"]:
@@ -803,7 +818,7 @@ class Store:
                 old = (None, None, None)
                 if artifact_id is not None:
                     old = db.execute(
-                        f"SELECT project, section, added_at FROM artifacts "  # noqa: S608
+                        f"SELECT project, section, added_at FROM visible_artifacts "  # noqa: S608
                         f"WHERE id = ? AND owner = ? AND {live}",
                         (new_id, owner, now),
                     ).fetchone()
@@ -843,7 +858,7 @@ class Store:
         now = self.clock()
         with self._conn(write=True) as db:
             row = db.execute(
-                "SELECT project, section, added_at, expires_at FROM artifacts "
+                "SELECT project, section, added_at, expires_at FROM visible_artifacts "
                 "WHERE id = ? AND owner = ? AND (expires_at IS NULL OR expires_at > ?)",
                 (artifact_id, owner, now),
             ).fetchone()
@@ -886,7 +901,7 @@ class Store:
             if section is not None:
                 raise SectionWithoutProject
             return None, None, None
-        sql = "SELECT 1 FROM projects WHERE id = ? AND owner = ?"
+        sql = "SELECT 1 FROM visible_projects WHERE id = ? AND owner = ?"
         if db.execute(sql, (project, owner)).fetchone() is None:
             raise NoSuchProject
         files, same, sections = db.execute(
@@ -951,6 +966,8 @@ class Store:
         section by when its earliest file was added; inside, by when added;
         ties by id."""
         with self._conn() as db:
+            # Visibility and the section ordering must use the same snapshot.
+            db.execute("BEGIN")
             project = self._project(db, project_id, owner)
             if project is None:
                 return None
@@ -962,7 +979,7 @@ class Store:
             # query, not a subquery per row.
             first = dict(
                 db.execute(
-                    "SELECT section, MIN(added_at) FROM artifacts "
+                    "SELECT section, MIN(added_at) FROM visible_artifacts "
                     "WHERE project = ? AND section IS NOT NULL GROUP BY section",
                     (project_id,),
                 ).fetchall()
@@ -986,7 +1003,7 @@ class Store:
         now = self.clock()
         args = {"p": project_id, "key": key_hash, "now": now, "stale": now - DRAFT_TTL_SECONDS}
         with self._conn() as db:
-            if db.execute("SELECT 1 FROM projects WHERE id = :p", args).fetchone() is None:
+            if db.execute("SELECT 1 FROM visible_projects WHERE id = :p", args).fetchone() is None:
                 return None
             rows = db.execute(
                 "SELECT a.id, "
@@ -1008,7 +1025,7 @@ class Store:
                 "AND (d.kind = 'comment' OR EXISTS (SELECT 1 FROM comments c2 "
                 "WHERE c2.artifact_id = d.artifact_id AND c2.n = d.of_n "
                 "AND c2.resolved_at IS NULL))) "
-                "FROM artifacts a LEFT JOIN comments c "
+                "FROM visible_artifacts a LEFT JOIN comments c "
                 "ON c.artifact_id = a.id AND c.resolved_at IS NULL "
                 "WHERE a.project = :p AND (a.expires_at IS NULL OR a.expires_at > :now) "
                 "GROUP BY a.id",
@@ -1028,14 +1045,14 @@ class Store:
         since = now if since is None else since
         args = {"p": project_id, "owner": owner, "now": now, "since": since}
         with self._conn() as db:
-            sql = "SELECT 1 FROM projects WHERE id = :p AND owner = :owner"
+            sql = "SELECT 1 FROM visible_projects WHERE id = :p AND owner = :owner"
             if db.execute(sql, args).fetchone() is None:
                 return None
             rows = db.execute(
                 "SELECT a.id, COALESCE(a.title, a.name), "
                 "COALESCE(SUM(c.agent = 'waiting' AND c.resolved_at IS NULL), 0), "
                 "COALESCE(SUM(c.resolved_at > :since), 0) "
-                "FROM artifacts a LEFT JOIN comments c ON c.artifact_id = a.id "
+                "FROM visible_artifacts a LEFT JOIN comments c ON c.artifact_id = a.id "
                 "WHERE a.project = :p AND (a.expires_at IS NULL OR a.expires_at > :now) "
                 "GROUP BY a.id ORDER BY a.added_at, a.id",
                 args,
@@ -1044,6 +1061,8 @@ class Store:
 
     def rename_project(self, project_id: str, *, owner: str, title: str) -> Project | None:
         with self._conn(write=True) as db:
+            if self._project(db, project_id, owner) is None:
+                return None
             db.execute(
                 "UPDATE projects SET title = ? WHERE id = ? AND owner = ?",
                 (title, project_id, owner),
@@ -1054,10 +1073,15 @@ class Store:
         """The project, its files and their comments: the rows in one
         transaction, then the files."""
         with self._conn(write=True) as db:
-            sql = "SELECT id FROM artifacts WHERE project = ?"
-            ids = [r[0] for r in db.execute(sql, (project_id,))]
-            sql = "DELETE FROM projects WHERE id = ? AND owner = ?"
-            gone = db.execute(sql, (project_id, owner)).rowcount > 0
+            if self._project(db, project_id, owner) is None:
+                return False
+            if db.execute(
+                "SELECT 1 FROM account_deletions d JOIN artifacts a ON a.id = d.artifact_id "
+                "WHERE a.project = ? AND d.deadline > ? LIMIT 1", (project_id, self.clock()),
+            ).fetchone():
+                raise DeletionPending
+            ids = [r[0] for r in db.execute("SELECT id FROM artifacts WHERE project = ?", (project_id,))]
+            gone = db.execute("DELETE FROM projects WHERE id = ? AND owner = ?", (project_id, owner)).rowcount > 0
         if gone:
             for artifact_id in ids:
                 self.storage.delete(artifact_id)
@@ -1486,8 +1510,9 @@ class Store:
 
     def delete(self, artifact_id: str, *, owner: str) -> bool:
         with self._conn(write=True) as db:
-            sql = "DELETE FROM artifacts WHERE id = ? AND owner = ?"
-            gone = db.execute(sql, (artifact_id, owner)).rowcount > 0
+            sql = ("DELETE FROM artifacts WHERE id = ? AND owner = ? "
+                   "AND id IN (SELECT id FROM visible_artifacts WHERE id = ?)")
+            gone = db.execute(sql, (artifact_id, owner, artifact_id)).rowcount > 0
         if gone:
             self.storage.delete(artifact_id)
         return gone
@@ -1496,16 +1521,14 @@ class Store:
         """Removes expired artifacts and those whose file is lost; returns
         how many."""
         with self._conn(write=True) as db:
-            # A file in a project (expires_at NULL) never matches.
-            expired = db.execute("SELECT id FROM artifacts WHERE expires_at <= ?", (self.clock(),))
-            ids = [r[0] for r in expired]
-            db.executemany("DELETE FROM artifacts WHERE id = ?", [(i,) for i in ids])
+            now = self.clock()
+            ids = trash.collect_expired(db, now)
             # Rows whose file is gone (a database restored without its files)
             # would be a 404 that counts toward the quota for good; they go
             # with their comments. Looked for under the write lock: an upload
             # puts its file in place before its row commits, so a committed
             # row without a file never gets it back.
-            rows = db.execute("SELECT id, owner, name FROM artifacts").fetchall()
+            rows = db.execute("SELECT id, owner, name FROM visible_artifacts").fetchall()
             lost = [r for r in rows if self._lost(r[0])]
             # Many at once is a files folder not (yet) there — a restore in
             # progress, an unmounted volume — not lost files: nothing goes,
@@ -1519,7 +1542,8 @@ class Store:
                 lost = []
             db.executemany("DELETE FROM artifacts WHERE id = ?", [(r[0],) for r in lost])
             db.execute(
-                "DELETE FROM drafts WHERE updated_at <= ?", (self.clock() - DRAFT_TTL_SECONDS,)
+                "DELETE FROM drafts WHERE updated_at <= ? "
+                "AND artifact_id IN (SELECT id FROM visible_artifacts)", (now - DRAFT_TTL_SECONDS,)
             )
         # The owner and the name, not the id: that is the link.
         for _, owner, name in lost:

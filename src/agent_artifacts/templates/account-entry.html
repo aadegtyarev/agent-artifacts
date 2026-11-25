@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block body %}
+<main class="join account-page">
+  <h1>{{ title }}</h1>
+  {% if notice %}<p role="status">{{ notice }}</p>{% endif %}
+  {% if view == 'connect' %}
+  {% if allow_code %}
+  <p>Enter the code from a device you already use.</p>
+  <form method="post" action="/account/connect" class="account-form">
+    <label for="device-code">Connection code</label>
+    <input id="device-code" type="text" name="code" maxlength="16" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" required>
+    <button type="submit" class="btn pri">Connect this device</button>
+  </form>
+  {% else %}
+  <p>To connect this device, create a code on a device you already use.</p>
+  {% endif %}
+  <p><a href="/account/claim">Link an agent to get started</a></p>
+  <p><a href="/account/recover">Use a recovery code</a></p>
+  {% elif view == 'recover' %}
+  <p>Use your saved recovery code if you no longer have a connected device. Restoring access signs out all previous devices. Your files and agent keys stay.</p>
+  <form method="post" action="/account/recover" class="account-form">
+    <label for="recovery-code">Recovery code</label>
+    <input id="recovery-code" type="text" name="code" maxlength="43" autocomplete="off" spellcheck="false" required>
+    <button type="submit" class="btn pri">Restore account</button>
+  </form>
+  <p><a href="/">Back</a></p>
+  {% elif view == 'claim' %}
+  {% if agent %}
+  <p>Link <strong>{{ agent }}</strong> and its files and projects to {% if signed_in %}this account{% else %}a new account{% endif %}.</p>
+  <form method="post" action="/account/claim">
+    <input type="hidden" name="code" value="{{ code }}">
+    <input type="hidden" name="confirm" value="1">
+    <button type="submit" class="btn pri">Link agent</button>
+  </form>
+  {% else %}
+  <p>Ask your agent for a one-time setup code. Do not enter an agent key here.</p>
+  <form method="post" action="/account/claim" class="account-form">
+    <label for="setup-code">Setup code</label>
+    <input id="setup-code" type="text" name="code" maxlength="43" spellcheck="false" autocomplete="off" required>
+    <button type="submit" class="btn pri">Continue</button>
+  </form>
+  {% endif %}
+  <p><a href="{% if signed_in %}/account{% else %}/{% endif %}">Back</a></p>
+  {% endif %}
+  <footer class="account-footer"><a href="https://github.com/aadegtyarev/agent-artifacts" rel="noreferrer">GitHub</a></footer>
+</main>
+{% endblock %}

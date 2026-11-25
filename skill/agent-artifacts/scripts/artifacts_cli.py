@@ -86,6 +86,7 @@ USAGE = """usage: artifacts_cli.py <command> [args]
   drop-drafts ID            delete every unpublished draft on a file, unread
   me                        your name, space used and quota, admin or not,
                             and "limits": file lifetime, sizes, types
+  account-claim             issue a one-time setup code to link this agent to an account
   new-key                   replace your key (after a leak) and save the new one
   version                   this skill's version
 
@@ -762,6 +763,9 @@ def run(argv: list[str], *, emit: Callable[[dict], None] = event_line) -> str | 
             return "drafts deleted"
         case "me":
             return c.call("GET", "/api/v1/me")
+        case "account-claim":
+            need(0, "")
+            return c.call("POST", "/api/v1/me/account-claim")
         case "new-key":
             if not from_env:
                 _check_writable(path)  # before the old key stops working

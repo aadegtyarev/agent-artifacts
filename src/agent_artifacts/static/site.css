@@ -157,18 +157,20 @@ html:has(> body > .stage.zooms) { touch-action: pan-x pan-y; }
 @keyframes strip-pulse { 50% { opacity: 0.4; } }
 
 /* Buttons. */
-.sheet .btn, .modal .btn, .toast .btn { position: relative; flex: none; display: inline-flex;
+.sheet .btn, .modal .btn, .toast .btn, .account-page .btn { position: relative; flex: none; display: inline-flex;
   align-items: center; justify-content: center; gap: 4px; height: 32px; min-width: 32px;
   padding: 0 12px; color: var(--fg); background: var(--surface); border: 0; border-radius: 10px;
   font-family: inherit; font-size: 14px; font-weight: 400; line-height: 1; white-space: nowrap; cursor: pointer;
   transition: background 0.15s, opacity 0.15s, transform 0.1s; }
-.sheet .btn::before, .modal .btn::before, .toast .btn::before { content: ""; position: absolute;
-  inset: -7px -3px; }
-.sheet .btn:active, .modal .btn:active { transform: scale(0.97); background: var(--surface-2); }
-.sheet .btn.pri, .modal .btn.pri { color: var(--on-color); background: var(--pri); font-weight: 600; }
+.sheet .btn::before, .modal .btn::before, .toast .btn::before, .account-page .btn::before {
+  content: ""; position: absolute; inset: -7px -3px; }
+.sheet .btn:active, .modal .btn:active, .account-page .btn:active {
+  transform: scale(0.97); background: var(--surface-2); }
+.sheet .btn.pri, .modal .btn.pri, .account-page .btn.pri {
+  color: var(--on-color); background: var(--pri); font-weight: 600; }
 .sheet .btn:disabled { opacity: 0.35; cursor: default; transform: none; }
 .sheet .btn.big { height: 36px; padding: 0 16px; }
-.sheet .btn:focus-visible, .modal .btn:focus-visible, .toast .btn:focus-visible,
+.sheet .btn:focus-visible, .modal .btn:focus-visible, .toast .btn:focus-visible, .account-page .btn:focus-visible,
 .sheet .send:focus-visible, .sheet .chev:focus-visible, .sheet .it:focus-visible,
 .sheet .sec-fold:focus-visible {
   outline: 2px solid var(--blue); outline-offset: 2px; }
@@ -234,15 +236,15 @@ html:has(> body > .stage.zooms) { touch-action: pan-x pan-y; }
 .msg textarea { margin-top: 4px; }
 
 /* Fields: a pill with the send arrow inside, like a messenger's. */
-.sheet textarea, .modal input { display: block; width: 100%; min-height: 40px;
+.sheet textarea, .modal input, .account-form input { display: block; width: 100%; min-height: 40px;
   padding: 10px 12px; color: var(--fg); background: var(--surface); border: 0; border-radius: 10px;
   font-family: inherit; font-size: 16px; line-height: 20px; resize: none; outline: none;
   overflow-wrap: anywhere; transition: box-shadow 0.15s, background 0.15s; }
 .sheet textarea::placeholder, .modal input::placeholder { color: var(--muted); }
-.modal input { background: var(--field); }
+.modal input, .account-form input { background: var(--field); }
 .modal .btn:not(.pri) { background: var(--field); }
 .modal .btn:not(.pri):active { filter: brightness(0.9); }
-.sheet textarea:focus, .modal input:focus { background: var(--bg);
+.sheet textarea:focus, .modal input:focus, .account-form input:focus { background: var(--bg);
   box-shadow: 0 0 0 1px var(--hair), 0 0 0 4px var(--tint-2); }
 .pill { position: relative; }
 .pill textarea { max-height: 120px; padding: 10px 44px 10px 14px; border-radius: 20px; }
@@ -362,14 +364,24 @@ body.commenting #image-box img { cursor: crosshair; }
   box-shadow: 0 4px 16px var(--shadow-1); font-size: 13px; -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px); }
 .toast.error .toast-box { background: var(--red-fill); }
-#toast-text { flex: 1; padding: 9px 0; overflow: hidden; display: -webkit-box;
+:is(#toast-text, .toast-text) { flex: 1; padding: 9px 0; overflow: hidden; display: -webkit-box;
   -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.toast.error #toast-text { -webkit-line-clamp: unset; }
-.toast-box:not(:has(#toast-undo:not([hidden]))) { padding-right: 16px; }
+.toast.error :is(#toast-text, .toast-text) { -webkit-line-clamp: unset; }
+.toast-box:not(:has(:is(#toast-undo, .toast-undo):not([hidden]))) { padding-right: 16px; }
 /* The toast is dark in both themes: its Undo is the blue lightened. */
 .toast .btn { height: 30px; padding: 0 10px; color: var(--on-color); color: color-mix(in srgb, var(--blue) 60%, var(--on-color)); background: transparent;
   font-weight: 600; pointer-events: auto; }
 .toast.error .btn { color: var(--on-color); }
+/* In the account, keep deletion feedback centred even if the list scrolls.
+   Reserve its place so it doesn't cover the heading on arrival. */
+body.account-dashboard { height: auto; min-height: var(--viewport-height); }
+.toast.toast-top { position: sticky; flex: none; top: 0; bottom: auto; left: auto; right: auto;
+  padding: max(12px, env(safe-area-inset-top, 0px)) 10px 0; }
+.toast-top .toast-stack { display: flex; flex-direction: column; align-items: center;
+  gap: 8px; max-width: 100%; max-height: 50vh; padding: 7px 8px; overflow: auto; }
+.toast-stack:has(.toast-box:not([hidden]) ~ .toast-box:not([hidden])) { pointer-events: auto; }
+.toast-stack .toast-box { flex: none; max-width: min(440px, 100%); }
+.toast-stack .toast-text { min-width: 0; overflow-wrap: anywhere; }
 
 /* A phone or a narrow window: a bottom sheet under the content, which
    shrinks above it so a pin can always be shown over the sheet. */
@@ -592,7 +604,22 @@ body.commenting .fan-item[data-act="comment"] .fan-sq { color: var(--on-color); 
 /* Invite pages. */
 .join { max-width: 560px; margin: 0 auto; padding: 24px 16px; }
 .join h1 { font-size: 20px; margin-bottom: 12px; white-space: normal; }
-.join button { height: auto; padding: 8px 16px; font-size: 15px; }
+.join:not(.account-page) button { height: auto; padding: 8px 16px; font-size: 15px; }
+.account-page { overflow-wrap: anywhere; zoom: var(--ts); }
+.account-page .btn { min-width: 38px; font-size: 15px; }
+.account-page a { color: var(--blue); }
+.account-page h2 { margin-top: 24px; font-size: 18px; }
+.account-page h3 { margin: 12px 0 4px; font-size: 16px; }
+.account-page ul { padding-left: 20px; }
+.account-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.account-row-actions { display: flex; align-items: center; gap: 8px; }
+.account-row h3 { margin: 0; }
+.account-form input { margin: 4px 0 8px; max-width: 320px; }
+.account-code { white-space: nowrap; }
+.account-devices li + li, .account-agent-list li + li, .account-details { margin-top: 8px; }
+.account-details summary { cursor: pointer; }
+.account-footer { margin-top: 24px; color: var(--muted); }
+.account-footer a { color: inherit; }
 .join textarea { width: 100%; height: 10em; word-break: break-all; color: inherit;
   font: 13px ui-monospace, monospace; background: var(--surface);
   border: 1px solid var(--line); border-radius: 6px; padding: 8px; resize: none; }
@@ -609,7 +636,7 @@ body.commenting .fan-item[data-act="comment"] .fan-sq { color: var(--on-color); 
   .join { zoom: var(--ts); }
   .join h1 { font-size: 20px; }
   .join .meta { white-space: normal; overflow: visible; }
-  .join button { min-width: 44px; min-height: 44px; }
+  .join:not(.account-page) button { min-width: 44px; min-height: 44px; }
 }
 
 /* A small chat in a comment: avatars of people and of the agent. */
