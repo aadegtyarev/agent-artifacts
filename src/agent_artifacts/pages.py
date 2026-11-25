@@ -7,7 +7,6 @@ from __future__ import annotations
 import codecs
 import hashlib
 import json
-import os
 from collections.abc import Iterable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -81,6 +80,7 @@ VIEWER_CSP = (
 PROJECT_CSP = f"{_OWN}; connect-src 'self'; frame-ancestors 'none'; form-action 'none'"
 # The invite page posts its form back to itself.
 JOIN_CSP = f"{_OWN}; frame-ancestors 'none'; form-action 'self'"
+SIGN_IN_CSP = f"{JOIN_CSP} https://accounts.google.com"
 
 REPO_URL = "https://github.com/aadegtyarev/agent-artifacts"
 # Raw, so an agent fetching it gets Markdown rather than a GitHub page.
@@ -125,6 +125,8 @@ def viewer_page(
     separate: str | None = None,
     project: tuple[Project, list[Artifact]] | None = None,
     now: float = 0,
+    workspace_author: str | None = None,
+    workspace_marker: str | None = None,
 ) -> HTMLResponse:
     """The page at /a/{id}: a one-line header and the content below.
     ``separate`` is the file at the raw origin, for "Open separately";
@@ -134,6 +136,8 @@ def viewer_page(
         VIEWER_CSP,
         title=a.title,
         viewer=True,
+        workspace_author=workspace_author,
+        workspace_marker=workspace_marker,
         separate=separate,
         a=a,
         url=url,
@@ -152,7 +156,8 @@ def viewer_page(
     return page
 
 
-def project_page(p: Project, files: list[Artifact], url: str, now: float) -> HTMLResponse:
+def project_page(p: Project, files: list[Artifact], url: str, now: float,
+                 workspace_author: str | None = None) -> HTMLResponse:
     """The page at /p/{id}: the project's files in its order, a heading
     before each section; the counters come from its script."""
     count = f"{len(files)} file" + ("" if len(files) == 1 else "s")
@@ -161,6 +166,7 @@ def project_page(p: Project, files: list[Artifact], url: str, now: float) -> HTM
         PROJECT_CSP,
         title=p.title,
         project=p,
+        workspace_author=workspace_author,
         rows=file_rows(files, now),
         count=count,
         url=url,
@@ -187,6 +193,18 @@ def file_rows(files: list[Artifact], now: float) -> list[dict]:
         )
         section = a.section
     return rows
+
+
+def sign_in_page(domain: str, destination: str, *, email: str | None = None,
+                 title: str = "Sign in", status: int = 200) -> HTMLResponse:
+    response = _page(
+        "sign-in.html", SIGN_IN_CSP, status, title=title, domain=domain,
+        destination=destination, email=email, retry=status >= 400,
+    )
+    # Don't send the callback query to subresources. Only the signed-in
+    # landing page needs a same-origin policy for the logout form's Origin.
+    response.headers["Referrer-Policy"] = "same-origin" if email is not None else "no-referrer"
+    return response
 
 
 def invite_page(invite: Invite) -> HTMLResponse:
@@ -238,20 +256,18 @@ _HOLE = "\x00file\x00"
 Page = tuple[Iterator[bytes], int | None]
 
 
-def html_page(path: Path, title: str) -> Page:
+def html_page(f: BinaryIO, title: str, size: int) -> Page:
     """An HTML artifact for /raw inside the sandbox: the file with the pin
     script appended; the download stays the file as it is. (The title is the
     page's own; the argument is there to match the other builders.) The pieces
     and the length, known here; FileNotFoundError at once if it is gone."""
-    f = path.open("rb")
-    length = os.fstat(f.fileno()).st_size + len(PINS_SCRIPT)
+    length = size + len(PINS_SCRIPT)
     return _around(_chunks(f), "", PINS_SCRIPT.decode()), length
 
 
-def text_page(path: Path, title: str) -> Page:
+def text_page(f: BinaryIO, title: str) -> Page:
     """A text artifact, for /raw inside the sandbox; no length, the escaping
     changes it."""
-    f = path.open("rb")
     page = _env.get_template("text.html").render(
         title=title,
         text=Markup(_HOLE),  # noqa: S704 (our own marker)
@@ -261,9 +277,8 @@ def text_page(path: Path, title: str) -> Page:
     return _around((str(escape(t)) for t in _text(f)), head, tail), None
 
 
-def markdown_page(path: Path, title: str) -> Page:
+def markdown_page(f: BinaryIO, title: str) -> Page:
     """A Markdown artifact and its renderer, for /raw inside the sandbox."""
-    f = path.open("rb")
     page = _env.get_template("markdown.html").render(
         title=title,
         marked=_MARKED_JS,

@@ -6,7 +6,6 @@ Sizes are bytes and times are seconds, as everywhere in the API.
 from __future__ import annotations
 
 import re
-import shutil
 
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
@@ -62,7 +61,7 @@ def admin_routes(store: Store, public_url: str) -> list[Route]:
         return JSONResponse(await run_in_threadpool(person, name))
 
     def disk_free() -> int:
-        return shutil.disk_usage(store.files).free
+        return store.storage.disk_free()
 
     async def stats(request: Request) -> Response:
         require_admin(store, request)

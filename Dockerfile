@@ -18,5 +18,5 @@ USER app
 VOLUME /data
 EXPOSE 8090
 HEALTHCHECK --interval=1m --timeout=5s \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health')"
+    CMD python -m agent_artifacts.healthcheck
 CMD ["agent-artifacts", "serve", "--host", "0.0.0.0", "--port", "8090"]

@@ -349,3 +349,9 @@ is at least 44 × 44 before [Text scaling](tokens.md#text-size). The read-only
 key field uses the same surface, border and radius, with monospaced text.
 Theme follows the shared palette. Text scales `.join` only at ≤640 px; it does
 not scale message pages.
+
+The company sign-in page uses the same column and site button. It names the
+allowed domain and has one action, **Sign in with Google**. A failed sign-in
+keeps that action and explains how to retry. At the home page after sign-in,
+show the signed-in email and **Sign out**; this is not a file list or account
+settings page.

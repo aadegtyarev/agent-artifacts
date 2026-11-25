@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block body %}
+<main class="join">
+  {% if email %}
+  <h1>Signed in</h1>
+  <p>You’re signed in as <strong>{{ email }}</strong>. Open a file or project link to get started.</p>
+  <form method="post" action="/auth/logout?view=sign-in"><button type="submit">Sign out</button></form>
+  {% else %}
+  <h1>{{ title }}</h1>
+  {% if retry %}<p>Try again with your <strong>@{{ domain }}</strong> account.</p>
+  {% else %}<p>Use your <strong>@{{ domain }}</strong> account.</p>{% endif %}
+  <form method="get" action="/auth/start">
+    <input type="hidden" name="return" value="{{ destination }}">
+    <button type="submit">Sign in with Google</button>
+  </form>
+  {% endif %}
+</main>
+{% endblock %}

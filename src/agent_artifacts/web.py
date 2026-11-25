@@ -6,13 +6,13 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import hmac
 import logging
 import math
 import re
 import unicodedata
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
-from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 from starlette.applications import Starlette
@@ -34,8 +34,10 @@ from starlette.staticfiles import StaticFiles
 from . import kinds, pages
 from .admin import admin_routes
 from .api import ApiError, error, iso, json_body, on_api_error, require_agent, user_json
-from .comments import comment_routes, one_line
+from .comments import _workspace_author, comment_routes, one_line
 from .config import Config, normal_host
+from .google_oidc import GoogleOIDC
+from .storage import DiskStorage
 from .store import (
     ID_RE,
     TOKEN_RE,
@@ -49,6 +51,7 @@ from .store import (
     Store,
     TooMany,
 )
+from .workspace_auth import WorkspaceAuth, WorkspaceAuthStore, same_origin
 
 PURGE_INTERVAL_SECONDS = 600
 
@@ -79,6 +82,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         max_total_bytes=config.max_total_bytes,
         user_quota_bytes=config.user_quota_bytes,
         ttl_seconds=config.ttl_seconds,
+        storage=DiskStorage(config.data_dir),
     )
 
     def as_json(a: Artifact) -> dict:
@@ -281,7 +285,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         )
 
     def on_disk(a: Artifact) -> bool:
-        if store.path(a.id).exists():
+        if store.storage.available_for_serving(a.id):
             return True
         # Purged since the lookup, or lost (a database restored without its
         # files); the next purge removes the row. Not the id: that is the link.
@@ -305,7 +309,9 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         if a.project:
             project = await run_in_threadpool(store.public_project, a.project)
         return pages.viewer_page(
-            a, f"{config.public_url}/a/{a.id}", separate, project, store.clock()
+            a, f"{config.public_url}/a/{a.id}", separate, project, store.clock(),
+            workspace_author=_workspace_author(request),
+            workspace_marker=getattr(request.state, "workspace_marker", None),
         )
 
     async def project_view(request: Request) -> Response:
@@ -314,7 +320,8 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         if found is None:
             return pages.not_found()
         p, files = found
-        return pages.project_page(p, files, f"{config.public_url}/p/{p.id}", store.clock())
+        return pages.project_page(p, files, f"{config.public_url}/p/{p.id}", store.clock(),
+                                  workspace_author=_workspace_author(request))
 
     async def raw(request: Request) -> Response:
         a = live(request)
@@ -322,7 +329,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             return pages.not_found()
         kind = kinds.get(a.kind)
         if not kind.viewable:
-            return _download(store.path(a.id), a.name)
+            return _download(store.storage, a.id, a.name)
         if kind.sandboxed and request.headers.get("sec-fetch-dest") == "document":
             # Opened on its own, a page would look like a page of this site;
             # show it with the viewer's header instead. Images and PDFs open
@@ -352,19 +359,18 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         # text pages built here. Sent as they are read, so a big file is never
         # whole in memory; the file is open already, a purge cannot cut it.
         if kind.name in ("html", "md", "txt"):
-            build = {"html": pages.html_page, "md": pages.markdown_page, "txt": pages.text_page}
             try:
-                body, length = await run_in_threadpool(build[kind.name], store.path(a.id), a.name)
+                body, length = await run_in_threadpool(_prepare_page, store.storage, a)
             except FileNotFoundError:  # purged since the lookup
                 return pages.not_found()
             if length is not None:
                 headers["Content-Length"] = str(length)
             return StreamingResponse(body, headers=headers, media_type="text/html")
-        return FileResponse(store.path(a.id), media_type=kind.mime, headers=headers)
+        return _disk_response(store.storage, a.id, media_type=kind.mime, headers=headers)
 
     async def download(request: Request) -> Response:
         a = live(request)
-        return pages.not_found() if a is None else _download(store.path(a.id), a.name)
+        return pages.not_found() if a is None else _download(store.storage, a.id, a.name)
 
     async def join(request: Request) -> Response:
         token = request.path_params["token"]
@@ -374,7 +380,10 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             invite = store.invite_for_token(token)
             if invite is None:
                 return pages.message(404, pages.INVITE_GONE, csp=pages.JOIN_CSP)
-            return pages.invite_page(invite)
+            response = pages.invite_page(invite)
+            if request.method == "GET" and getattr(request.state, "workspace_identity", None):
+                response.headers["Referrer-Policy"] = "strict-origin"
+            return response
         try:
             claimed = await run_in_threadpool(store.claim_invite, token)
         except NameTaken:
@@ -398,6 +407,18 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             with suppress(asyncio.CancelledError):
                 await task
 
+    middleware = [Middleware(_CommonHeaders)]
+    if config.workspace is not None:
+        auth_store = WorkspaceAuthStore(config.data_dir / "workspace-auth.sqlite", config.workspace)
+        oidc = GoogleOIDC(config.workspace, config.public_url, config.raw_url)
+        main_auth = WorkspaceAuth(auth_store, oidc, origin=config.public_url)
+        raw_auth = (WorkspaceAuth(auth_store, oidc, origin=config.raw_url, raw=True)
+                    if config.raw_url else None)
+        middleware.append(Middleware(_WorkspaceAccess, main=main_auth, raw=raw_auth))
+    middleware.append(
+        Middleware(_RawOrigin, host=urlsplit(config.raw_url).hostname, app_there=raw_origin)
+    )
+
     app = Starlette(
         routes=[
             Route("/health", health),
@@ -418,10 +439,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             *admin_routes(store, config.public_url),
             *comment_routes(store),
         ],
-        middleware=[
-            Middleware(_CommonHeaders),
-            Middleware(_RawOrigin, host=urlsplit(config.raw_url).hostname, app_there=raw_origin),
-        ],
+        middleware=middleware,
         exception_handlers={ApiError: on_api_error},
         lifespan=lifespan,
     )
@@ -477,6 +495,132 @@ def _raw_origin_not_found() -> Response:
     return Response(
         "Not found", status_code=404, media_type="text/plain", headers={"Cache-Control": "no-store"}
     )
+
+
+_BROWSER_NAV = re.compile(rf"(?:/a/{ID_RE}|/p/{ID_RE}|/join/{TOKEN_RE})")
+_REVIEW_PATH = re.compile(rf"/a/{ID_RE}/(?:comments|drafts|review)(?:/.*)?")
+
+
+def _authority(value: str) -> tuple[str, int] | None:
+    """HTTPS authority, treating an omitted port as 443 and rejecting malformed hosts."""
+    if not value or not value.isascii() or any(c in value for c in "\\/?#@ \t\r\n"):
+        return None
+    try:
+        parts = urlsplit("//" + value)
+        port = parts.port
+    except ValueError:
+        return None
+    if not parts.hostname or parts.netloc.endswith(":") or (port is not None and port == 0):
+        return None
+    return normal_host(parts.hostname), port if port is not None else 443
+
+
+class _WorkspaceAccess:
+    """Authenticate browser paths and isolate both configured authorities."""
+
+    def __init__(self, app, main: WorkspaceAuth, raw: WorkspaceAuth | None) -> None:  # noqa: ANN001
+        self.app = app
+        self.main = main
+        self.raw = raw
+        self.main_authority = _authority(urlsplit(main.origin).netloc)
+        self.raw_authority = _authority(urlsplit(raw.origin).netloc) if raw else None
+        if (self.main_authority is None or (raw and self.raw_authority is None)
+                or (raw and self.main_authority == self.raw_authority)):
+            raise ValueError("invalid Workspace authorities")
+
+    async def __call__(self, scope, receive, send) -> None:  # noqa: ANN001
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        hosts = [v.decode("latin-1") for k, v in scope["headers"] if k == b"host"]
+        host = _authority(hosts[0]) if len(hosts) == 1 else None
+        if host == self.main_authority:
+            auth = self.main
+        elif self.raw and host == self.raw_authority:
+            auth = self.raw
+        else:
+            await Response(status_code=400, headers={"Cache-Control": "no-store"})(
+                scope, receive, send
+            )
+            return
+
+        path, method = scope["path"], scope["method"]
+        request = Request(scope, receive)
+        auth_routes = {
+            "/auth/login": ("GET", auth.login if auth.raw else auth.sign_in),
+            "/auth/callback": ("GET", auth.callback),
+            "/auth/logout": ("POST", auth.logout),
+        }
+        if not auth.raw:
+            auth_routes.update({
+                "/": ("GET", auth.sign_in),
+                "/auth/start": ("GET", auth.login),
+                "/auth/signed-out": ("GET", auth.sign_in),
+            })
+        if path in auth_routes:
+            expected, handler = auth_routes[path]
+            response = (await handler(request) if method == expected else
+                        Response(status_code=405, headers={"Allow": expected,
+                                                          "Cache-Control": "no-store"}))
+            await response(scope, receive, send)
+            return
+
+        if auth.raw and (not _RAW_PATH.fullmatch(path) or method not in ("GET", "HEAD")):
+            await _raw_origin_not_found()(scope, receive, send)
+            return
+
+        protected = auth.raw or any(path == prefix or path.startswith(prefix + "/")
+                                    for prefix in ("/a", "/p", "/join"))
+        if not protected:
+            await self.app(scope, receive, send)
+            return
+
+        identity = await auth.identity(request)
+        if identity is None:
+            navigation = (method == "GET" and
+                          ((_BROWSER_NAV.fullmatch(path) and not auth.raw) or
+                           (auth.raw and _RAW_PATH.fullmatch(path) and
+                            request.headers.get("sec-fetch-dest") == "document")))
+            if navigation:
+                response = RedirectResponse(
+                    "/auth/login?return=" + quote(path, safe="/"), status_code=303,
+                    headers={"Cache-Control": "no-store"},
+                )
+            else:
+                response = Response(status_code=401, headers={"Cache-Control": "no-store"})
+            await response(scope, receive, send)
+            return
+
+        if method not in ("GET", "HEAD", "OPTIONS"):
+            origins = request.headers.getlist("origin")
+            if len(origins) != 1 or not same_origin(origins[0], auth.origin):
+                await Response(status_code=403, headers={"Cache-Control": "no-store"})(
+                    scope, receive, send
+                )
+                return
+        marker = auth.page_marker(request)
+        if not auth.raw and _REVIEW_PATH.fullmatch(path):
+            markers = request.headers.getlist("x-workspace-session")
+            if len(markers) != 1 or not hmac.compare_digest(
+                markers[0].encode("utf-8"), marker.encode("ascii")
+            ):
+                response = JSONResponse(
+                    {"error": "workspace_session_changed",
+                     "message": "Sign-in changed. Copy unsent text and reload this page."},
+                    status_code=409, headers={"Cache-Control": "no-store"},
+                )
+                await response(scope, receive, send)
+                return
+        state = scope.setdefault("state", {})
+        state["workspace_identity"] = identity
+        state["workspace_marker"] = marker
+
+        async def no_store(message) -> None:  # noqa: ANN001
+            if message["type"] == "http.response.start":
+                MutableHeaders(scope=message)["Cache-Control"] = "no-store"
+            await send(message)
+
+        await self.app(scope, receive, no_store)
 
 
 class _RawOrigin:
@@ -539,11 +683,27 @@ async def _purge_forever(store: Store) -> None:
         await asyncio.sleep(PURGE_INTERVAL_SECONDS)
 
 
-def _download(path: Path, name: str) -> Response:
+def _prepare_page(storage: DiskStorage, artifact: Artifact) -> pages.Page:
+    f = storage.open(artifact.id)
+    try:
+        if artifact.kind == "html":
+            return pages.html_page(f, artifact.name, storage.size(f))
+        build = {"md": pages.markdown_page, "txt": pages.text_page}
+        return build[artifact.kind](f, artifact.name)
+    except BaseException:
+        f.close()
+        raise
+
+
+def _disk_response(storage: DiskStorage, artifact_id: str, **kwargs) -> Response:  # noqa: ANN003
+    return FileResponse(storage.file_path(artifact_id), **kwargs)
+
+
+def _download(storage: DiskStorage, artifact_id: str, name: str) -> Response:
     ascii_name = name.encode("ascii", "replace").decode().replace("?", "_")
     disposition = f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name)}"
-    return FileResponse(
-        path,
+    return _disk_response(
+        storage, artifact_id,
         media_type="application/octet-stream",
         headers={"Content-Disposition": disposition, "Cache-Control": "no-store"},
     )

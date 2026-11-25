@@ -244,7 +244,7 @@ def test_delete(env):
         == 204
     )
     assert client.get(f"/a/{art['id']}").status_code == 404
-    assert not store.path(art["id"]).exists()
+    assert not (store._db.parent / "files" / art["id"]).exists()
 
 
 @pytest.mark.parametrize(
@@ -278,7 +278,7 @@ def test_expired_artifacts_are_gone_and_purged(env):
     assert client.get(f"/a/{art['id']}").status_code == 404
     assert client.get(f"/a/{art['id']}/download").status_code == 404
     assert store.purge_expired() == 1
-    assert not store.path(art["id"]).exists()
+    assert not (store._db.parent / "files" / art["id"]).exists()
 
 
 def test_removing_an_agent_deletes_its_files(env):
@@ -286,7 +286,7 @@ def test_removing_an_agent_deletes_its_files(env):
     art = upload(client, keys["alice"], "a.txt", b"x").json()
     assert store.remove_agent("alice")
     assert client.get(f"/a/{art['id']}").status_code == 404
-    assert not store.path(art["id"]).exists()
+    assert not (store._db.parent / "files" / art["id"]).exists()
     assert client.get("/api/v1/artifacts", headers=auth(keys["alice"])).status_code == 401
 
 
@@ -372,7 +372,7 @@ def test_replace_of_an_expired_artifact_is_not_found(env):
 
 def test_crash_leftovers_are_purged(env):
     _, store, _ = env
-    leftover = store.files / ".abc.tmp"
+    leftover = (store._db.parent / "files") / ".abc.tmp"
     leftover.write_bytes(b"x")
     os.utime(leftover, (0, 0))
     store.purge_expired()
@@ -546,7 +546,8 @@ def test_viewer_page_has_every_element_its_scripts_use(env):
     }
     # The data the comments script reads from the sheet.
     datasets = set(re.findall(r"sheet\.dataset\.(\w+)", (static / "comments.js").read_text()))
-    assert datasets == {"artifact", "count", "kind", "pin", "pos"}
+    assert datasets == {"artifact", "count", "kind", "pin", "pos", "workspaceAuthor",
+                        "workspaceMarker"}
     # Shown only for images, or only for pages in a frame.
     image_only = {"image", "image-box", "image-link", "pins"}
     for filename, data, missing in (
@@ -558,7 +559,7 @@ def test_viewer_page_has_every_element_its_scripts_use(env):
         page = client.get(f"/a/{art['id']}").text
         ids = set(re.findall(r'\bid="([\w-]+)"', page))
         for name, wanted in used.items():
-            assert wanted - missing - ids == set(), (filename, name)
+            assert wanted - missing - {"workspace-sign-out"} - ids == set(), (filename, name)
         assert {
             "comments",
             "comments-toggle",
@@ -637,9 +638,9 @@ def test_new_key_replaces_the_old_one(env):
 
 def test_purge_skips_a_file_that_vanishes_meanwhile(env, monkeypatch):
     _, store, _ = env
-    gone = store.files / ".x.tmp"
-    real_iterdir = type(store.files).iterdir
-    monkeypatch.setattr(type(store.files), "iterdir", lambda self: [*real_iterdir(self), gone])
+    gone = store._db.parent / "files" / ".x.tmp"
+    real_iterdir = Path.iterdir
+    monkeypatch.setattr(Path, "iterdir", lambda self: [*real_iterdir(self), gone])
     assert store.purge_expired() == 0
 
 
@@ -897,7 +898,7 @@ def test_pages_are_sent_in_pieces_never_whole(env, tmp_path, monkeypatch):
     monkeypatch.setattr(pages, "CHUNK_BYTES", 100)
     big = tmp_path / "big.html"
     big.write_bytes(b"<p>" + b"x" * 1000 + b"</p>")
-    body, length = pages.html_page(big, "big.html")
+    body, length = pages.html_page(big.open("rb"), "big.html", big.stat().st_size)
     pieces = list(body)
     assert all(len(p) <= 100 for p in pieces[:-1]) and len(pieces) > 10
     assert b"".join(pieces) == big.read_bytes() + PINS_SCRIPT
@@ -905,9 +906,9 @@ def test_pages_are_sent_in_pieces_never_whole(env, tmp_path, monkeypatch):
     # Text split mid-character and a bad byte read the same as decoded whole.
     big.write_bytes(("Привет <&>\u2028" * 50).encode() + b"\xff")
     text = big.read_bytes().decode("utf-8", "replace")
-    page = b"".join(pages.markdown_page(big, "a.md")[0]).decode()
+    page = b"".join(pages.markdown_page(big.open("rb"), "a.md")[0]).decode()
     assert json.loads(page.split("const SOURCE = ")[1].split(";\n")[0]) == text
-    page = b"".join(pages.text_page(big, "a.txt")[0]).decode()
+    page = b"".join(pages.text_page(big.open("rb"), "a.txt")[0]).decode()
     assert html.unescape(page.split("<pre>")[1].split("</pre>")[0]) == text
 
 

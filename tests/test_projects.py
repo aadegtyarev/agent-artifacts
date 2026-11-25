@@ -5,6 +5,7 @@ import threading
 import pytest
 from starlette.testclient import TestClient
 
+from agent_artifacts import storage as storage_module
 from agent_artifacts import store as store_module
 from agent_artifacts.api import iso
 from agent_artifacts.config import Config
@@ -145,7 +146,8 @@ def test_deleting_a_project_deletes_its_files_and_comments(env):
     store.add_draft(inside, "h", author="p", text="hi", anchor=None)
     store.publish(inside, "h", author="p", text=None)
     assert client.delete(f"/api/v1/projects/{p}", headers=auth(keys["alice"])).status_code == 204
-    assert client.get(f"/a/{inside}").status_code == 404 and not store.path(inside).exists()
+    assert client.get(f"/a/{inside}").status_code == 404
+    assert not (store._db.parent / "files" / inside).exists()
     assert client.get(f"/a/{outside}").status_code == 200
     with store._conn() as db:
         assert db.execute("SELECT COUNT(*) FROM comments").fetchone() == (0,)
@@ -164,7 +166,7 @@ def test_a_file_lost_from_disk_is_404_then_purged_with_its_comments(env, caplog)
     art = upload(client, keys["alice"], data=b"12345", project=p).json()
     store.add_draft(art["id"], "h", author="p", text="hi", anchor=None)
     store.publish(art["id"], "h", author="p", text=None)
-    store.path(art["id"]).unlink()
+    (store._db.parent / "files" / art["id"]).unlink()
     for path in ("", "/raw", "/download"):
         assert client.get(f"/a/{art['id']}{path}").status_code == 404, path
     assert "file of alice's 'a.txt' is missing" in caplog.text
@@ -187,19 +189,19 @@ def test_many_files_missing_at_once_or_unreadable_are_kept(env, caplog, monkeypa
         for _ in range(store_module.LOST_AT_ONCE + 1)
     ]
     for i in ids:
-        store.path(i).unlink()
+        (store._db.parent / "files" / i).unlink()
     assert store.purge_expired() == 0
     assert "files are missing; none removed" in caplog.text
     assert all(store.get(i) for i in ids)
     # A file that cannot be looked at (permissions, I/O) is not lost either.
-    real = store_module.os.stat
+    real = storage_module.os.stat
 
     def stat(path, *a, **k):
         if str(path).endswith(ids[0]):
             raise PermissionError(13, "denied")
         return real(path, *a, **k)
 
-    monkeypatch.setattr(store_module.os, "stat", stat)
+    monkeypatch.setattr(storage_module.os, "stat", stat)
     assert store._lost(ids[0]) is False
 
 
@@ -209,7 +211,7 @@ def test_a_file_being_uploaded_is_not_purged(env, monkeypatch):
     client, store, keys = env
     p = new_project(client, keys["alice"]).json()["id"]
     purge, purged = None, []
-    replace = store_module.os.replace
+    replace = storage_module.os.replace
 
     def slow_replace(src, dst):
         nonlocal purge
@@ -219,7 +221,7 @@ def test_a_file_being_uploaded_is_not_purged(env, monkeypatch):
         assert purge.is_alive()  # waiting for the upload's write lock
         replace(src, dst)
 
-    monkeypatch.setattr(store_module.os, "replace", slow_replace)
+    monkeypatch.setattr(storage_module.os, "replace", slow_replace)
     art = upload(client, keys["alice"], project=p).json()
     purge.join()
     assert purged == [0]

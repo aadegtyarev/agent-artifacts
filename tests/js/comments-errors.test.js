@@ -54,7 +54,7 @@ test('load, save and review handlers use local action copy, retaining inputs unt
 test('draft failure preserves input and re-enables retry; name refusal retains correction path', async () => {
   const part = (a, b) => source.slice(source.indexOf(a), source.indexOf(b, source.indexOf(a)));
   const field = { value: 'unsaved words' }, notices = [], removed = [];
-  const c = { S: { compose: { anchor: null }, drafts: [] }, fields: { compose: field },
+  const c = { workspaceAuthor: null, S: { compose: { anchor: null }, drafts: [] }, fields: { compose: field },
     sendButton: { disabled: false }, savingDraft: false, name: 'Old', nameInput: { value: '' }, NAME_KEY: 'name',
     localStorage: { removeItem: x => removed.push(x) }, toast: x => notices.push(x),
     errorCopy: (e, action) => action + ' Try again.',
@@ -64,6 +64,9 @@ test('draft failure preserves input and re-enables retry; name refusal retains c
   assert.equal(c.sendButton.disabled, false); assert.equal(c.name, null);
   assert.equal(c.nameInput.value, 'Old'); assert.deepEqual(removed, ['name']);
   assert.equal(notices[0], 'That name cannot be used. Give another one.');
+  c.workspaceAuthor = 'Verified'; c.name = 'Verified';
+  assert.equal(c.nameRefused({ nameRejected: true }), false);
+  assert.equal(c.name, 'Verified');
 });
 
 test('load failure shows safe copy and a later load recovers', async () => {
@@ -104,4 +107,72 @@ test('finish failure retains saved draft and text, enables retry, then publishes
   failing = false; await c.finish(); await new Promise(setImmediate);
   assert.equal(notices.at(-1), 'Review published'); assert.equal(c.fields.general.value, '');
   assert.equal(c.S.drafts.length, 0); assert.equal(payloads.length, 2); assert.equal(payloads[1].text, 'typed text');
+});
+
+test('stale Workspace review sends the page marker, preserves text and never retries', async () => {
+  let calls = 0; const notices = [];
+  const c = setup(async (url, init) => {
+    calls++;
+    assert.equal(url, '/a/fixture/review');
+    assert.equal(init.headers['X-Workspace-Session'], 'page-marker');
+    assert.equal(JSON.parse(init.body).text, 'unsent review');
+    return response(409, { error: 'workspace_session_changed' });
+  });
+  Object.assign(c, { asAuthor: { 'X-Workspace-Session': 'page-marker' },
+    S: { toAgent: false, comments: [], drafts: [] }, fields: { general: { value: 'unsent review' } },
+    sending: false, deciding: false, name: 'Alice', finishButton: { disabled: false, isConnected: true },
+    flushDeletes: async () => true, reviewCount: () => 0, liveDrafts: () => [], load: () => {},
+    toast: text => notices.push(text), nameRefused: () => false });
+  vm.runInContext(source.slice(source.indexOf('  async function finish()'), source.indexOf('  // --- Fields')), c);
+  await c.finish();
+  assert.equal(c.fields.general.value, 'unsent review');
+  assert.match(notices.at(-1), /Sign-in changed.*Copy.*reload/);
+  await c.finish();
+  assert.equal(calls, 1);
+  assert.equal(c.fields.general.value, 'unsent review');
+  assert.match(notices.at(-1), /Sign-in changed.*Copy.*reload/);
+});
+
+test('file refresh never adopts another session marker or reloads old input', async () => {
+  let reloaded = false, notice = '';
+  const fresh = { getElementById: () => ({ dataset: { workspaceMarker: 'new-session', kind: 'html' } }) };
+  const c = { showing: false, workspaceMarker: 'old-session', sessionChanged: false,
+    fetch: async () => ({ ok: true, text: async () => 'fresh' }),
+    DOMParser: class { parseFromString() { return fresh; } },
+    document: { querySelector: () => ({}) }, $: () => null,
+    sheet: { dataset: { kind: 'html', workspaceMarker: 'old-session' } },
+    location: { pathname: '/a/fixture', reload: () => { reloaded = true; } },
+    ApiError: class {}, errorCopy: () => 'Sign-in changed. Copy text and reload.',
+    toast: text => { notice = text; } };
+  vm.createContext(c);
+  vm.runInContext(source.slice(source.indexOf('  async function showNewFile()'),
+    source.indexOf('  // The first answer sets')), c);
+  await c.showNewFile();
+  assert.equal(c.sessionChanged, true); assert.equal(reloaded, false);
+  assert.equal(c.sheet.dataset.workspaceMarker, 'old-session');
+  assert.match(notice, /Sign-in changed.*Copy.*reload/);
+  fresh.getElementById = () => null;
+  c.sessionChanged = false; notice = '';
+  await c.showNewFile();
+  assert.equal(c.sessionChanged, true); assert.equal(reloaded, false);
+  assert.match(notice, /Sign-in changed.*Copy.*reload/);
+});
+
+test('file refresh 404 preserves unsent text and reports that the file is gone', async () => {
+  let calls = 0, reloaded = false, notice = '';
+  const c = { showing: false, workspaceMarker: 'old-session', sessionChanged: false,
+    fetch: async () => { calls++; return { ok: false, status: 404 }; },
+    document: { querySelector: () => ({}) }, $: () => null,
+    fields: { general: { value: 'unsent review' } },
+    sheet: { dataset: { kind: 'html', workspaceMarker: 'old-session' } },
+    location: { pathname: '/a/fixture', reload: () => { reloaded = true; } },
+    toast: text => { notice = text; } };
+  vm.createContext(c);
+  vm.runInContext(source.slice(source.indexOf('  async function showNewFile()'),
+    source.indexOf('  // The first answer sets')), c);
+  await c.showNewFile();
+  assert.equal(calls, 1); assert.equal(reloaded, false); assert.equal(c.sessionChanged, false);
+  assert.equal(c.fields.general.value, 'unsent review');
+  assert.match(notice, /file is no longer available/i);
+  assert.doesNotMatch(notice, /sign-in changed/i);
 });

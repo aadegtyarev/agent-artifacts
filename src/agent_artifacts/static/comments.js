@@ -10,6 +10,8 @@
   if (!sheet) return;
   const $ = (id) => document.getElementById(id);
   const artifact = sheet.dataset.artifact;
+  const workspaceAuthor = sheet.dataset.workspaceAuthor || null;
+  const workspaceMarker = sheet.dataset.workspaceMarker || null;
   const toggle = $("comments-toggle");
   const panelHandle = $("panel-handle");
   const stage = sheet.closest(".stage");
@@ -64,21 +66,24 @@
   };
   const NAME_KEY = "agent-artifacts:name";
   const AUTHOR_KEY = "agent-artifacts:author-key";
-  let authorKey = storage.get(AUTHOR_KEY);
-  if (!/^[A-Za-z0-9_-]{22}$/.test(authorKey || "")) {
-    const bytes = crypto.getRandomValues(new Uint8Array(16));
-    authorKey = btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").slice(0, 22);
-    storage.set(AUTHOR_KEY, authorKey);
-    if (storage.get(AUTHOR_KEY) !== authorKey) stored = false;
+  let authorKey = workspaceAuthor ? null : storage.get(AUTHOR_KEY);
+  if (!workspaceAuthor) {
+    if (!/^[A-Za-z0-9_-]{22}$/.test(authorKey || "")) {
+      const bytes = crypto.getRandomValues(new Uint8Array(16));
+      authorKey = btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").slice(0, 22);
+      storage.set(AUTHOR_KEY, authorKey);
+      if (storage.get(AUTHOR_KEY) !== authorKey) stored = false;
+    }
   }
-  const asAuthor = { "X-Author-Key": authorKey };
+  const asAuthor = workspaceAuthor ? { "X-Workspace-Session": workspaceMarker || "" }
+    : { "X-Author-Key": authorKey };
   // A name as the server takes it: one line without control or bidi
   // characters (they could disguise it), at most 64 code points.
   const cleanName = (raw) => [...String(raw)
     .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069\ud800-\udfff]+/gu, " ")
     .replace(/\s+/g, " ").trim()].slice(0, 64).join("").trim();
   // null until asked; "" for No name (the server makes it "anonymous").
-  let name = storage.get(NAME_KEY);
+  let name = workspaceAuthor || storage.get(NAME_KEY);
   if (name !== null) name = cleanName(name);
 
   // --- State -----------------------------------------------------------------
@@ -120,6 +125,8 @@
     }
   }
 
+  let sessionChanged = false;
+
   // Only these exact validation responses reopen the name prompt; none is displayed.
   const refusedNames = new Set([
     "author must be one line",
@@ -128,7 +135,9 @@
   ]);
   function errorCopy(e, action) {
     let next = "Try again.";
-    if (e.status === 0) next = "Check the connection and try again.";
+    if (e.code === "workspace_session_changed") {
+      next = "Sign-in changed. Copy any unsent text, then reload this page.";
+    } else if (e.status === 0) next = "Check the connection and try again.";
     else if (e.status === 429) next = "Wait a minute and try again.";
     else if (e.status === 404) next = "It may no longer be available. Refresh and try again.";
     else if (e.status === 409) {
@@ -148,6 +157,7 @@
 
   // As call(), with the answer's headers too.
   async function exchange(method, path, payload, keepalive = false) {
+    if (sessionChanged) throw new ApiError(409, "workspace_session_changed");
     const init = { method, headers: { ...asAuthor }, cache: "no-store" };
     if (keepalive) init.keepalive = true;
     if (payload !== undefined) {
@@ -164,6 +174,11 @@
     let data = null;
     try { data = await response.json(); } catch { /* not JSON, e.g. a proxy's page */ }
     if (response.ok && data !== null) return { data, headers: response.headers };
+    if ((response.status === 409 && data?.error === "workspace_session_changed")
+        || (response.status === 401 && asAuthor["X-Workspace-Session"])) {
+      sessionChanged = true;
+      throw new ApiError(409, "workspace_session_changed");
+    }
     const nameRejected = response.status === 400 && data?.error === "bad_request"
       && refusedNames.has(data.message);
     throw new ApiError(response.status, data?.error, nameRejected);
@@ -928,7 +943,7 @@
   const { page, drawPins, fitPins, reveal, revealSoon, syncPicking } = commentsPins({
     pinType, image, imageBox, imageLink: $("image-link"), pinLayer, frame,
     pins: pinList,
-    picking: () => S.mode && dialog.hidden,
+    picking: () => S.mode && (!dialog || dialog.hidden),
     onPin: tapPin,
     onSpot: place,
     onEscape: escape,
@@ -1095,19 +1110,19 @@
     if (then) then();
   }
 
-  $("name-form").addEventListener("submit", (e) => {
+  $("name-form")?.addEventListener("submit", (e) => {
     e.preventDefault();
     closeName(nameInput.value);
   });
-  $("name-skip").addEventListener("click", () => closeName(""));
+  $("name-skip")?.addEventListener("click", () => closeName(""));
   // The name changed in Settings (menu-dialogs.js): for the next drafts.
   document.addEventListener("aa:name", (e) => {
     const value = e.detail && e.detail.name;
-    if (typeof value !== "string") return;
+    if (workspaceAuthor || typeof value !== "string") return;
     name = cleanName(value);
     storage.set(NAME_KEY, name);
   });
-  dialog.addEventListener("click", (e) => { if (e.target === dialog) closeName(null); });
+  dialog?.addEventListener("click", (e) => { if (e.target === dialog) closeName(null); });
 
   function stopPlacement() {
     if (S.compose) S.compose.retained = true;
@@ -1278,7 +1293,7 @@
   // The server refused the name (one kept from an older version, say): it
   // is forgotten and asked again; the text stays where it is.
   function nameRefused(e) {
-    if (!e.nameRejected) return false;
+    if (workspaceAuthor || !e.nameRejected) return false;
     nameInput.value = name || nameInput.value;
     name = null;
     try { localStorage.removeItem(NAME_KEY); } catch { /* not kept anyway */ }
@@ -1559,7 +1574,10 @@
     try {
       if (!(await flushDeletes())) {
         // A draft meant to go would be published: nothing goes, the text stays.
-        toast("Could not delete a draft. Try again.", { error: true, ms: 8000 });
+        const message = sessionChanged
+          ? errorCopy(new ApiError(409, "workspace_session_changed"), "Could not delete a draft.")
+          : "Could not delete a draft. Try again.";
+        toast(message, { error: true, ms: 8000 });
         return;
       }
       const general = fields.general.value;
@@ -1727,7 +1745,7 @@
 
   // --- Keys, resizes, coming back ---------------------------------------------------
   function escape() {
-    if (!dialog.hidden) closeName(null);
+    if (dialog && !dialog.hidden) closeName(null);
     else if (S.mode) setMode(false);
     else if (desk.matches && panelOpen()) setPanel(false);
     else if (desk.matches) return;
@@ -1752,7 +1770,7 @@
     }
   }
   document.addEventListener("keydown", (e) => {
-    if (!dialog.hidden && e.key === "Tab") {
+    if (dialog && !dialog.hidden && e.key === "Tab") {
       const controls = [...dialog.querySelectorAll("input, button")].filter((el) => !el.disabled);
       const i = controls.indexOf(document.activeElement);
       if (i < 0 || (e.shiftKey && i === 0) || (!e.shiftKey && i === controls.length - 1)) {
@@ -1850,8 +1868,12 @@
     showing = true;
     try {
       const r = await fetch(location.pathname, { cache: "no-store" });
+      if (r.status === 404) {
+        toast("This file is no longer available. Copy any unsent text.", { error: true, ms: 10000 });
+        return;
+      }
       if (r.ok) fresh = new DOMParser().parseFromString(await r.text(), "text/html");
-      else if (r.status !== 404) throw new Error(String(r.status));
+      else throw new Error(String(r.status));
     } catch {
       // Offline, say: the page stays as it is, with the banner.
       toast("Could not load the new file. Try again.", { error: true });
@@ -1860,6 +1882,12 @@
       showing = false;
     }
     const sheetThere = fresh && fresh.getElementById("comments");
+    if (workspaceMarker && (!sheetThere || sheetThere.dataset.workspaceMarker !== workspaceMarker)) {
+      sessionChanged = true;
+      toast(errorCopy(new ApiError(409, "workspace_session_changed"), "Could not refresh the file."),
+        { error: true, ms: 10000 });
+      return;
+    }
     if ((!content && !img) || !sheetThere || sheetThere.dataset.kind !== sheet.dataset.kind) {
       const editing = S.edit && draftById(S.edit);
       if ((S.compose && fields.compose.value) || fields.reply.value ||
@@ -1916,7 +1944,10 @@
     try {
       data = await fetchComments();
     } catch (e) {
-      if (e.status === 404) pollStopped = true;
+      if (e.status === 404 || e.code === "workspace_session_changed") pollStopped = true;
+      if (e.code === "workspace_session_changed") {
+        toast(errorCopy(e, "Could not load comments."), { error: true, ms: 10000 });
+      }
       return;
     }
     if (mine !== generation || seq !== pollSeq || !Array.isArray(data)) return;

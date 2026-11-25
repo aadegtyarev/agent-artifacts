@@ -26,6 +26,6 @@
 <main id="files" class="pj" data-project="{{ project.id }}">
 {{- files.rows(rows) }}
 </main>
-{{ menu.dialogs(url) }}
+{{ menu.dialogs(url, workspace_author=workspace_author) }}
 <div id="toast" class="toast" role="status" aria-live="polite"><div class="toast-box"><span id="toast-text"></span></div></div>
 {% endblock %}

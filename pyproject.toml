@@ -14,6 +14,8 @@ dependencies = [
     "uvicorn>=0.54",
     "python-multipart>=0.0.34",
     "jinja2>=3.1",
+    "google-auth>=2.40",
+    "requests>=2.32",
 ]
 
 [project.scripts]
@@ -24,6 +26,7 @@ dev = [
     "pytest>=8",
     "httpx2",
     "ruff>=0.14",
+    "cryptography>=44",
 ]
 
 [build-system]

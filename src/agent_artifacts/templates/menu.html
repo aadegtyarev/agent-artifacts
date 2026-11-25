@@ -31,7 +31,7 @@
 {%- endmacro %}
 
 {#- `download`: the file's download address; the project page has none. #}
-{% macro dialogs(url, download=None) %}
+{% macro dialogs(url, download=None, workspace_author=None) %}
 <div id="share-dialog" class="scrim mid" hidden>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="share-title" tabindex="-1">
     <h2 id="share-title">Share</h2>
@@ -53,10 +53,15 @@
   <form id="settings-form" class="modal settings" role="dialog" aria-modal="true" aria-labelledby="settings-title" tabindex="-1" novalidate>
     <h2 id="settings-title">Settings</h2>
     {#- The name comments are signed with; empty is No name. #}
+    {% if workspace_author %}
+    <div class="set-row"><span class="set-label">Signed in as</span><span>{{ workspace_author }}</span></div>
+    <button type="button" id="workspace-sign-out" class="btn">Sign out</button>
+    {% else %}
     <div class="set-row">
       <label for="settings-name" class="set-label">Name</label>
       <input id="settings-name" type="text" maxlength="64" autocomplete="name" placeholder="No name">
     </div>
+    {% endif %}
     {{- choice("theme", "Theme", [("auto", "Auto"), ("light", "Light"), ("dark", "Dark")]) }}
     {{- choice("text", "Text", [("normal", "Normal"), ("large", "Large"), ("larger", "Larger")]) }}
     {{- choice("pins", "Pins", [("normal", "Normal"), ("large", "Large")]) }}

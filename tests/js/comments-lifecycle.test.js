@@ -186,3 +186,10 @@ test('pending list keeps whole-file compose, local drafts and Finish review on b
     assert.equal(footer.includes('Finish review'), !!review);
   }
 });
+
+test('Workspace picking works without the anonymous name dialog', () => {
+  const expression = source.match(/picking: \(\) => ([^,]+),/)[1];
+  assert.equal(vm.runInNewContext(expression, { S: { mode: true }, dialog: null }), true);
+  assert.equal(vm.runInNewContext(expression, { S: { mode: false }, dialog: null }), false);
+  assert.equal(vm.runInNewContext(expression, { S: { mode: true }, dialog: { hidden: false } }), false);
+});

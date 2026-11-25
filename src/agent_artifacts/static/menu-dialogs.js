@@ -124,8 +124,10 @@
   };
 
   function fillSettings() {
-    nameShown = read(NAME_KEY) || "";
-    nameInput.value = nameShown;
+    if (nameInput) {
+      nameShown = read(NAME_KEY) || "";
+      nameInput.value = nameShown;
+    }
     check("theme", root.dataset.theme || "auto");
     check("text", root.dataset.textSize || "large");
     check("pins", root.classList.contains("pins-big") ? "large" : "normal");
@@ -137,11 +139,24 @@
   // is still asked when comment mode first comes on. Empty is No name, as
   // the name dialog's button. comments.js cleans it as the server wants.
   function saveName() {
+    if (!nameInput) return;
     const value = nameInput.value.trim();
     if (value === nameShown.trim()) return;
     write(NAME_KEY, value);
     document.dispatchEvent(new CustomEvent("aa:name", { detail: { name: value } }));
   }
+
+  $("workspace-sign-out")?.addEventListener("click", async () => {
+    try {
+      const response = await fetch("/auth/logout", { method: "POST" });
+      if (!response.ok) throw new Error("Sign out failed");
+      location.replace("/auth/signed-out");
+    } catch {
+      document.dispatchEvent(new CustomEvent("aa:toast", {
+        detail: { message: "Could not sign out. Try again.", error: true },
+      }));
+    }
+  });
 
   const apply = {
     theme(t) {
