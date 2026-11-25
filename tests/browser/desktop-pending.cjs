@@ -7,15 +7,15 @@ const fixture = JSON.parse(fs.readFileSync(process.env.FIXTURE_JSON));
   const browser = await chromium.launch({ executablePath: process.env.CHROME, args: ['--no-sandbox'] });
   try {
     for (const kind of ['compose', 'reply']) {
-      const context = await browser.newContext({ viewport: { width: 1000, height: 800 }, hasTouch: true });
+      const context = await browser.newContext({ viewport: { width: 1000, height: 800 }, hasTouch: kind === 'reply' });
       const page = await context.newPage();
       const errors = [];
       page.on('pageerror', e => errors.push(e.message));
       await page.goto(`${process.env.BASE_URL}/a/${fixture.ids[kind === 'compose' ? 'empty.html' : 'mixed.html']}`);
-      await page.locator('#comments-toggle').tap();
+      await page.locator('#comments-toggle').click();
       if (kind === 'compose') {
-        await page.getByRole('button', { name: 'Add comment', exact: true }).tap();
-        await page.getByRole('button', { name: '+ About the whole file', exact: true }).tap();
+        await page.getByRole('button', { name: 'Add comment', exact: true }).click();
+        await page.getByRole('button', { name: '+ About the whole file', exact: true }).click();
       } else {
         await page.locator('#sheet-body .it').first().click();
       }
@@ -46,7 +46,7 @@ const fixture = JSON.parse(fs.readFileSync(process.env.FIXTURE_JSON));
           await route.continue();
         }
       });
-      const shortcut = kind === 'compose' ? 'Control+Enter' : 'Meta+Enter';
+      const shortcut = kind === 'compose' ? 'Enter' : 'Meta+Enter';
       await field.press(shortcut);
       await first;
       assert.equal(await arrow.isDisabled(), true);

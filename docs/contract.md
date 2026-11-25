@@ -636,6 +636,10 @@ selected comment without a lit pin on the page lets go on a tap on an empty
 spot of the file only. With a reply typed or an edit changed the comment
 stays and taps reach the page; a tap on an empty spot does nothing. With
 nothing selected, a tap is the page's as always.
+In a new comment on a computer, Enter saves the draft like the arrow;
+Shift+Enter, Ctrl+Enter and Meta+Enter insert a new line. Enter does not publish
+and does not save while composing with an IME. Reply and edit shortcuts are
+unchanged; publishing still uses **Finish review**.
 **Finish review** opens at middle height without starting placement. A typed
 new draft can be discarded explicitly with **Discard** and restored using
 **Undo**. The keyboard pushes the sheet up and the pin stays in sight above

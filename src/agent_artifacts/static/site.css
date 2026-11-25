@@ -207,6 +207,7 @@ html:has(> body > .stage.zooms) { touch-action: pan-x pan-y; }
 .addwhole { margin: 10px 0 2px; }
 .foot2 { display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
 .note { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
+#compose-key-hint > span { display: inline-block; }
 
 /* One item, with ‹ › to its neighbours. */
 .nav { display: flex; align-items: center; gap: 2px; min-height: 32px; margin: 0 0 2px; }
