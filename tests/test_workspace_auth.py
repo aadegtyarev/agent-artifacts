@@ -207,7 +207,7 @@ def test_separate_origin_binding(harness):
 
 @pytest.mark.parametrize("path", ["//evil.example", "https://evil.example", "/a/../evil",
                                   PATH + "?q=1", PATH + "#fragment", PATH + "/raw/extra",
-                                  "/auth/logout", "/", "/a/" + "a" * 23,
+                                  "/auth/logout", "/a/" + "a" * 23,
                                   "/\\evil.example", "/%2f%2fevil.example"])
 def test_reject_unsafe_return_paths(harness, path):
     response = harness.main.get("/auth/login", params={"return": path}, follow_redirects=False)
@@ -216,9 +216,9 @@ def test_reject_unsafe_return_paths(harness, path):
 
 
 def test_valid_main_and_raw_return_paths(harness):
-    for path in (PATH, RAW_PATH, PATH + "/download", "/p/" + ID, "/join/" + "x" * 43):
+    for path in ("/", PATH, RAW_PATH, PATH + "/download", "/p/" + ID, "/join/" + "x" * 43):
         assert harness.start(dest=path)[0].status_code == 303
-    for path in (PATH, PATH + "/download", "/p/" + ID, "/join/" + "x" * 43):
+    for path in ("/", PATH, PATH + "/download", "/p/" + ID, "/join/" + "x" * 43):
         assert harness.raw.get("/auth/login", params={"return": path}).status_code == 400
     assert harness.start(harness.raw, RAW_PATH)[0].status_code == 303
 

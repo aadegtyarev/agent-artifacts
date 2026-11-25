@@ -536,7 +536,21 @@ even in a browser that ignores the sandbox. It can still imitate any page
 under that host name; the service sets no cookies and asks for no passwords
 anywhere.
 
-### Invite pages (no auth)
+### Company sign-in (optional)
+
+When a Workspace domain is configured, `/` and links to a file or project
+that needs sign-in lead to the company's sign-in page. **Sign in with Google**
+starts the Google flow; opening the page itself does not. After verification,
+return to the original file or project; a sign-in from `/` shows the verified
+email and **Sign out** instead. A failed or cancelled sign-in offers a retry
+and keeps the original destination when it can verify the login attempt.
+No file contents or project details appear before sign-in. On the main origin,
+unauthenticated raw, download and comment requests still return `401` instead
+of the sign-in page. The optional raw origin keeps its separate browser login.
+The public installation does not show a sign-in page or require sign-in to
+open links. Agent API keys work independently of browser sign-in.
+
+### Invite pages (no auth by default)
 
 | Path | What |
 | --- | --- |

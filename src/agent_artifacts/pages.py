@@ -80,6 +80,7 @@ VIEWER_CSP = (
 PROJECT_CSP = f"{_OWN}; connect-src 'self'; frame-ancestors 'none'; form-action 'none'"
 # The invite page posts its form back to itself.
 JOIN_CSP = f"{_OWN}; frame-ancestors 'none'; form-action 'self'"
+SIGN_IN_CSP = f"{JOIN_CSP} https://accounts.google.com"
 
 REPO_URL = "https://github.com/aadegtyarev/agent-artifacts"
 # Raw, so an agent fetching it gets Markdown rather than a GitHub page.
@@ -192,6 +193,18 @@ def file_rows(files: list[Artifact], now: float) -> list[dict]:
         )
         section = a.section
     return rows
+
+
+def sign_in_page(domain: str, destination: str, *, email: str | None = None,
+                 title: str = "Sign in", status: int = 200) -> HTMLResponse:
+    response = _page(
+        "sign-in.html", SIGN_IN_CSP, status, title=title, domain=domain,
+        destination=destination, email=email, retry=status >= 400,
+    )
+    # Don't send the callback query to subresources. Only the signed-in
+    # landing page needs a same-origin policy for the logout form's Origin.
+    response.headers["Referrer-Policy"] = "same-origin" if email is not None else "no-referrer"
+    return response
 
 
 def invite_page(invite: Invite) -> HTMLResponse:

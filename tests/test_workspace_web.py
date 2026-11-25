@@ -11,7 +11,7 @@ from agent_artifacts.google_oidc import GoogleIdentity
 from agent_artifacts.pages import SANDBOX_CSP
 from agent_artifacts.store import Store
 from agent_artifacts.web import create_app
-from agent_artifacts.workspace_auth import SESSION_COOKIE
+from agent_artifacts.workspace_auth import LOGIN_COOKIE, SESSION_COOKIE
 
 MAIN = "https://app.example"
 RAW = "https://raw.example"
@@ -65,9 +65,8 @@ def env(tmp_path, monkeypatch):
 
 
 def sign_in(client, origin, destination):
-    response = client.get(
-        origin + "/auth/login", params={"return": destination}, follow_redirects=False
-    )
+    route = "/auth/login" if origin == RAW else "/auth/start"
+    response = client.get(origin + route, params={"return": destination}, follow_redirects=False)
     assert response.status_code == 303
     state = parse_qs(urlsplit(response.headers["location"]).query)["state"][0]
     response = client.get(
@@ -80,6 +79,55 @@ def page_marker(client, path):
     response = client.get(path)
     assert response.status_code == 200
     return re.search(r'data-workspace-marker="([A-Za-z0-9_-]+)"', response.text)[1]
+
+
+def test_sign_in_page_preserves_the_link_without_starting_google(env):
+    client, _, _, artifact, project, _ = env
+    for path in ("/", f"/a/{artifact}", f"/p/{project}"):
+        response = client.get(path)
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "no-store"
+        assert response.headers["referrer-policy"] == "no-referrer"
+        assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
+        assert 'action="/auth/start"' in response.text
+        assert f'name="return" value="{path}"' in response.text
+        assert "Sign in with Google" in response.text and "@company.example" in response.text
+        assert SECRET not in response.content
+        assert "set-cookie" not in response.headers and LOGIN_COOKIE not in client.cookies
+    invalid = client.get("/auth/login", params={"return": "//other.example"})
+    assert invalid.status_code == 400 and "other.example" not in invalid.text
+    assert client.get(RAW + "/").status_code == 404
+    assert client.get(RAW + "/auth/start", params={"return": "/"}).status_code == 404
+
+
+def test_sign_in_root_and_sign_out(env):
+    client, _, _, artifact, _, _ = env
+    sign_in(client, MAIN, "/")
+    response = client.get("/")
+    assert response.status_code == 200 and "person@company.example" in response.text
+    assert "Sign out" in response.text and "Sign in with Google" not in response.text
+    path = f"/a/{artifact}"
+    response = client.get("/auth/login", params={"return": path}, follow_redirects=False)
+    assert response.status_code == 303 and response.headers["location"] == path
+    response = client.post("/auth/logout?view=sign-in", headers={"Origin": MAIN})
+    assert response.status_code == 200 and "Signed out" in response.text
+    assert "person@company.example" not in response.text
+    assert client.get(path, follow_redirects=False).status_code == 303
+
+
+def test_cancelled_google_login_can_retry_the_original_link(env):
+    client, _, _, artifact, _, _ = env
+    path = f"/a/{artifact}"
+    started = client.get("/auth/start", params={"return": path}, follow_redirects=False)
+    assert started.status_code == 303
+    state = parse_qs(urlsplit(started.headers["location"]).query)["state"][0]
+    callback = {"state": state, "error": "access_denied", "error_description": "provider detail"}
+    response = client.get("/auth/callback", params=callback)
+    assert response.status_code == 400 and "Could not sign in" in response.text
+    assert f'name="return" value="{path}"' in response.text
+    assert "provider detail" not in response.text and LOGIN_COOKIE not in client.cookies
+    response = client.get("/auth/callback", params={"state": state, "code": "fake"})
+    assert response.status_code == 400 and SESSION_COOKIE not in client.cookies
 
 
 def test_anonymous_denied_without_bytes_or_mutations(env):
@@ -238,7 +286,9 @@ def test_public_mode_still_anonymous_and_no_workspace_db(tmp_path):
         assert (
             client.get("/api/v1/me", headers={"Authorization": f"Bearer {key}"}).status_code == 200
         )
+        assert client.get("/").status_code == 404
         assert client.get("/auth/login").status_code == 404
+        assert client.get("/auth/start", params={"return": "/"}).status_code == 404
     assert not (tmp_path / "workspace-auth.sqlite").exists()
 
 
@@ -376,8 +426,6 @@ def test_workspace_name_falls_back_to_verified_email(env, monkeypatch):
 
 
 def test_sessions_and_pending_logins_follow_workspace_policy_on_restart(tmp_path, monkeypatch):
-    from agent_artifacts.workspace_auth import LOGIN_COOKIE
-
     monkeypatch.setattr("agent_artifacts.web.GoogleOIDC", FakeGoogle)
     store = Store(tmp_path, max_total_bytes=10_000)
     key = store.add_agent("agent")
@@ -394,7 +442,7 @@ def test_sessions_and_pending_logins_follow_workspace_policy_on_restart(tmp_path
         sign_in(client, MAIN, path)
         session = client.cookies.get(SESSION_COOKIE, domain="app.example")
         marker = page_marker(client, path)
-        started = client.get("/auth/login", params={"return": path}, follow_redirects=False)
+        started = client.get("/auth/start", params={"return": path}, follow_redirects=False)
         state = parse_qs(urlsplit(started.headers["location"]).query)["state"][0]
         browser = client.cookies.get(LOGIN_COOKIE, domain="app.example")
 

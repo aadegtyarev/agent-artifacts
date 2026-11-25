@@ -547,15 +547,16 @@ class _WorkspaceAccess:
         path, method = scope["path"], scope["method"]
         request = Request(scope, receive)
         auth_routes = {
-            "/auth/login": ("GET", auth.login),
+            "/auth/login": ("GET", auth.login if auth.raw else auth.sign_in),
             "/auth/callback": ("GET", auth.callback),
             "/auth/logout": ("POST", auth.logout),
         }
-        if path == "/auth/signed-out" and not auth.raw and method == "GET":
-            await Response("Signed out", media_type="text/plain", headers={
-                "Cache-Control": "no-store", "Content-Security-Policy": "default-src 'none'"
-            })(scope, receive, send)
-            return
+        if not auth.raw:
+            auth_routes.update({
+                "/": ("GET", auth.sign_in),
+                "/auth/start": ("GET", auth.login),
+                "/auth/signed-out": ("GET", auth.sign_in),
+            })
         if path in auth_routes:
             expected, handler = auth_routes[path]
             response = (await handler(request) if method == expected else

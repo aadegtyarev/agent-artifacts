@@ -22,6 +22,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
 
+from . import pages
 from .config import WorkspaceConfig
 from .google_oidc import CALLBACK_PATH, GoogleIdentity, GoogleOIDC, GoogleOIDCError
 from .store import ID_RE, TOKEN_RE
@@ -31,7 +32,7 @@ SESSION_COOKIE = "__Host-aa-workspace-session"
 LOGIN_TTL = 300
 SESSION_TTL = 8 * 60 * 60
 _RANDOM = re.compile(r"[A-Za-z0-9_-]{43}")
-_MAIN_RETURN = re.compile(rf"(?:/a/{ID_RE}(?:/(?:raw|download))?|/p/{ID_RE}|/join/{TOKEN_RE})")
+_MAIN_RETURN = re.compile(rf"(?:/|/a/{ID_RE}(?:/(?:raw|download))?|/p/{ID_RE}|/join/{TOKEN_RE})")
 _RAW_RETURN = re.compile(rf"/a/{ID_RE}/raw")
 _AUTH_HEADERS = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
 
@@ -86,6 +87,7 @@ class WorkspaceAuthStore:
                  clock: Callable[[], float] = time.time) -> None:
         self.path = path
         self.clock = clock
+        self.hosted_domain = policy.hosted_domain
         # Binding the token hash avoids accepting legacy rows without a policy.
         policy_key = json.dumps([policy.client_id, policy.hosted_domain], ensure_ascii=True)
         self.policy_namespace = hashlib.sha256(policy_key.encode("ascii")).digest()
@@ -177,6 +179,27 @@ class WorkspaceAuth:
         pattern = _RAW_RETURN if self.raw else _MAIN_RETURN
         return bool(len(value) <= 256 and pattern.fullmatch(value))
 
+    async def sign_in(self, request: Request) -> Response:
+        path = request.url.path
+        values = request.query_params.getlist("return") if path == "/auth/login" else []
+        if len(values) > 1 or (values and not self._destination(values[0])):
+            return self._sign_in_failed(400)
+        destination = values[0] if values else "/"
+        identity = await self.identity(request)
+        if identity and destination != "/":
+            return RedirectResponse(destination, status_code=303, headers=_AUTH_HEADERS)
+        if identity:
+            return pages.sign_in_page(self.store.hosted_domain, destination,
+                                      email=identity.email, title="Signed in")
+        title = "Signed out" if path == "/auth/signed-out" else "Sign in"
+        return pages.sign_in_page(self.store.hosted_domain, destination, title=title)
+
+    def _sign_in_failed(self, status: int, destination: str = "/") -> Response:
+        if self.raw:
+            return _response(status, "Login failed" if status == 401 else "Invalid login")
+        return pages.sign_in_page(self.store.hosted_domain, destination,
+                                  title="Could not sign in", status=status)
+
     async def login(self, request: Request) -> Response:
         values = request.query_params.getlist("return")
         if len(values) != 1 or not self._destination(values[0]):
@@ -193,22 +216,27 @@ class WorkspaceAuth:
 
     async def callback(self, request: Request) -> Response:
         states, codes = request.query_params.getlist("state"), request.query_params.getlist("code")
+        errors = request.query_params.getlist("error")
+        denied = len(errors) == 1 and not codes
         browser = request.cookies.get(LOGIN_COOKIE)
         if (len(states) != 1 or not _valid_token(states[0]) or not _valid_token(browser)
-                or len(codes) != 1 or not codes[0] or len(codes[0]) > 4096
-                or request.query_params.getlist("error")):
-            return _response(400, "Invalid login")
+                or not (denied or (not errors and len(codes) == 1 and 0 < len(codes[0]) <= 4096))):
+            return self._sign_in_failed(400)
         attempt = await run_in_threadpool(self.store.consume, states[0], browser, self.origin)
         if attempt is None:
-            return _response(400, "Invalid login")
+            return self._sign_in_failed(400)
         nonce, verifier, destination = attempt
+        if denied:
+            response = self._sign_in_failed(400, destination)
+            _clear_cookie(response, LOGIN_COOKIE)
+            return response
         try:
             identity = await run_in_threadpool(
                 self.oidc.exchange, code=codes[0], redirect_uri=self.callback_uri,
                 code_verifier=verifier, nonce=nonce,
             )
         except GoogleOIDCError:
-            response = _response(401, "Login failed")
+            response = self._sign_in_failed(401, destination)
             _clear_cookie(response, LOGIN_COOKIE)
             return response
         token = await run_in_threadpool(self.store.create_session, self.origin, identity)
@@ -234,6 +262,8 @@ class WorkspaceAuth:
         token = request.cookies.get(SESSION_COOKIE)
         if _valid_token(token):
             await run_in_threadpool(self.store.logout, token, self.origin)
-        response = _response(204, "")
+        response = (RedirectResponse("/auth/signed-out", status_code=303, headers=_AUTH_HEADERS)
+                    if not self.raw and request.query_params.getlist("view") == ["sign-in"]
+                    else _response(204, ""))
         _clear_cookie(response, SESSION_COOKIE)
         return response
