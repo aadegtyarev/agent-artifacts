@@ -947,6 +947,10 @@
     onPin: tapPin,
     onSpot: place,
     onEscape: escape,
+    onStartComment: () => {
+      if (!dialog || dialog.hidden) setMode(true);
+    },
+    desktop: desk,
     onBlank: blank,
     // What the frame was last told is kept, see keptChanged.
     hold: () => { kept = keeps(); return !kept; },

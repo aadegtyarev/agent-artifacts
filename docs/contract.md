@@ -393,7 +393,10 @@ screen**. **Project files** remains available for a project file.
 
 In the desktop viewer, the floating button only opens and closes the menu.
 The menu labels the shortcuts: `C` starts placement, `Shift+C` toggles the
-panel, and `F` toggles full screen. These shortcuts do not intercept typing.
+panel, and `F` toggles full screen. Latin `C` and Cyrillic `С` both work.
+`C` starts placement even when a sandboxed page has the keyboard focus.
+`Shift+C` and `F` are handled in the viewer itself; a browser's built-in PDF
+controls keep their focus. Shortcuts do not intercept typing or modified browser keys.
 
 In the narrow viewer, the floating button still drags and snaps to the nearer
 side edge. Its blue ring and small bubble show placement mode. A touch hold

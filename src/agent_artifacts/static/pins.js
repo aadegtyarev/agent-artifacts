@@ -491,6 +491,15 @@
     if (e.key === "Escape" && picking) tell({ type: "escape" });
   }, true);
 
+  // The frame may be narrow even in a desktop viewer. Only its parent can
+  // enable the shortcut. Let the shared page handle the key first.
+  let commentShortcut = false;
+  window.addEventListener("keydown", (e) => {
+    if (!e.isTrusted || !commentShortcut || reviewKeys.command(e) !== "start-comment") return;
+    e.preventDefault();
+    tell({ type: "start-comment" });
+  });
+
   // Scrolls the pin's point, not just its element, to the middle: inside
   // any scrolling box around it, then in the window.
   function reveal(anchor) {
@@ -531,6 +540,8 @@
       // The viewer starts over: it gets the next report even if unchanged.
       reported = "";
       tell({ type: "ready" });
+    } else if (m.type === "comment-shortcut") {
+      commentShortcut = m.enabled === true;
     } else if (m.type === "mode") {
       picking = m.on === true;
       hovered = null;

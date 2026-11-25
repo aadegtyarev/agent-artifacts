@@ -214,17 +214,14 @@
   }
 
   document.addEventListener("keydown", (e) => {
-    if (!desktopViewer() || e.defaultPrevented || e.isComposing || e.repeat || e.altKey || e.ctrlKey || e.metaKey) return;
-    const target = e.target;
-    if (target.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="dialog"]')) return;
-    const key = e.key.toLowerCase();
-    if (key !== "c" && (key !== "f" || e.shiftKey)) return;
+    if (!desktopViewer()) return;
+    const command = reviewKeys.command(e);
+    if (!command) return;
     e.preventDefault();
     closeFan();
-    if (key === "c") {
-      if (e.shiftKey) commentsToggle.click();
-      else commentMode(true);
-    } else if (document.body.classList.contains("full")) exitFull();
+    if (command === "start-comment") commentMode(true);
+    else if (command === "toggle-comments") commentsToggle.click();
+    else if (document.body.classList.contains("full")) exitFull();
     else enterFull();
   });
 
