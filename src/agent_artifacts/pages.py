@@ -45,7 +45,7 @@ _env.globals["static"] = {
         "pin.css", "site.css", "theme.js", "copy.js",
         "pin-marks.js", "comments-model.js", "sheet-drag.js", "links.js", "zoom.js", "review-keys.js",
         "comments-pins.js", "comments.js", "float-tip.js", "viewer.js", "menu-dialogs.js",
-        "project.js", "local-dates.js",
+        "project.js", "local-dates.js", "account-notices.js",
     )
 }
 
@@ -196,11 +196,18 @@ def file_rows(files: list[Artifact], now: float) -> list[dict]:
     return rows
 
 
+def account_page(template: str, status: int, **context: object) -> HTMLResponse:
+    response = _page(template, JOIN_CSP, status, **context)
+    # Same-origin forms send Origin on POST. No credential is in a page URL.
+    response.headers["Referrer-Policy"] = "same-origin"
+    return response
+
+
 def sign_in_page(domain: str, destination: str, *, email: str | None = None,
-                 title: str = "Sign in", status: int = 200) -> HTMLResponse:
+                 title: str = "Sign in", status: int = 200, account_mode: bool = False) -> HTMLResponse:
     response = _page(
         "sign-in.html", SIGN_IN_CSP, status, title=title, domain=domain,
-        destination=destination, email=email, retry=status >= 400,
+        destination=destination, email=email, retry=status >= 400, account_mode=account_mode,
     )
     # Don't send the callback query to subresources. Only the signed-in
     # landing page needs a same-origin policy for the logout form's Origin.
@@ -220,9 +227,8 @@ def invite_page(invite: Invite) -> HTMLResponse:
     )
 
 
-def key_page(name: str, key: str, public_url: str) -> HTMLResponse:
-    """POST /join/{token}: the new key, once, as one text to paste into any
-    agent: what to do, then the two settings."""
+def key_page(name: str, key: str, public_url: str, *, account_back: bool = False) -> HTMLResponse:
+    """Reveal a new key once, as one text to paste into an agent."""
     setup = (
         f"Set up agent-artifacts for me: follow {SETUP_URL}\n"
         f"AGENT_ARTIFACTS_URL={public_url}\nAGENT_ARTIFACTS_KEY={key}"
@@ -235,6 +241,7 @@ def key_page(name: str, key: str, public_url: str) -> HTMLResponse:
         name=name,
         setup=setup,
         user_guide=USER_GUIDE_URL,
+        account_back=account_back,
     )
 
 

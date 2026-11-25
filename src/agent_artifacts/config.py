@@ -30,6 +30,11 @@ class Config:
     # The raw origin for "Open separately", "" when there is none.
     raw_url: str = ""
     workspace: WorkspaceConfig | None = None
+    accounts: bool = False
+
+    def __post_init__(self) -> None:
+        if self.accounts:
+            check_https_origin(self.public_url, "AA_PUBLIC_URL", "with accounts enabled")
 
     @classmethod
     def from_env(cls) -> Config:
@@ -37,11 +42,15 @@ class Config:
         public_url = check_public_url(env.get("AA_PUBLIC_URL", "http://127.0.0.1:8090"))
         raw_url = check_raw_url(env.get("AA_RAW_URL", ""), public_url)
         workspace = workspace_from_env(env, public_url, raw_url)
+        accounts = env.get("AA_ACCOUNTS", "0")
+        if accounts not in ("0", "1"):
+            raise ValueError("AA_ACCOUNTS must be 0 or 1")
         return cls(
             data_dir=Path(env.get("AA_DATA_DIR", "./data")),
             public_url=public_url,
             raw_url=raw_url,
             workspace=workspace,
+            accounts=accounts == "1",
             ttl_seconds=int(float(env.get("AA_TTL_HOURS", "48")) * 3600),
             max_file_bytes=int(float(env.get("AA_MAX_FILE_MB", "25")) * MB),
             max_total_bytes=int(float(env.get("AA_MAX_TOTAL_MB", "2048")) * MB),
@@ -63,17 +72,21 @@ def workspace_from_env(env, public_url: str, raw_url: str) -> WorkspaceConfig | 
     for name, url in (("AA_PUBLIC_URL", public_url), ("AA_RAW_URL", raw_url)):
         if not url:
             continue
-        parts = urlsplit(url)
-        try:
-            port = parts.port
-        except ValueError:
-            raise ValueError(f"{name} has a bad port") from None
-        if (parts.scheme != "https" or not parts.hostname or parts.username is not None
-                or parts.password is not None or parts.path not in ("", "/")
-                or parts.query or parts.fragment or parts.netloc.endswith(":")
-                or (port is not None and port == 0)):
-            raise ValueError(f"{name} must be an HTTPS origin in Workspace mode")
+        check_https_origin(url, name, "in Workspace mode")
     return WorkspaceConfig(client_id, client_secret, domain)
+
+
+def check_https_origin(url: str, name: str, context: str) -> None:
+    parts = urlsplit(url)
+    try:
+        port = parts.port
+    except ValueError:
+        raise ValueError(f"{name} has a bad port") from None
+    if (parts.scheme != "https" or not parts.hostname or parts.username is not None
+            or parts.password is not None or parts.path not in ("", "/")
+            or parts.query or parts.fragment or parts.netloc.endswith(":")
+            or (port is not None and port == 0)):
+        raise ValueError(f"{name} must be an HTTPS origin {context}")
 
 
 def check_public_url(url: str, name: str = "AA_PUBLIC_URL") -> str:

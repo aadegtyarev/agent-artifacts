@@ -193,7 +193,8 @@ drawn; kept as `agent-artifacts:text-size`, no value for Large).
 | Larger | 1.3 |
 
 `zoom: var(--ts)` is set on: `body > header`, `.sheet > *`, `.toast-box`,
-`.fan-item`, `.modal`, `.banner > *`, `.pj > *`, and on phones `.join`.
+`.fan-item`, `.modal`, `.banner > *`, `.pj > *`, account entry and account
+pages, and on phones other `.join` pages.
 The default desktop panel width is `360px × --ts`; manual resizing is
 clamped to the [layout limits](#layout). The banner's top is
 `15px + 45px × --ts`.
@@ -250,6 +251,7 @@ component instead of setting every visible control to 44 px.
 | --- | --- | --- |
 | Header square button | 32 × 32 | 44 × 44 |
 | Sheet or dialog `.btn` | h 32 | h 46 |
+| Account and entry `.btn` | h 32, min w 38, type 15 | h 46, min w 44 |
 | Sheet `.btn.big` | h 36 | h 50 |
 | Share: Copy link / Download file | h 40 / h 44 | h 54 / h 58 |
 | Invite and key page button | auto on desktop; min 44 × 44 at ≤640 px | the button |
@@ -266,7 +268,7 @@ component instead of setting every visible control to 44 px.
 | Project row | min h 60 | the row |
 | Toast Undo | h 30 | h 44 |
 | Banner Show | h 32 | h 44 |
-| Dialog text field / sheet textarea | min h 40, padding 10 12; a pill changes the horizontal padding | the field |
+| Dialog or account text field / sheet textarea | min h 40, padding 10 12; a pill changes the horizontal padding | the field |
 | General comment | min h 60 | the field |
 | Pin on the content | 30 (Large 38) | +10 on each side |
 

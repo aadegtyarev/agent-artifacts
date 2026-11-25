@@ -31,7 +31,7 @@
 {%- endmacro %}
 
 {#- `download`: the file's download address; the project page has none. #}
-{% macro dialogs(url, download=None, workspace_author=None) %}
+{% macro share_dialog(url, download=None, company_only=False) %}
 <div id="share-dialog" class="scrim mid" hidden>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="share-title" tabindex="-1">
     <h2 id="share-title">Share</h2>
@@ -39,6 +39,7 @@
       <input id="share-link" type="text" readonly value="{{ url }}" aria-label="Link">
       <button type="button" id="share-copy" class="btn pri">Copy link</button>
     </div>
+    {% if company_only %}<p class="set-note">Only people who can sign in can open this link.</p>{% endif %}
     <p id="share-note" class="set-note" role="status"></p>
     {%- if download %}
     <a id="share-download" class="btn row" href="{{ download }}">{{ icon.download() }}<span>Download file</span></a>
@@ -49,6 +50,10 @@
     <div class="buttons"><button type="button" class="btn" data-close>Done</button></div>
   </div>
 </div>
+{%- endmacro %}
+
+{% macro dialogs(url, download=None, workspace_author=None) %}
+{{ share_dialog(url, download) }}
 <div id="settings-dialog" class="scrim mid" hidden>
   <form id="settings-form" class="modal settings" role="dialog" aria-modal="true" aria-labelledby="settings-title" tabindex="-1" novalidate>
     <h2 id="settings-title">Settings</h2>

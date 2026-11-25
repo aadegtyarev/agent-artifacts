@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block body %}
+<main class="join account-page">
+  <h1>Revoke this key?</h1>
+  <p>The key for <strong>{{ agent }}</strong> will stop working immediately. Its files and projects stay. You can issue a fresh key later, but this one cannot be restored.</p>
+  <form method="post" action="/account/agents/revoke">
+    <input type="hidden" name="name" value="{{ agent }}">
+    <input type="hidden" name="confirm" value="1">
+    <button type="submit" class="btn">Revoke key</button>
+  </form>
+  <p><a href="/account">Cancel</a></p>
+</main>
+{% endblock %}

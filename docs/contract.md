@@ -553,6 +553,45 @@ of the sign-in page. The optional raw origin keeps its separate browser login.
 The public installation does not show a sign-in page or require sign-in to
 open links. Agent API keys work independently of browser sign-in.
 
+### Accounts and devices (optional)
+
+With `AA_ACCOUNTS=1`, `/account` lists the signed-in person's projects,
+stand-alone files, linked agents and browser sessions. The same route and
+page are used with and without Google. **Share…** copies the existing file or
+project link; it does not change who can open it. The default public file and
+project routes still work without signing in.
+
+- On a non-Google installation, **Connect another device** creates an
+  eight-character code. Opening `/` on the new device shows a code field while
+  a code is active. The code works once, for at most five minutes; a new code
+  replaces the old one. Connecting creates a separate browser session. Sign
+  out invalidates only the selected session (and any code that it issued).
+- On a company installation, use **Sign in with Google**. Opening `/` goes to
+  the account after sign-in. File or project links still return to the original
+  destination. Google browser sessions are listed by verified subject.
+- `POST /api/v1/me/account-claim` takes the existing agent's bearer key and
+  returns a `201` JSON object with `url`, a one-time `code`, and `expires_in`
+  (600 seconds). Use the code on the claim page and confirm the named agent.
+  It is not an API key. A new code replaces the old one, and rotating the agent
+  key invalidates the claim. An already linked agent returns `409`.
+- In **Agent keys**, issue a key for a new agent or replace a revoked key.
+  The key is shown once. Revoking stops one key without deleting its files,
+  projects, or account link. It does not sign anyone out. A revoked key is
+  never restored; issue a fresh key. Admin keys remain managed by an admin.
+- Without Google, **Account recovery** generates a separate, single-use code
+  to save outside the current browser. Replacing it invalidates the previous
+  code. **Use a recovery code** signs out all old browsers, cancels their
+  device codes, and connects this browser without changing agent keys or files.
+  An agent key or an expired device cannot restore the account. If there is
+  no connected device or saved recovery code, there is no self-service recovery.
+- **Delete** hides a file from its existing links and agent API. Deleting a
+  project asks for confirmation with the file count; a change to the scope
+  requires a new confirmation. **Undo** in the toast at the top restores the
+  same links and metadata within one minute. It does not undo earlier separate
+  file deletions inside that project. Retained bytes count towards quotas until
+  cleanup. A permanent agent-API project deletion returns `409 deletion_pending`
+  if it would remove a file that can still be restored.
+
 ### Invite pages (no auth by default)
 
 | Path | What |

@@ -122,6 +122,15 @@ In the desktop viewer it sits at the bottom left, beside the panel.
 | with Undo | **Undo** at the right, 600, `--blue` lightened (60% with white) | at least 5 s |
 | error | `--red-fill` background; Undo is white when offered | Most feedback errors: 8 s; menu and project: 10 s; refused name: 6 s |
 
+In the account, deletion uses the same toast box and **Undo**, pinned at the
+top centre in both layouts without covering the heading on arrival. Start with
+what and how many were deleted (one file, or one project and its file count),
+then the title. The count must be readable even if the title is long. Stack
+active messages if needed; pressing one Undo restores only that item. Show
+each for the remaining server Undo time,
+not a fresh minute on reload. On a just-completed deletion, focus its Undo;
+when it expires, move focus only if the discarded message had it.
+
 Inside an open dialog the dialog's own status line speaks instead, because the
 toast sits under the scrim.
 
@@ -362,3 +371,32 @@ allowed domain and has one action, **Sign in with Google**. A failed sign-in
 keeps that action and explains how to retry. At the home page after sign-in,
 show the signed-in email and **Sign out**; this is not a file list or account
 settings page.
+
+## Account and device connection
+
+When account pages are enabled, the signed-in landing becomes **Your
+account**. Both entry modes use the same account page: **Projects** with
+nested files, **Files without a project**, **Devices**, and **Agent keys**.
+File and project **Share…** buttons reuse the Share dialog, return focus to
+the row button and copy the existing link. Show whether sign-in is required.
+**Delete** on a file uses the top-centred [Undo toast](#toast). Confirm
+project deletion with the project name and number of files; keep independent
+deletions separate.
+Use the `.join` column, the compact `.btn` from the sheet, and the existing
+short dialog field. Keep the same pre-Text dimensions in both entry modes and
+the account at narrow and desktop widths. A larger tap target is not a larger
+drawn button. The key setup text is the shared read-only multi-line field.
+With Google, use the company sign-in screen above. Without Google, **Connect
+a device** shows the code field when a connection code is active, or explains
+how to get one. Keep the setup-code confirmation separate from the short
+connection code. In **Devices**, label this session **This device** and sign
+out one session at a time. Without Google, **Account recovery** explains
+why to save the separate recovery code; the code display reuses the read-only
+field and Copy control. The recovery form names what will be signed out before
+the person presses **Restore account**.
+
+Under **Agent keys**, show the agent label, not its credential. Issuing a key
+reuses the key page. Confirm **Revoke key** because the old credential cannot
+be restored. After revocation offer **Issue new key** without changing the
+files or projects. The muted **GitHub** footer appears on the account and
+device entry pages.

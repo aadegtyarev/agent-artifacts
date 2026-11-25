@@ -133,6 +133,29 @@ supported. The Workspace session database is `workspace-auth.sqlite` on the
 data volume; losing it signs users out. Changing the configured hosted domain or
 OAuth client invalidates existing sessions and pending logins for the new policy.
 
+### Browser accounts (optional)
+
+Set `AA_ACCOUNTS=1` to enable account pages. With the supplied Compose file,
+set it in the installation's `.env` and recreate the app. The public origin
+must be HTTPS; forward the canonical Host header and preserve the browser's
+Origin on POST.
+With Workspace configured, Google handles browser sign-in; otherwise a
+connected browser can issue a one-time device code. Agent setup codes are
+returned separately from the claim page address, and both types of code go
+in form bodies, not URLs. Do not log request bodies or cookie headers. The
+per-caller pairing limit uses the ASGI client address, not a header parsed by
+the app; trust proxy headers only from your configured reverse proxy.
+Account ownership, device sessions, and hashes of device, setup and recovery
+codes live in `meta.sqlite`. Include it in the same backups as the files. On
+non-Google installations, save the recovery code outside the current browser
+before signing out the last device.
+
+Disabling `AA_ACCOUNTS` hides the account pages but preserves the visibility
+and cleanup rules for pending deletions. Do not run an older build that does
+not understand pending deletion markers against a database that still has
+any: it would expose those files again. Back up `meta.sqlite` and `files/`
+together and use a build that still honors these markers for a rollback.
+
 ## 3. Block the container's outbound connections
 
 Optional, recommended in public mode. In public mode the app never connects

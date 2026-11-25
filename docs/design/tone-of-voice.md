@@ -143,6 +143,8 @@ previous state. The table shows feedback already in the product:
 | Draft about the whole file added | Added about the whole file |
 | Draft edited | Saved |
 | Draft deleted | Draft deleted + Undo |
+| Account file deleted | Deleted 1 file · Launch notes + Undo |
+| Account project deleted | Deleted 1 project, 10 files · Product launch + Undo |
 | New draft dropped with text in it | Draft discarded + Undo |
 | Accept all | Accepted 2, approved 1 + Undo |
 | Finish review | Review sent to the agent / Review published |

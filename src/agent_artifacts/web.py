@@ -32,6 +32,7 @@ from starlette.routing import Mount, Route, request_response
 from starlette.staticfiles import StaticFiles
 
 from . import kinds, pages
+from .account_pages import AccountPages
 from .admin import admin_routes
 from .api import ApiError, error, iso, json_body, on_api_error, require_agent, user_json
 from .comments import _workspace_author, comment_routes, one_line
@@ -42,6 +43,7 @@ from .store import (
     ID_RE,
     TOKEN_RE,
     Artifact,
+    DeletionPending,
     NameTaken,
     NoSuchProject,
     Project,
@@ -51,7 +53,7 @@ from .store import (
     Store,
     TooMany,
 )
-from .workspace_auth import WorkspaceAuth, WorkspaceAuthStore, same_origin
+from .workspace_auth import ACCOUNT_ENTRY_PATHS, WorkspaceAuth, WorkspaceAuthStore, same_origin
 
 PURGE_INTERVAL_SECONDS = 600
 
@@ -239,7 +241,11 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         agent = require_agent(store, request)
         project_id = request.path_params["id"]
         if request.method == "DELETE":
-            if await run_in_threadpool(store.delete_project, project_id, owner=agent):
+            try:
+                deleted = await run_in_threadpool(store.delete_project, project_id, owner=agent)
+            except DeletionPending:
+                return error(409, "deletion_pending", "a file is still within its Undo window")
+            if deleted:
                 return Response(status_code=204)
         elif request.method == "PATCH":
             data = await json_body(request, {"title"}, {"title"})
@@ -408,10 +414,11 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
                 await task
 
     middleware = [Middleware(_CommonHeaders)]
+    main_auth = None
     if config.workspace is not None:
         auth_store = WorkspaceAuthStore(config.data_dir / "workspace-auth.sqlite", config.workspace)
         oidc = GoogleOIDC(config.workspace, config.public_url, config.raw_url)
-        main_auth = WorkspaceAuth(auth_store, oidc, origin=config.public_url)
+        main_auth = WorkspaceAuth(auth_store, oidc, origin=config.public_url, accounts=config.accounts)
         raw_auth = (WorkspaceAuth(auth_store, oidc, origin=config.raw_url, raw=True)
                     if config.raw_url else None)
         middleware.append(Middleware(_WorkspaceAccess, main=main_auth, raw=raw_auth))
@@ -438,6 +445,7 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             Mount("/static", StaticFiles(directory=pages.STATIC_DIR), name="static"),
             *admin_routes(store, config.public_url),
             *comment_routes(store),
+            *(AccountPages(store, config, main_auth).routes() if config.accounts else []),
         ],
         middleware=middleware,
         exception_handlers={ApiError: on_api_error},
@@ -569,8 +577,9 @@ class _WorkspaceAccess:
             await _raw_origin_not_found()(scope, receive, send)
             return
 
-        protected = auth.raw or any(path == prefix or path.startswith(prefix + "/")
-                                    for prefix in ("/a", "/p", "/join"))
+        account_path = auth.accounts and (path == "/account" or path.startswith("/account/"))
+        protected = auth.raw or account_path or any(path == prefix or path.startswith(prefix + "/")
+                                                   for prefix in ("/a", "/p", "/join"))
         if not protected:
             await self.app(scope, receive, send)
             return
@@ -578,7 +587,8 @@ class _WorkspaceAccess:
         identity = await auth.identity(request)
         if identity is None:
             navigation = (method == "GET" and
-                          ((_BROWSER_NAV.fullmatch(path) and not auth.raw) or
+                          ((not auth.raw and (_BROWSER_NAV.fullmatch(path) or
+                                             (account_path and path in ACCOUNT_ENTRY_PATHS))) or
                            (auth.raw and _RAW_PATH.fullmatch(path) and
                             request.headers.get("sec-fetch-dest") == "document")))
             if navigation:
