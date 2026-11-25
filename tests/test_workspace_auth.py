@@ -13,7 +13,7 @@ from starlette.routing import Route
 from starlette.testclient import TestClient
 
 from agent_artifacts.config import WorkspaceConfig
-from agent_artifacts.google_oidc import GoogleIdentity, GoogleOIDCError
+from agent_artifacts.google_oidc import GoogleIdentity, GoogleOIDCError, GoogleOIDCFailure
 from agent_artifacts.workspace_auth import (
     LOGIN_COOKIE,
     LOGIN_TTL,
@@ -50,7 +50,7 @@ class FakeGoogle:
             on_event_loop = False
         self.exchanges.append((kwargs, on_event_loop))
         if self.fail:
-            raise GoogleOIDCError("bad token")
+            raise GoogleOIDCError(GoogleOIDCFailure.ID_TOKEN_INVALID)
         return GoogleIdentity("stable-sub", "person@company.example", "Person")
 
 
@@ -147,7 +147,7 @@ def test_missing_mismatched_and_replayed_state(harness):
     assert len(harness.google.exchanges) == 1
 
 
-def test_login_expiry_and_failed_exchange_consumes_state(harness):
+def test_login_expiry_and_failed_exchange_consumes_state(harness, caplog):
     _, state = harness.start()
     harness.now[0] += LOGIN_TTL
     assert harness.callback(state).status_code == 400
@@ -156,6 +156,9 @@ def test_login_expiry_and_failed_exchange_consumes_state(harness):
     browser = harness.main.cookies.get(LOGIN_COOKIE)
     harness.google.fail = True
     assert harness.callback(state).status_code == 401
+    assert "callback_attempt_not_found_or_expired" in caplog.text
+    assert "google_id_token_invalid" in caplog.text
+    assert state not in caplog.text and browser not in caplog.text
     harness.main.cookies.set(LOGIN_COOKIE, browser, domain="app.example", path="/")
     harness.google.fail = False
     assert harness.callback(state).status_code == 400
@@ -231,6 +234,20 @@ def test_duplicate_parameters_rejected(harness):
     response = harness.main.get(f"/auth/callback?state={state}&code=c&error=access_denied")
     assert response.status_code == 400
     assert not harness.google.exchanges
+
+
+def test_callback_logging_does_not_include_google_or_browser_data(harness, caplog):
+    _, state = harness.start()
+    browser = harness.main.cookies.get(LOGIN_COOKIE)
+    values = {"state": state, "error": "private-provider-error", "error_description": "private-detail"}
+    denied = harness.main.get("/auth/callback", params=values)
+    assert denied.status_code == 400
+    assert "google_authorization_error" in caplog.text
+    harness.main.cookies.clear()
+    assert harness.callback(state).status_code == 400
+    assert "callback_browser_cookie_missing_or_invalid" in caplog.text
+    for private in (state, browser, "private-provider-error", "private-detail", PATH):
+        assert private not in caplog.text
 
 
 def test_atomic_state_consumption(harness):

@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import logging
 import re
 import secrets
 import sqlite3
@@ -16,6 +17,7 @@ import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import LiteralString
 from urllib.parse import urlsplit
 
 from starlette.concurrency import run_in_threadpool
@@ -24,8 +26,12 @@ from starlette.responses import RedirectResponse, Response
 
 from . import pages
 from .config import WorkspaceConfig
-from .google_oidc import CALLBACK_PATH, GoogleIdentity, GoogleOIDC, GoogleOIDCError
+from .google_oidc import (
+    CALLBACK_PATH, GoogleIdentity, GoogleOIDC, GoogleOIDCError, GoogleOIDCFailure,
+)
 from .store import ID_RE, TOKEN_RE
+
+log = logging.getLogger(__name__)
 
 LOGIN_COOKIE = "__Host-aa-workspace-login"
 SESSION_COOKIE = "__Host-aa-workspace-session"
@@ -215,30 +221,45 @@ class WorkspaceAuth:
         return response
 
     async def callback(self, request: Request) -> Response:
+        started = time.monotonic()
+
+        def fail(status: int, reason: LiteralString | GoogleOIDCFailure,
+                 destination: str | None = None) -> Response:
+            # Labels and timing only: never log request data or provider errors.
+            log.warning("Workspace sign-in failed: %s (%d ms)", reason,
+                        round((time.monotonic() - started) * 1000))
+            response = self._sign_in_failed(status, destination or "/")
+            if destination is not None:
+                _clear_cookie(response, LOGIN_COOKIE)
+            return response
+
         states, codes = request.query_params.getlist("state"), request.query_params.getlist("code")
         errors = request.query_params.getlist("error")
         denied = len(errors) == 1 and not codes
         browser = request.cookies.get(LOGIN_COOKIE)
-        if (len(states) != 1 or not _valid_token(states[0]) or not _valid_token(browser)
-                or not (denied or (not errors and len(codes) == 1 and 0 < len(codes[0]) <= 4096))):
-            return self._sign_in_failed(400)
+        if len(states) != 1 or not _valid_token(states[0]):
+            return fail(400, "callback_state_invalid")
+        if not _valid_token(browser):
+            return fail(400, "callback_browser_cookie_missing_or_invalid")
+        if not (denied or (not errors and len(codes) == 1 and 0 < len(codes[0]) <= 4096)):
+            return fail(400, "callback_result_invalid")
         attempt = await run_in_threadpool(self.store.consume, states[0], browser, self.origin)
         if attempt is None:
-            return self._sign_in_failed(400)
+            return fail(400, "callback_attempt_not_found_or_expired")
         nonce, verifier, destination = attempt
         if denied:
-            response = self._sign_in_failed(400, destination)
-            _clear_cookie(response, LOGIN_COOKIE)
-            return response
+            if errors[0] in ("org_internal", "admin_policy_enforced"):
+                return fail(400, "google_organization_policy", destination)
+            if errors[0] == "access_denied":
+                return fail(400, "google_access_denied", destination)
+            return fail(400, "google_authorization_error", destination)
         try:
             identity = await run_in_threadpool(
                 self.oidc.exchange, code=codes[0], redirect_uri=self.callback_uri,
                 code_verifier=verifier, nonce=nonce,
             )
-        except GoogleOIDCError:
-            response = self._sign_in_failed(401, destination)
-            _clear_cookie(response, LOGIN_COOKIE)
-            return response
+        except GoogleOIDCError as e:
+            return fail(401, e.reason, destination)
         token = await run_in_threadpool(self.store.create_session, self.origin, identity)
         response = RedirectResponse(destination, status_code=303, headers=_AUTH_HEADERS)
         _clear_cookie(response, LOGIN_COOKIE)

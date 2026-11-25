@@ -97,7 +97,9 @@ In Compose, pass the three values into the container using an override or your
 secret-management integration; merely adding them to `.env` does not pass them
 through automatically. In Workspace mode configure the proxy to preserve the
 configured Host authority (including a non-default port), reject other hosts,
-and keep request URLs and OAuth callback query strings out of logs.
+and keep request URLs and OAuth callback query strings out of logs. On a
+failed callback the app logs only a fixed reason and the time the server
+spent handling it, never OAuth parameters, cookies, or account details.
 
 If using the optional raw-origin nginx block, it must also proxy exactly the
 three authentication endpoints below to the app, in addition to the existing

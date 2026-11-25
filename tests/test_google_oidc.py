@@ -12,7 +12,7 @@ from cryptography.x509.oid import NameOID
 from google.auth import crypt, jwt
 
 from agent_artifacts.config import Config, WorkspaceConfig
-from agent_artifacts.google_oidc import GoogleOIDC, GoogleOIDCError
+from agent_artifacts.google_oidc import GoogleOIDC, GoogleOIDCError, GoogleOIDCFailure
 
 
 @pytest.fixture
@@ -103,14 +103,22 @@ def test_authorization_url_and_callback(oidc):
                                nonce="n", code_challenge="c")
 
 
-def test_exchange_rejects_http_errors_without_exposing_credentials(monkeypatch, oidc):
+@pytest.mark.parametrize(("reported", "reason"), [
+    ("invalid_client", GoogleOIDCFailure.TOKEN_CLIENT),
+    ("invalid_grant", GoogleOIDCFailure.TOKEN_GRANT),
+    ("provider-secret-value", GoogleOIDCFailure.TOKEN_REJECTED),
+])
+def test_exchange_rejects_http_errors_without_exposing_credentials(monkeypatch, oidc, reported, reason):
     monkeypatch.setattr("agent_artifacts.google_oidc.requests.post", lambda *a, **kw:
-                        SimpleNamespace(status_code=400))
+                        SimpleNamespace(status_code=400, json=lambda: {"error": reported,
+                                                                       "error_description": "private-detail"}))
     with pytest.raises(GoogleOIDCError) as error:
         oidc.exchange(code="code", redirect_uri="https://app.example/auth/callback",
                       code_verifier="verifier", nonce="nonce")
+    assert error.value.reason is reason
     assert "secret" not in str(error.value)
     assert "code" not in str(error.value)
+    assert "private-detail" not in str(error.value)
 
 
 @pytest.mark.parametrize("change", [
@@ -144,8 +152,15 @@ def test_exchange_verifies_signed_token(monkeypatch, oidc, keys, change):
         return oidc.exchange(code="code", redirect_uri="https://app.example/auth/callback",
                              code_verifier="verifier", nonce="nonce", verifier_request=cert_request)
     if change:
-        with pytest.raises(GoogleOIDCError):
+        with pytest.raises(GoogleOIDCError) as error:
             exchange()
+        label = next(iter(change))
+        assert error.value.reason is {
+            "hd": GoogleOIDCFailure.DOMAIN_MISMATCH,
+            "email_verified": GoogleOIDCFailure.EMAIL_UNVERIFIED,
+            "nonce": GoogleOIDCFailure.NONCE_MISMATCH,
+            "sub": GoogleOIDCFailure.PROFILE_INVALID,
+        }.get(label, GoogleOIDCFailure.ID_TOKEN_INVALID)
     else:
         identity = exchange()
         assert (identity.subject, identity.email, identity.name) == (
