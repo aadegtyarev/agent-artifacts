@@ -117,8 +117,10 @@ Decisions carry their mark: **✓ Accept**, **✕ Reject**,
 **OK**, or with **Hide** for good. A menu item that opens a dialog
 ends with "…": **Share…**, **Settings…**. A count goes after " · ":
 **Finish review · 3**. **Discard** is for typed work not yet saved as a draft;
-**Delete** is for a saved draft. On desktop the new comment placeholder says
-"Enter: new line · Ctrl+Enter: save draft" (⌘+Enter on Mac).
+**Delete** is for a saved draft. Use "Comment" in the new comment field.
+On a computer, put both shortcuts below it: "Enter: save draft. Shift+Enter:
+new line." Saving is not publication. No keyboard hint on a phone or touch
+screen.
 
 ### Empty states
 

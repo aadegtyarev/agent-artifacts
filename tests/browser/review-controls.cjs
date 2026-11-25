@@ -35,7 +35,7 @@ async function dismissTip(page) {
       assert.equal(await draft.inputValue(), 'Keep this draftf');
       await p.keyboard.press('Escape'); assert(!(await placing(p)));
       assert.equal(await draft.inputValue(), 'Keep this draftf');
-      await p.keyboard.press('Control+Enter');
+      await p.keyboard.press('Enter');
       const finish = p.locator('#sheet-foot').getByRole('button', { name: /Finish review/ });
       await finish.waitFor(); assert(!(await placing(p)));
       await finish.click(); assert(!(await placing(p)));

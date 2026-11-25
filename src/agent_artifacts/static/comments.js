@@ -465,7 +465,8 @@
     document.querySelector('[data-act="comment"]').setAttribute("aria-checked", String(S.mode));
     addComment.setAttribute("aria-pressed", String(S.mode));
     addComment.classList.toggle("pri", !S.mode && reviewCount() === 0);
-    fields.compose.placeholder = desk.matches ? `Enter: new line · ${macKeys ? "⌘" : "Ctrl"}+Enter: save draft` : "Comment";
+    if (desktopComposeKeys()) fields.compose.setAttribute("aria-describedby", "compose-key-hint");
+    else fields.compose.removeAttribute("aria-describedby");
 
     renderStrip();
     // On a phone the strip alone shows nothing else.
@@ -670,9 +671,16 @@
       const pill = el("div", "pill");
       pill.append(fields.compose, sendButton);
       sendButton.disabled = savingDraft || !fields.compose.value.trim();
+      const footer = [pill];
+      if (desktopComposeKeys()) {
+        const hint = el("p", "note");
+        hint.id = "compose-key-hint";
+        hint.append(el("span", null, "Enter: save draft."), " ", el("span", null, "Shift+Enter: new line."));
+        footer.push(hint);
+      }
       // On a phone the field is the sheet's footer, so it stays at the
       // bottom edge, right above the keyboard.
-      return [out, [pill]];
+      return [out, footer];
     },
 
     finish() {
@@ -1159,7 +1167,8 @@
     render();
   }
 
-  const macKeys = /Mac/.test(navigator.platform || "");
+  const coarsePointer = matchMedia("(pointer: coarse)");
+  const desktopComposeKeys = () => desk.matches && !coarsePointer.matches;
   const addComment = button("Add comment", () => setMode(!S.mode), "btn add-comment");
   const addKey = el("kbd", "fan-key desk-viewer", "C");
   addKey.setAttribute("aria-hidden", "true");
@@ -1657,7 +1666,7 @@
   // keyboard's Enter is a new line, as in the draft's own editor; the send
   // arrow and Add send.
   const sendsOnEnter = (e) => e.key === "Enter" && !e.shiftKey && !e.isComposing
-    && !matchMedia("(pointer: coarse)").matches;
+    && !coarsePointer.matches;
   fields.reply.addEventListener("keydown", (e) => {
     if ((desk.matches && e.key === "Enter" && (e.ctrlKey || e.metaKey) && !e.isComposing && !e.repeat)
         || (!desk.matches && sendsOnEnter(e))) {
@@ -1684,13 +1693,27 @@
     const done = finishButton;
     if (done && done.isConnected) done.disabled = sending || (!reviewCount() && !area.value.trim());
   });
-  // Enter adds the draft (Shift+Enter is a new line), with a hardware
-  // keyboard only, as above.
   fields.compose.addEventListener("keydown", (e) => {
-    if ((desk.matches && e.key === "Enter" && (e.ctrlKey || e.metaKey) && !e.isComposing && !e.repeat)
-        || (!desk.matches && sendsOnEnter(e))) {
+    if (e.key !== "Enter" || e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
+    if (!desk.matches) {
+      if (sendsOnEnter(e)) { e.preventDefault(); addDraft(); }
+      return;
+    }
+    if (e.altKey) return;
+    if (e.ctrlKey || e.metaKey) {
+      // Browsers do not consistently insert a newline for the modified key.
+      // Use the editor's native undo stack where insertText is supported.
       e.preventDefault();
-      addDraft();
+      const field = fields.compose;
+      const start = field.selectionStart, end = field.selectionEnd;
+      if (field.value.length - (end - start) >= field.maxLength) return;
+      if (!document.execCommand?.("insertText", false, "\n")) {
+        field.setRangeText("\n", start, end, "end");
+        field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertLineBreak" }));
+      }
+    } else if (!e.shiftKey && !coarsePointer.matches) {
+      e.preventDefault();
+      if (!e.repeat) addDraft();
     }
   });
   fields.edit.addEventListener("keydown", (e) => {

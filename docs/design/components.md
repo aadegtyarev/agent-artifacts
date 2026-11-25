@@ -278,10 +278,16 @@ Enter sends and Shift+Enter inserts a newline; on touch, Enter inserts a newline
 and the arrow sends.
 
 At ≥900 px the field uses radius 10 and a separate adjacent arrow. The field
-scrolls internally at its height limit. Enter and Shift+Enter insert a newline;
-Ctrl/Meta+Enter saves the draft or reply. The item header and reply stay visible
-while the thread scrolls. Text limit: 2,000 characters. An empty field disables
-send. Focus matches the [plain field](#text-fields).
+scrolls internally at its height limit. In a new comment on a computer,
+Enter does what the arrow does: save a draft without publishing it.
+Shift+Enter, Ctrl+Enter and Meta+Enter insert a newline; plain Enter on a touch
+screen also inserts a newline. Put the save and new-line hints together in one
+muted note below the field on desktop with a fine pointer. The placeholder is
+always "Comment". The note stays visible while typing, wraps if needed and is
+not shown in the narrow or touch composer.
+Replies and edits still save with Ctrl/Meta+Enter. The item header and reply
+stay visible while the thread scrolls. Text limit: 2,000 characters. An empty
+field disables send. Focus matches the [plain field](#text-fields).
 
 ### Finish review
 
