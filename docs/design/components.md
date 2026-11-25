@@ -55,8 +55,9 @@ the project page keeps the fan.
 
 Show comments opens the panel without enabling placement. **Add comment**
 starts or stops placement and is checked while active. The desktop menu
-shows Shift+C (panel), C (start placement) and F (full screen). Clicking an
-existing pin opens its thread without enabling placement.
+shows Shift+C (panel), C (start placement) and F (full screen). Latin C and
+Cyrillic С work, including for starting placement from a focused page.
+Clicking an existing pin opens its thread without enabling placement.
 
 ### Desktop review attention
 

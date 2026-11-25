@@ -8,6 +8,7 @@
 //   onPin(key): a pin was tapped
 //   onSpot(anchor): a spot was chosen for a new draft (in comment mode)
 //   onEscape(): Escape was pressed in the page while picking
+//   onStartComment(): the focused desktop frame asked to start placing pins
 //   onBlank(): outside comment mode, a plain tap on the content away from
 //     pins and from anything the page acts on, or with a pin lit any tap
 //     off the pins, which the page then does not get
@@ -19,7 +20,7 @@
 // sheet makes when it redraws or moves.
 const commentsPins = ({
   pinType, image, imageBox, imageLink, pinLayer, frame,
-  pins, picking, onPin, onSpot, onEscape, onBlank, onChange, hold,
+  pins, picking, onPin, onSpot, onEscape, onStartComment, onBlank, onChange, hold, desktop,
 }) => {
   const { badge: badgeEl, inside, nameOf } = pinMarks;
   const TONES = { own: " own", other: "", agent: " ag" };
@@ -235,6 +236,9 @@ const commentsPins = ({
 
   // --- Pins on a page: the script in the frame -------------------------------------
   const tell = (m) => frame.contentWindow.postMessage(m, "*");
+  const syncShortcut = () => {
+    if (page.ready) tell({ type: "comment-shortcut", enabled: desktop.matches });
+  };
 
   // In comment mode the script takes a tap on the page as a spot.
   function syncPicking() {
@@ -265,6 +269,7 @@ const commentsPins = ({
       page.off = false;
       // A page loaded again starts with pin mode off.
       page.picking = false;
+      syncShortcut();
       onChange(false);
     } else if (!page.ready) {
       // Nothing else counts before the script has said it is there.
@@ -290,6 +295,11 @@ const commentsPins = ({
       onPin(fromFrame(m.key));
     } else if (m.type === "escape" && page.picking) {
       onEscape();
+    } else if (m.type === "start-comment" && desktop.matches && document.activeElement === frame
+      && (!navigator.userActivation || navigator.userActivation.isActive)) {
+      // Shared HTML can forge a message. This one may only open comment
+      // placement, not place a pin, send a review, or change the full screen.
+      onStartComment();
     } else if (m.type === "blank" && !page.picking
       && (!navigator.userActivation || navigator.userActivation.isActive)) {
       // Only right after a tap in the frame, so the page cannot clear the
@@ -358,6 +368,7 @@ const commentsPins = ({
     toFragment();
     window.addEventListener("hashchange", toFragment);
     window.addEventListener("message", onFrameMessage);
+    desktop.addEventListener("change", syncShortcut);
     frame.addEventListener("load", () => {
       // Another document may be in the frame now (a link, a refresh): it
       // has pins only once its script says so.

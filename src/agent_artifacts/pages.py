@@ -43,7 +43,7 @@ _env.globals["static"] = {
     n: _static_url(n)
     for n in (
         "pin.css", "site.css", "theme.js", "copy.js",
-        "pin-marks.js", "comments-model.js", "sheet-drag.js", "links.js", "zoom.js",
+        "pin-marks.js", "comments-model.js", "sheet-drag.js", "links.js", "zoom.js", "review-keys.js",
         "comments-pins.js", "comments.js", "float-tip.js", "viewer.js", "menu-dialogs.js",
         "project.js", "local-dates.js",
     )
@@ -104,6 +104,7 @@ _PINS = Markup(  # noqa: S704
     + (STATIC_DIR / "pin-marks.js").read_text(encoding="utf-8")
     + _LINKS_JS
     + (STATIC_DIR / "zoom.js").read_text(encoding="utf-8")
+    + (STATIC_DIR / "review-keys.js").read_text(encoding="utf-8")
     + f"const pinCss = {_PIN_CSS};\n"
     + (STATIC_DIR / "pins.js").read_text(encoding="utf-8")
     + "}</script>"
