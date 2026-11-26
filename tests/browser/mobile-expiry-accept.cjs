@@ -56,7 +56,7 @@ const base = process.env.BASE_URL;
         await page.getByRole('button', { name: '+ About the whole file' }).click();
         await page.locator('.sheet textarea').fill('A draft for finish review');
         await page.locator('.send').click();
-        await page.getByRole('button', { name: /Finish review/ }).first().click();
+        await page.getByRole('button', { name: /Review drafts/ }).first().click();
       }
       const target = page.locator(`.all-${variant}`);
       await target.waitFor({ state: 'visible' });

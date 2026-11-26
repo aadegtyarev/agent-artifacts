@@ -121,7 +121,7 @@ assert.match(fixture.id, /^[\w-]{22}$/);
       assert.equal(saved.request().postDataJSON().text,input);
       assert.deepEqual(writes,[`/a/${fixture.id}/drafts`]);
       if (width >= 900) {
-        await p.getByRole('button',{name:/^Finish review/}).first().waitFor();
+        await p.getByRole('button',{name:/^Review drafts/}).first().waitFor();
         if (process.env.SHOTS && desktop) await p.screenshot({path:path.join(process.env.SHOTS,label+'-draft.png')});
       }
       assert.deepEqual(errors,[]);

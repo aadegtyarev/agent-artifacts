@@ -60,7 +60,7 @@ from .drive_storage import (
 )
 from .google_oidc import GoogleOIDC
 from .review_report_routes import report_routes
-from .review_submissions import pending_closures
+from .review_submissions import pending_closures, pending_notes
 from .storage import DiskStorage
 from .store import (
     ID_RE,
@@ -391,11 +391,15 @@ def create_app(
         found = await run_in_threadpool(store.projects, agent)
         return JSONResponse([project_json(p) for p in found])
 
-    def project_closures(project_id: str, owner: str) -> dict[str, str]:
+    def project_reviews(project_id: str, owner: str) -> dict[str, dict[str, str]]:
         if not config.review_docs or delegated is None:
             return {}
         with store._conn() as db:
-            return pending_closures(db, owner, project_id=project_id)
+            db.execute("BEGIN")
+            closures = pending_closures(db, owner, project_id=project_id)
+            notes = pending_notes(db, owner, project_id=project_id)
+        return {key: ({"review_closure": closures[key]} if key in closures else {})
+                     | ({"review_notes": notes[key]} if key in notes else {}) for key in closures.keys() | notes.keys()}
 
     async def project(request: Request) -> Response:
         agent = require_agent(store, request)
@@ -432,9 +436,8 @@ def create_app(
             found = await run_in_threadpool(store.project, project_id, owner=agent)
             if found is not None:
                 p, files = found
-                closures = await run_in_threadpool(project_closures, project_id, agent)
-                artifacts = [as_json(a) | ({"review_closure": closures[a.id]} if a.id in closures else {})
-                             for a in files]
+                review = await run_in_threadpool(project_reviews, project_id, agent)
+                artifacts = [as_json(a) | review.get(a.id, {}) for a in files]
                 return JSONResponse(project_json(p) | {"artifacts": artifacts}, headers={"Cache-Control": "no-store"})
         return error(404, "not_found", "no such project")
 
@@ -457,13 +460,12 @@ def create_app(
         if found is None:
             return error(404, "not_found", "no such project")
         now, files = found
-        closures = await run_in_threadpool(project_closures, request.path_params["id"], agent)
+        review = await run_in_threadpool(project_reviews, request.path_params["id"], agent)
         return JSONResponse(
             {
                 "now": now,
                 "files": [
-                    {"id": i, "title": t, "waiting": w, "accepted": a}
-                    | ({"review_closure": closures[i]} if i in closures else {}) for i, t, w, a in files
+                    {"id": i, "title": t, "waiting": w, "accepted": a} | review.get(i, {}) for i, t, w, a in files
                 ],
             },
             headers={"Cache-Control": "no-store"},

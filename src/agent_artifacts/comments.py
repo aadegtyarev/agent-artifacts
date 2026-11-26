@@ -24,7 +24,7 @@ from starlette.routing import Route
 
 from . import kinds
 from .api import ApiError, error, iso, json_body, on_api_error, require_agent
-from .review_submissions import ReviewSubmission, SubmissionConflict, SubmissionUnavailable, pending_closures
+from .review_submissions import ReviewSubmission, SubmissionConflict, SubmissionUnavailable, pending_closures, pending_notes
 from .store import (
     ANSWERED,
     DECISIONS,
@@ -217,8 +217,11 @@ def comment_routes(store: Store, *, drive_viewer: bool = False, versioned_review
                 submission = ReviewSubmission.parse(identity.subject, data["submission"])
             except ValueError:
                 raise ApiError(400, "bad_request", "Invalid review submission.") from None
-            if submission.closing and read_only:
-                raise ApiError(503, "drive_read_only", "Google Drive writes are paused.")
+            if submission.closing:
+                if for_agent:
+                    raise ApiError(400, "bad_request", "Finishing a review cannot request edits.")
+                if read_only:
+                    raise ApiError(503, "drive_read_only", "Google Drive writes are paused.")
         try:
             made = await run_in_threadpool(
                 store.publish, artifact_id, key, author=author, text=text, for_agent=for_agent,
@@ -272,12 +275,15 @@ def comment_routes(store: Store, *, drive_viewer: bool = False, versioned_review
         if request.query_params.get("watch") != "1":
             return _updated(_answer(rows), updated_at)
 
-        def review_closure() -> str | None:
+        def pending_reviews() -> dict:
             with store._conn() as db:
-                return pending_closures(db, agent, artifact_id=artifact_id).get(artifact_id)
+                db.execute("BEGIN")
+                closure = pending_closures(db, agent, artifact_id=artifact_id).get(artifact_id)
+                notes = pending_notes(db, agent, artifact_id=artifact_id).get(artifact_id)
+                return {"review_closure": closure} | ({"review_notes": notes} if notes is not None else {})
 
-        closure = await run_in_threadpool(review_closure) if versioned_reviews else None
-        response = _updated(_answer({"comments": rows, "review_closure": closure}), updated_at)
+        review = await run_in_threadpool(pending_reviews) if versioned_reviews else {"review_closure": None}
+        response = _updated(_answer({"comments": rows} | review), updated_at)
         response.headers["Cache-Control"] = "no-store"
         return response
 

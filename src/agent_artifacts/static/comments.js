@@ -93,7 +93,7 @@
   // --- State -----------------------------------------------------------------
   const S = {
     mode: false,
-    // list, item (the one `sel`), compose (a new draft), finish
+    // list, item (the one `sel`), compose (a new draft), finish (preview), close
     view: "list",
     // the sheet's height on a phone: strip, m (content), f (full)
     pos: "strip",
@@ -102,11 +102,10 @@
     compose: null,
     // the id of the draft being edited
     edit: null,
-    // Finish review sends to the agent, or only publishes
+    // The draft preview sends to the agent, or only publishes.
     toAgent: true,
     reviewState: sheet.dataset.reviewState || null,
-    finalRound: false,
-    submission: null,
+    submissions: { finish: null, close: null },
     // the list's folded groups (Discussion, Closed) opened by a tap
     opened: new Set(),
     // the list's order of keys while one item is shown, so ‹ › keep it
@@ -205,7 +204,6 @@
   function applyReviewState(state) {
     if (state === S.reviewState) return false;
     S.reviewState = state;
-    if (state !== "closable") S.finalRound = false;
     return true;
   }
 
@@ -387,6 +385,7 @@
     compose: field("Comment", "Comment"),
     edit: field("Comment", "Edit the draft"),
     general: field("General comment", "General comment, optional"),
+    finalNote: field("Final note", "Final note, optional"),
     reply: field("Reply…", "Reply"),
   };
   // The comment the reply field writes to.
@@ -470,6 +469,8 @@
     const keptGroup = active && active.classList.contains("sec-fold") ? active.dataset.group : null;
     const keptHeading = active && active.matches(".sbody > .handle");
     const keptAdd = active === addComment;
+    const keptSlot = foot.contains(active) ? active?.dataset.reviewSlot : null;
+    const keptRecipient = active?.matches('.towhom .opt') ? active.agent : null;
     const caret = kept ? [kept.selectionStart, kept.selectionEnd] : null;
 
     const expanded = panelOpen();
@@ -512,9 +513,12 @@
       if (head) head.focus({ preventScroll: true });
     }
     if (keptAdd && addComment.isConnected) addComment.focus({ preventScroll: true });
+    if (keptSlot) foot.querySelector(`[data-review-slot="${keptSlot}"]`)?.focus({ preventScroll: true });
+    if (keptRecipient !== null) [...foot.querySelectorAll('.towhom .opt')]
+      .find((choice) => choice.agent === keptRecipient)?.focus({ preventScroll: true });
     // A field being typed in hides what would sit under the finger (the
-    // item's Finish review, the choice of where to send).
-    const typing = document.activeElement === fields.reply || document.activeElement === fields.general;
+    // item's review action, the choice of where to send).
+    const typing = [fields.reply, fields.general, fields.finalNote].includes(document.activeElement);
     foot.classList.toggle("typing", typing);
     drawPins();
     syncPicking();
@@ -564,7 +568,7 @@
     if (pendingCount) parts.push(many(pendingCount));
     if (n.need) parts.push(el("b", null, `${n.need} need you`));
     if (review) parts.push(`${review} ${review === 1 ? "draft" : "drafts"}`);
-    // With Finish review at its side the line has no room for the agent's part.
+    // With Review drafts at its side the line has no room for the agent's part.
     if (n.agent && !review) parts.push(`${n.agent} in progress`);
     const line = [];
     parts.forEach((p, i) => line.push(...(i ? [" · ", p] : [p])));
@@ -579,8 +583,8 @@
     if (plain && S.comments.length && S.mode && canPin()) {
       strip.append(el("span", "strip-hint", pinHint()));
     }
-    if (review && !desk.matches && S.view !== "finish") {
-      strip.append(button("Finish review", (e) => { e.stopPropagation(); openFinish(); }, "btn pri"));
+    if (review && !desk.matches && !["finish", "close"].includes(S.view)) {
+      strip.append(button("Review drafts", (e) => { e.stopPropagation(); openFinish("finish", "strip"); }, "btn pri"));
     }
   }
 
@@ -630,7 +634,7 @@
         out.push(add);
       }
       if (!stored && (S.mode || drafts)) out.push(el("p", "note", "This browser keeps nothing: your drafts last only while this page is open."));
-      return [out, review || S.reviewState === "closable" ? [finishBar(review)] : []];
+      return [out, review || canFinishReview() || fields.general.value.trim() ? [finishBar(review)] : []];
     },
 
     item() {
@@ -667,12 +671,12 @@
           out.push(other);
         }
       }
-      // Finish review stays below the discussion, as on the list.
+      // Review drafts stays below the discussion, as on the list.
       const review = reviewCount();
       const footer = [];
       const accepting = !it.draft && (decisionOn(it.c.n) || {}).kind === "accept";
       if (!it.draft && !it.c.rejected_by && !accepting && !S.edit) footer.push(replyPill(it));
-      if (review && !S.edit) footer.push(finishBar(review));
+      if (review && !S.edit) footer.push(finishBar(review, true));
       return [out, footer];
     },
 
@@ -716,8 +720,7 @@
         ? i.c.agent === "asked" || model.proposalCanApprove(i.c)
         : ["done", "wrote", "asked"].includes(i.c.agent) || i.pend));
       const accepting = (i) => (decisionOn(i.c.n) || {}).kind === "accept";
-      const closable = S.reviewState === "closable";
-      const out = [titled(count || !closable ? `Finish review · ${count}` : "Finish review")];
+      const out = [titled(`Review drafts · ${count}`), ...reviewVersion()];
       if (undecided.length) {
         const sec = el("div", "sec-row");
         sec.append(el("p", "sec", `Not decided yet · ${undecided.length}`));
@@ -727,50 +730,50 @@
         for (const it of undecided) out.push(row(it, status(it)));
         out.push(el("p", "sec", "In this review"));
       }
-      if (!count && !closable) out.push(el("p", "empty", "No drafts: you can publish a general comment only."));
+      if (!count) out.push(el("p", "empty", "No drafts: you can publish a general comment only."));
       for (const it of drafts) out.push(row(it, where(it)));
       for (const it of touched.filter((i) => !accepting(i))) out.push(row(it, status(it)));
       for (const it of touched.filter(accepting)) out.push(row(it, status(it)));
       const general = el("div", "general");
       general.append(fields.general);
       out.push(general);
-      const bar = el("div", "foot2");
-      const done = button("Finish review", () => finish(), "btn pri big");
+      const done = button(sendLabel(), () => finish(false), "btn pri");
+      done.disabled = sendBlocked(false);
       finishButton = done;
-      bar.append(button("Back", () => go("list", "m")), done);
-      const recipient = toWhom();
-      const footer = [recipient, bar];
-      const updateAction = () => {
-        done.textContent = S.finalRound ? "Close review" : "Finish review";
-        done.disabled = sending || (!S.finalRound && !count && !fields.general.value.trim());
-        recipient.hidden = S.finalRound;
-      };
-      if (closable) {
-        const choice = el("label", "close-review");
-        const input = el("input");
-        input.type = "checkbox";
-        input.checked = S.finalRound;
-        input.disabled = sending;
-        input.addEventListener("change", () => {
-          if (sending) { input.checked = S.finalRound; return; }
-          S.finalRound = input.checked;
-          updateAction();
-        });
-        choice.append(input, "This is the final round");
-        const help = el("p", "note close-review-note", "The agent will write a summary, not make more changes.");
-        help.id = "close-review-note";
-        input.setAttribute("aria-describedby", help.id);
-        footer.unshift(choice, help);
+      return [out, [toWhom(), reviewActions(button("Back", returnFromReview), done)]];
+    },
+
+    close() {
+      const count = reviewCount();
+      const open = S.comments.filter((c) => !c.rejected_by && decisionOn(c.n)?.kind !== "accept").length;
+      const out = [titled("Finish review"), ...reviewVersion()];
+      if (!canFinishReview()) {
+        out.push(reviewResultNote() || el("p", "note", "This review can no longer be finished from here."));
+      } else {
+        out.push(el("p", "empty", "The outcome will be added to the review notes. No new edit request is sent."));
+        if (open) out.push(el("p", "note", `Open comments · ${open}. Finishing does not accept them.`));
+        if (count) out.push(el("p", "note", count === 1 ? "1 draft will be published." : `${count} drafts will be published.`));
       }
-      updateAction();
-      return [out, footer];
+      if (canFinishReview() || fields.finalNote.value.trim()) {
+        const note = el("div", "general");
+        note.append(fields.finalNote);
+        out.push(note);
+      }
+      const done = button("Finish review", () => finish(true), "btn pri");
+      done.disabled = sendBlocked(true);
+      finishButton = done;
+      return [out, [reviewActions(button("Back", returnFromReview), done)]];
     },
   };
 
-  // Finish review on the finish view, enabled by a general comment.
   let finishButton = null;
-  // A review on its way: no second one, and the choice holds.
+  let reviewFrom = null;
+  // A publication on its way: no second one, and the choice holds.
   let sending = false;
+  const sendLabel = () => S.toAgent ? "Send comments" : "Publish comments";
+  const canFinishReview = () => S.reviewState?.split(":", 1)[0] === "closable";
+  const sendBlocked = (closing) => sending || (closing ? !canFinishReview() || !S.loaded
+    : !reviewCount() && !fields.general.value.trim());
 
   // Where the review goes: to the agent (the default) or only published.
   function toWhom() {
@@ -786,6 +789,7 @@
       const b = button(label, () => {
         if (sending) return;
         S.toAgent = agent;
+        finishButton.textContent = sendLabel();
         show();
       }, "opt");
       b.agent = agent;
@@ -931,18 +935,46 @@
     return r;
   }
 
-  function finishBar(count) {
-    const bar = el("div", "foot2");
-    bar.append(button(count ? `Finish review · ${count}` : "Finish review", () => openFinish(), "btn pri"));
+  function reviewActions(first, second) {
+    const bar = el("div", "foot2 review-actions");
+    if (first) { first.dataset.reviewSlot = "first"; bar.append(first); }
+    if (second) { second.dataset.reviewSlot = "second"; bar.append(second); }
     return bar;
   }
 
+  function reviewVersion() {
+    const version = sheet.dataset.version;
+    if (!version || !S.reviewState) return [];
+    const note = el("p", "note");
+    const link = el("a", "review-summary-link", "Reviewed version");
+    link.href = `/a/${artifact}/versions/${version}`;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    note.append(link);
+    return [note];
+  }
+
+  function finishBar(count, fromItem = false) {
+    const preview = count || fields.general.value.trim()
+      ? button(count ? `Review drafts · ${count}` : "Review drafts", () => openFinish("finish"), "btn pri") : null;
+    if (preview) preview.dataset.reviewTrigger = "finish";
+    const close = !fromItem && canFinishReview()
+      ? button("Finish review…", () => openFinish("close")) : null;
+    if (close) close.dataset.reviewTrigger = "close";
+    return reviewActions(close, preview);
+  }
+
   function reviewResultNote() {
-    if (S.reviewState === "pending") return el("p", "note", "Review closed. The agent will write the summary.");
-    const id = /^ready:([A-Za-z0-9_-]{1,1024})$/.exec(S.reviewState || "")?.[1];
-    if (!id) return null;
-    const note = el("p", "note", "Review closed. ");
-    const link = el("a", "review-summary-link", "Read the summary");
+    const state = S.reviewState || "";
+    const final = /^ready:([A-Za-z0-9_-]{1,1024})$/.exec(state);
+    const notes = /^(?:closable|open|pending):(notes|updating)(?::([A-Za-z0-9_-]{1,1024}))?$/.exec(state);
+    const pending = state === "pending" || state.startsWith("pending:");
+    const id = final?.[1] || notes?.[2];
+    const text = final ? "Review finished. " : pending ? "Review finished. The outcome is pending. "
+      : notes?.[1] === "updating" ? "Review notes update pending. " : "";
+    if (!id) return text ? el("p", "note", text.trimEnd()) : null;
+    const note = el("p", "note", text);
+    const link = el("a", "review-summary-link", "Read review notes");
     link.href = `https://docs.google.com/document/d/${id}/edit`;
     link.target = "_blank";
     link.rel = "noopener noreferrer";
@@ -1032,7 +1064,7 @@
 
   // --- Navigation ------------------------------------------------------------------
   // Every view opens at its intrinsic middle height.
-  const DEFAULT_POS = { list: "m", item: "m", compose: "m", finish: "m" };
+  const DEFAULT_POS = { list: "m", item: "m", compose: "m", finish: "m", close: "m" };
 
   function go(view, pos) {
     S.view = view;
@@ -1616,28 +1648,41 @@
   }
   window.addEventListener("pagehide", () => { flushDeletes(true); });
 
-  // --- Finish review -------------------------------------------------------------
-  async function openFinish() {
+  // --- Review publication --------------------------------------------------------
+  async function openFinish(view, trigger = view) {
+    if (sending) return;
+    const from = S.view === "item" && trigger !== "strip" ? "item" : "list";
+    const pos = S.pos;
     // What is typed for a new draft is added first, not lost.
     if (S.compose && fields.compose.value.trim()) {
       if (!(await addDraft())) return;
     } else if (S.compose) {
       dropCompose(true);
     }
-    go("finish", "m");
+    reviewFrom = { from, pos, trigger };
+    go(view, "m");
+    const heading = body.querySelector(".handle");
+    if (heading) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); }
   }
 
-  async function finish() {
-    if (sending) return;
+  function returnFromReview() {
+    const { from, pos, trigger } = reviewFrom || { from: "list", pos: "m", trigger: "finish" };
+    reviewFrom = null;
+    go(from, pos);
+    const origin = trigger === "strip" ? strip.querySelector("button")
+      : foot.querySelector(`[data-review-trigger="${trigger}"]`);
+    (origin || body.querySelector(".handle button") || toggle).focus({ preventScroll: true });
+  }
+
+  async function finish(closing) {
+    if (sendBlocked(closing)) return;
     // Not while a decision is on its way: the review would go without it.
     if (deciding) {
       toast("Still saving your decisions. Try again.");
       return;
     }
-    const closing = S.reviewState === "closable" && S.finalRound;
-    if (!closing && !reviewCount() && !fields.general.value.trim()) return;
     if (name === null) {
-      if (dialog.hidden) askName(() => finish());
+      if (dialog.hidden) askName(() => finish(closing));
       return;
     }
     sending = true;
@@ -1651,26 +1696,28 @@
         toast(message, { error: true, ms: 8000 });
         return;
       }
-      const general = fields.general.value;
+      const area = closing ? fields.finalNote : fields.general;
+      const general = area.value;
       const payload = { author: name || "" };
       // Omitted when empty: the review is then the drafts alone.
       if (general.trim()) payload.text = general;
       if (S.toAgent && !closing) payload.agent = true;
       if (S.reviewState && sheet.dataset.version) {
         const version = sheet.dataset.version;
-        const scope = JSON.stringify([version, !!closing, payload]);
-        if (S.submission?.scope !== scope) S.submission = { id: newRandomId(), scope };
-        payload.submission = { id: S.submission.id, version, close: !!closing };
+        const kind = closing ? "close" : "finish";
+        const scope = JSON.stringify([version, payload]);
+        if (S.submissions[kind]?.scope !== scope) S.submissions[kind] = { id: newRandomId(), scope };
+        payload.submission = { id: S.submissions[kind].id, version, close: closing };
       }
       const drafts = liveDrafts();
       const onlyProposalApprovals = !general.trim() && drafts.length > 0 && drafts.every((d) =>
         d.kind === "approve" && S.comments.some((c) => c.n === d.of && c.by_agent));
       const sent = S.toAgent && !onlyProposalApprovals && !closing;
       const made = await call("POST", "/review", payload);
-      S.toAgent = true;
-      S.finalRound = false;
-      S.submission = null;
-      if (closing) S.reviewState = "pending";
+      if (!closing) S.toAgent = true;
+      S.submissions[closing ? "close" : "finish"] = null;
+      if (closing) S.reviewState = S.reviewState?.replace(/^closable/, "pending") || "pending";
+      reviewFrom = null;
       changed();
       // The comments it made or touched take their new state; accepted ones
       // are closed and leave.
@@ -1679,7 +1726,7 @@
       S.comments = [...S.comments.filter((c) => !accepted.has(c.n)).map((c) => byN.get(c.n) || c),
         ...made.filter((c) => !S.comments.some((o) => o.n === c.n))];
       S.drafts = [];
-      fields.general.value = "";
+      if (area.value === general) area.value = "";
       S.mode = false;
       S.compose = null;
       S.sel = null;
@@ -1691,12 +1738,13 @@
       // dropped, say).
       load();
     } catch (e) {
-      if (!nameRefused(e)) toast(errorCopy(e, "Could not finish the review."), { error: true, ms: 8000 });
+      if (!nameRefused(e)) toast(errorCopy(e, closing ? "Could not finish the review." : "Could not publish comments."),
+        { error: true, ms: 8000 });
       // The drafts on the server may differ now (one gone, say).
       load();
     } finally {
       sending = false;
-      if (finishButton && finishButton.isConnected) finishButton.disabled = !S.finalRound && !reviewCount() && !fields.general.value.trim();
+      if (finishButton && finishButton.isConnected) finishButton.disabled = sendBlocked(S.view === "close");
     }
   }
 
@@ -1714,7 +1762,7 @@
   fields.edit.addEventListener("input", () => { grow(fields.edit); keptChanged(); });
   // While a reply is typed, Finish review steps aside: no tap meant for the
   // send arrow lands on it.
-  for (const f of [fields.reply, fields.general]) {
+  for (const f of [fields.reply, fields.general, fields.finalNote]) {
     f.addEventListener("focus", () => {
       foot.classList.add("typing");
       if (f === fields.reply) toChatEnd();
@@ -1758,8 +1806,9 @@
       body.scrollTop = scroll + added;
     } else grow(area);
     const done = finishButton;
-    if (done && done.isConnected) done.disabled = sending || (!S.finalRound && !reviewCount() && !area.value.trim());
+    if (done && done.isConnected) done.disabled = sendBlocked(false);
   });
+  fields.finalNote.addEventListener("input", () => grow(fields.finalNote));
   fields.compose.addEventListener("keydown", (e) => {
     if (e.key !== "Enter" || e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
     if (!desk.matches) {
@@ -1989,7 +2038,7 @@
         toast("Could not load the new file. Try again.", { error: true });
         return;
       }
-      if (nextVersion !== sheet.dataset.version && (reviewCount() || fields.general.value.trim() ||
+      if (nextVersion !== sheet.dataset.version && (reviewCount() || fields.general.value.trim() || fields.finalNote.value.trim() ||
           (S.compose && fields.compose.value.trim()) || fields.reply.value.trim() || S.edit || sending)) {
         toast("Send or discard your draft review before showing the new version.", { error: true });
         return;

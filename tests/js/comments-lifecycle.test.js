@@ -130,7 +130,7 @@ test('unavailable seen storage keeps acknowledgements in the current page', () =
   assert.equal(vm.runInNewContext('seen[1]', context), 2);
 });
 
-test('pending server count retains draft and Finish review in the strip', () => {
+test('pending server count retains draft and Review drafts in the strip', () => {
   for (const count of [1, 2]) for (const review of [0, 1]) {
     const stripText = { replaceChildren(...nodes) { this.textContent = nodes.join(''); } };
     const strip = { children: [stripText], append(node) { this.children.push(node); } };
@@ -141,7 +141,7 @@ test('pending server count retains draft and Finish review in the strip', () => 
     vm.runInNewContext(part('  function renderStrip()', '  const views ='), context);
     context.renderStrip();
     assert.match(stripText.textContent, new RegExp(`${count} comment${count === 1 ? '' : 's'}`));
-    if (review) { assert.match(stripText.textContent, /1 draft/); assert.ok(strip.children.includes('Finish review')); }
+    if (review) { assert.match(stripText.textContent, /1 draft/); assert.ok(strip.children.includes('Review drafts')); }
   }
 });
 
@@ -173,6 +173,7 @@ test('discussion shows a confirmed result without changing draft and review acti
   for (const desktop of [false, true]) for (const review of [0, 1]) for (const hasResult of [false, true]) {
     const draft = { draft: true };
     const context = { S: { loaded: false, mode: true }, sheet: { dataset: { count: '1' } },
+      fields: { general: { value: '' } },
       reviewResultNote: () => hasResult ? 'Review closed. Read the summary' : null,
       desk: { matches: desktop }, stored: true, titled: text => text, addComment: {}, reviewCount: () => review,
       items: () => review ? [draft] : [], groups: () => review ? [{ id: 'drafts', title: 'Drafts', items: [draft] }] : [],
@@ -205,9 +206,15 @@ test('report readiness alone redraws the existing discussion and only then links
   assert.equal(context.reviewResultNote().link, undefined);
   await context.poll();
   assert.equal(rendered.length, 1);
-  assert.equal(rendered[0].link.text, 'Read the summary');
+  assert.equal(rendered[0].link.text, 'Read review notes');
   assert.equal(rendered[0].link.href, 'https://docs.google.com/document/d/example-id/edit');
   assert.equal(rendered[0].link.rel, 'noopener noreferrer');
+  context.S.reviewState = 'closable:updating:example-id';
+  assert.equal(context.reviewResultNote().link.href, rendered[0].link.href);
+  assert.match(context.reviewResultNote().text, /pending/);
+  context.S.reviewState = 'pending:notes:example-id';
+  assert.equal(context.reviewResultNote().link.href, rendered[0].link.href);
+  assert.match(context.reviewResultNote().text, /outcome is pending/);
   context.S.reviewState = 'ready:../../outside';
   assert.equal(context.reviewResultNote(), null);
 });

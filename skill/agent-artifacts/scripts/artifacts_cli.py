@@ -64,6 +64,9 @@ USAGE = """usage: artifacts_cli.py <command> [args]
   list                      your live files, with comments and open_comments counts
   delete ID                 delete one now
   comments ID               the comments on a file, oldest first
+  review-notes-source ID      read the next ordinary round awaiting notes
+  review-notes-evidence ID SUBMISSION N read one captured thread from an ordinary round
+  review-notes-update ID JSON_FILE update the living Doc for that round
   review-source ID            read the exact versions and published thread numbers of a closed review
   review-evidence ID CLOSURE N read one published thread as it was at closure
   review-finalize ID JSON_FILE write the one Workspace summary for that closure
@@ -323,18 +326,26 @@ def _review_closure(value: object) -> str | None:
     return value
 
 
-def _read_watch_comments(value: object) -> tuple[list[dict], str | None]:
-    closure = None
+def _read_watch_comments(value: object) -> tuple[list[dict], str | None, str | None]:
+    closure = notes = None
     if isinstance(value, dict):
         closure = _review_closure(value.get("review_closure"))
+        notes = _review_closure(value.get("review_notes"))
         value = value.get("comments")
     if not isinstance(value, list) or not all(isinstance(x, dict) for x in value):
         raise ValueError("not a list of comments")
-    return value, closure
+    return value, closure, notes
 
 
 def _closing_event(artifact: str, closure: str, *, project: str | None = None) -> dict:
     event = {"event": "review_closed", "artifact": artifact, "closure": closure}
+    if project is not None:
+        event["project"] = project
+    return event
+
+
+def _notes_event(artifact: str, submission: str, *, project: str | None = None) -> dict:
+    event = {"event": "review_notes", "artifact": artifact, "submission": submission}
     if project is not None:
         event["project"] = project
     return event
@@ -347,7 +358,9 @@ def wait(c: Client, artifact_id: str, every: float, timeout: float) -> dict:
 
     def check(data: object) -> dict | None:
         nonlocal before
-        comments, closure = _read_watch_comments(data)
+        comments, closure, notes = _read_watch_comments(data)
+        if notes is not None:
+            return _notes_event(artifact_id, notes)
         if closure is not None:
             return _closing_event(artifact_id, closure)
         waiting = [x for x in comments if x.get("agent") == "waiting" and not x.get("resolved")]
@@ -384,13 +397,13 @@ def wait_project(
             if not isinstance(now, (int, float)) or isinstance(now, bool):
                 raise ValueError("no time in the summary")
             since = float(now)
-        for row in files:
-            closure = _review_closure(row.get("review_closure"))
-            if closure is not None:
-                fid = row.get("id")
-                if not isinstance(fid, str) or not ID_RE.fullmatch(fid):
-                    raise ValueError("invalid artifact ID")
-                return _closing_event(fid, closure, project=project_id)
+        for field, build in (("review_notes", _notes_event), ("review_closure", _closing_event)):
+            for row in files:
+                if (record := _review_closure(row.get(field))) is not None:
+                    fid = row.get("id")
+                    if not isinstance(fid, str) or not ID_RE.fullmatch(fid):
+                        raise ValueError("invalid artifact ID")
+                    return build(fid, record, project=project_id)
         for event in ("waiting", "accepted"):
             news = [
                 {"id": f.get("id"), "title": f.get("title"), event: f[event]}
@@ -409,10 +422,10 @@ def wait_project(
     return None if maybe_file and not seen and event["event"] == "gone" else event
 
 
-def _watch_file(c: Client, artifact_id: str) -> tuple[dict[int, int], set[int], str | None]:
-    """Waiting and resolved comments plus any pending closing publication."""
+def _watch_file(c: Client, artifact_id: str) -> tuple[dict[int, int], set[int], str | None, str | None]:
+    """Waiting/resolved comments and the pending close and notes IDs."""
     data = c.send("GET", f"/api/v1/artifacts/{artifact_id}/comments?watch=1")
-    rows, closure = _read_watch_comments(json.loads(data))
+    rows, closure, notes = _read_watch_comments(json.loads(data))
     waiting, resolved = {}, set()
     for row in rows:
         if not isinstance(row, dict) or type(row.get("n")) is not int:
@@ -425,7 +438,7 @@ def _watch_file(c: Client, artifact_id: str) -> tuple[dict[int, int], set[int], 
             if not isinstance(replies, list):
                 raise ValueError("no reply list")
             waiting[n] = len(replies)
-    return waiting, resolved, closure
+    return waiting, resolved, closure, notes
 
 
 def _new_waiting(before: dict[int, int], now: dict[int, int]) -> list[int]:
@@ -448,6 +461,7 @@ class _Subscription:
         self.accepted: dict[str, int] = {}
         self.next_detail: str | None = None
         self.review_closures: dict[str, str] = {}
+        self.review_notes: dict[str, str] = {}
 
     def poll(self, deadline: float | None = None) -> list[dict]:
         self.detail_failure = None
@@ -465,22 +479,25 @@ class _Subscription:
                 self.kind = "p"
                 return data
         self.kind = "a"
-        waiting, resolved, closure = _watch_file(self.client, self.target)
+        waiting, resolved, closure, notes = _watch_file(self.client, self.target)
         news = _new_waiting(self.waiting.get(self.target, {}), waiting)
         closed = sorted(resolved - self.resolved) if self.resolved is not None else []
         self.waiting, self.resolved = {self.target: waiting}, resolved
         pending = {self.target: closure} if closure is not None else {}
-        return self.closing_updates(pending) + [
+        notes_pending = {self.target: notes} if notes is not None else {}
+        return self.review_updates(pending, notes_pending) + [
             {"event": event, "comments": [{"n": n} for n in numbers]}
             for event, numbers in (("waiting", news), ("accepted", closed))
             if numbers
         ]
 
-    def closing_updates(self, pending: dict[str, str]) -> list[dict]:
+    def review_updates(self, pending: dict[str, str], notes: dict[str, str]) -> list[dict]:
         project = self.target if self.kind == "p" else None
-        events = [_closing_event(fid, closure, project=project) for fid, closure in pending.items()
-                  if self.review_closures.get(fid) != closure]
-        self.review_closures = pending
+        events = [_notes_event(fid, submission, project=project) for fid, submission in notes.items()
+                  if self.review_notes.get(fid) != submission]
+        events.extend(_closing_event(fid, closure, project=project) for fid, closure in pending.items()
+                      if self.review_closures.get(fid) != closure)
+        self.review_closures, self.review_notes = pending, notes
         return events
 
     def project_updates(self, deadline: float | None) -> list[dict]:
@@ -495,7 +512,7 @@ class _Subscription:
         if type(now) not in (int, float) or not math.isfinite(now):
             raise ValueError("no server clock")
         pending, accepted = [], self.accepted.copy()
-        closures = {}
+        closures, notes = {}, {}
         news = {"waiting": [], "accepted": []}
         for row in summary["files"]:
             if not isinstance(row, dict) or not isinstance(fid := row.get("id"), str):
@@ -508,6 +525,8 @@ class _Subscription:
                 pending.append(fid)
             if (closure := _review_closure(row.get("review_closure"))) is not None:
                 closures[fid] = closure
+            if (submission := _review_closure(row.get("review_notes"))) is not None:
+                notes[fid] = submission
             if self.since is not None:
                 additional = row["accepted"] - accepted.get(fid, 0)
                 if additional > 0:
@@ -521,7 +540,7 @@ class _Subscription:
             self.since = float(now)
         self.accepted = accepted
         news["waiting"] = self.project_waiting(pending, deadline)
-        return self.closing_updates(closures) + [
+        return self.review_updates(closures, notes) + [
             {"event": event, "project": self.target, "files": files}
             for event, files in news.items()
             if files
@@ -544,7 +563,7 @@ class _Subscription:
                 break
             time.sleep(_PROJECT_DETAIL_DELAY)
             try:
-                snapshot, _, _ = _watch_file(self.client, fid)
+                snapshot, _, _, _ = _watch_file(self.client, fid)
             except urllib.error.HTTPError as e:
                 if e.code == 404:
                     waiting.pop(fid, None)
@@ -740,16 +759,20 @@ def run(argv: list[str], *, emit: Callable[[dict], None] = event_line) -> str | 
         case "comments":
             need(1, "ID")
             return c.call("GET", f"{api}/{_id(args[0])}/comments")
-        case "review-source":
+        case "review-source" | "review-notes-source":
             need(1, "ID")
-            return c.call("GET", f"{api}/{_id(args[0])}/review-report/source")
-        case "review-evidence":
-            need(3, "ID CLOSURE N")
-            artifact, closure, thread = _id(args[0]), args[1], _number(args[2])
-            if not ID_RE.fullmatch(closure):
-                raise Usage("expected the closure ID from review-source")
-            return c.call("GET", f"{api}/{artifact}/review-report/evidence/{thread}?closure_id={closure}")
-        case "review-finalize":
+            base = "notes/" if cmd == "review-notes-source" else ""
+            return c.call("GET", f"{api}/{_id(args[0])}/review-report/{base}source")
+        case "review-evidence" | "review-notes-evidence":
+            notes = cmd == "review-notes-evidence"
+            need(3, "ID SUBMISSION N" if notes else "ID CLOSURE N")
+            artifact, record, thread = _id(args[0]), args[1], _number(args[2])
+            if not ID_RE.fullmatch(record):
+                raise Usage("expected the submission ID from review-notes-source" if notes
+                            else "expected the closure ID from review-source")
+            base, key = ("notes/", "submission_id") if notes else ("", "closure_id")
+            return c.call("GET", f"{api}/{artifact}/review-report/{base}evidence/{thread}?{key}={record}")
+        case "review-finalize" | "review-notes-update":
             need(2, "ID JSON_FILE")
             artifact = _id(args[0])
             path = Path(args[1])
@@ -765,7 +788,8 @@ def run(argv: list[str], *, emit: Callable[[dict], None] = event_line) -> str | 
                 raise Usage("review JSON must be between 1 and 16384 bytes")
             # Send the original bytes: server rejects ambiguous JSON, and an
             # unresolved operation must be retried with its original inputs.
-            return c.call("POST", f"{api}/{artifact}/review-report/finalize", body, "application/json")
+            operation = "notes" if cmd == "review-notes-update" else "finalize"
+            return c.call("POST", f"{api}/{artifact}/review-report/{operation}", body, "application/json")
         case "comment":
             anchor, tail = _option(args[2:], "--anchor")
             args = args[:2] + tail

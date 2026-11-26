@@ -45,7 +45,7 @@ dialog; "address" is the network address in the 429 error).
 | The page address | link ("Copy link", "Link copied.") | URL | address |
 | A remark on the file | comment ("Comment", "3 comments") | annotation | note, feedback |
 | A comment not published yet | draft ("your draft", "New draft", "2 drafts") | unsent comment | pending |
-| Publishing all drafts at once | review: **Finish review**, "Review published", "Review sent to the agent" | send all | submit, commit |
+| Publishing all drafts at once | **Review drafts**, **Send comments** or **Publish comments**, "Review published", "Review sent to the agent" | send all | submit, commit |
 | Waiting for this person's decision | need you ("2 need you", "Need you") | action required, awaiting input | pending, to do |
 | Sent and not answered yet | in progress ("1 in progress", "In progress") | with the agent, queued | |
 | The agent's finished work, taken | accept ("✓ Accept", "✓ Accepted") | resolve, resolved | close, done |
@@ -97,9 +97,9 @@ image", "“Send”", "on the page".
 | Groups | "Need you · N", "Your drafts · N", "In progress · N", "Discussion · N", "Closed · N" |
 | Item navigation | "‹ All", "2 of 7 · on the image"; "Others" over the rest |
 | Compose | "New draft", "New draft · about the whole file" |
-| Finish review | "Finish review · N", "Not decided yet · N", "In this review" |
-| Final Workspace round | "This is the final round", "The agent will write a summary, not make more changes.", "Close review" |
-| Closed Workspace review | "Review closed.", "The agent will write the summary.", "Read the summary" |
+| Review drafts | "Review drafts · N", "Not decided yet · N", "In this review" |
+| Final Workspace round | "Finish review…", "Finish review", "No new edit request is sent." |
+| Workspace notes and outcome | "Review notes update pending.", "Review finished. The outcome is pending.", "Read review notes" |
 | Dialogs | "Share", "Settings", "What should we call you?" |
 | Project page header | "3 files · kept until deleted" |
 | Project row's dot (title, `aria-label`) | "Needs you" (the file needs you) |

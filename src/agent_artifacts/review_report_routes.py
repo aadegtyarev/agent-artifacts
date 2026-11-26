@@ -14,16 +14,17 @@ from .credentials import hash_key
 from .docs_report import DocsReport, ReportConflict, ReportLimitError
 from .drive_storage import DriveAccessError, DriveError, _segment
 from .report_compaction_dispatch import CompactionUnresolved
-from .review_reports import ReportNotFound, ReportPending, ReportResult, ReviewReports
-from .review_submissions import close_source, read_evidence
+from .review_reports import ReportNotFound, ReportNotesPending, ReportPending, ReportResult, ReviewReports
+from .review_submissions import close_source, next_notes_source, read_evidence
 from .store import ID_RE, Store
 from .workspace_drive import DriveGrantRequired, WorkspaceDrive
 
 _ROUND = frozenset({"key", "version_id", "goal", "decision", "reasons", "open_items"})
 _CLOSE = frozenset({"key", "closed", "outcome", "rows"})
 _FINAL = frozenset({"closure_id", "outcome", "rows"})
+_NOTES = frozenset({"submission_id", "summary"})
 _RESULTS = {"round": ("appended", "already_present"), "close": ("compacted", "already_compacted"),
-            "final": ("finalized", "already_finalized")}
+            "final": ("finalized", "already_finalized"), "notes": ("updated", "already_updated")}
 _NO_STORE = {"Cache-Control": "no-store"}
 
 
@@ -40,7 +41,8 @@ def report_routes(store: Store, public_url: str, drive: WorkspaceDrive, *, read_
         if subject is None:
             raise ApiError(403, "drive_account_required", "Link this agent to your Workspace account.",
                            account_url=public_url + "/account")
-        prepare = {"round": journal.prepare_round, "close": journal.prepare_close, "final": journal.prepare_final}
+        prepare = {"round": journal.prepare_round, "close": journal.prepare_close,
+                   "final": journal.prepare_final, "notes": journal.prepare_notes}
         ticket = prepare[kind](artifact, agent, fields)
         if ticket.confirmed_doc is not None:
             return ReportResult(ticket.confirmed_doc, False)
@@ -53,7 +55,7 @@ def report_routes(store: Store, public_url: str, drive: WorkspaceDrive, *, read_
         return response
 
     def read_source(artifact_id: str, agent: str, credential_hash: str,
-                    closure: str | None, thread: int | None) -> dict | None:
+                    submission: str | None, thread: int | None, *, notes: bool) -> dict | None:
         with store._conn() as db:
             # Check the active credential in the same read as the ownership
             # query; never serve another owner's closing publication.
@@ -61,28 +63,33 @@ def report_routes(store: Store, public_url: str, drive: WorkspaceDrive, *, read_
             if not db.execute("SELECT 1 FROM agents WHERE name=? AND key_hash=?",
                               (agent, credential_hash)).fetchone():
                 return None
-            if closure is not None and thread is not None:
-                return read_evidence(db, artifact_id, agent, closure, thread)
-            return close_source(db, artifact_id, agent, public_url)
+            if submission is not None and thread is not None:
+                return read_evidence(db, artifact_id, agent, submission, thread, closing=not notes)
+            resolve = next_notes_source if notes else close_source
+            return resolve(db, artifact_id, agent, public_url)
 
-    async def source(request: Request) -> Response:
+    async def source(request: Request, *, notes: bool = False) -> Response:
         try:
             agent = require_agent(store, request)
         except ApiError as exc:
             return problem(exc.status, exc.code, exc.message, **exc.extra)
-        closure, thread = None, None
+        submission, thread = None, None
         if "n" in request.path_params:
             value = request.path_params["n"]
-            closure = request.query_params.get("closure_id", "")
-            if not re.fullmatch(r"[1-9][0-9]{0,8}", value) or not re.fullmatch(ID_RE, closure):
-                return problem(400, "bad_request", "Expected a closure ID and published thread number.")
+            submission = request.query_params.get("submission_id" if notes else "closure_id", "")
+            if not re.fullmatch(r"[1-9][0-9]{0,8}", value) or not re.fullmatch(ID_RE, submission):
+                label = "submission" if notes else "closure"
+                return problem(400, "bad_request", f"Expected a {label} ID and published thread number.")
             thread = int(value)
         supplied = request.headers["authorization"].partition(" ")[2].strip()
         found = await run_in_threadpool(read_source, request.path_params["id"], agent, hash_key(supplied),
-                                       closure, thread)
+                                       submission, thread, notes=notes)
         if found is None:
-            return problem(404, "not_found", "No captured evidence or owned closure found.")
+            return problem(404, "not_found", "No matching captured review evidence found.")
         return JSONResponse(found, headers=_NO_STORE)
+
+    async def notes_source(request: Request) -> Response:
+        return await source(request, notes=True)
 
     def command(kind: str):
         async def handle(request: Request) -> Response:
@@ -91,8 +98,8 @@ def report_routes(store: Store, public_url: str, drive: WorkspaceDrive, *, read_
                 if read_only:
                     return problem(503, "drive_read_only", "Google Drive writes are paused.")
                 supplied = request.headers["authorization"].partition(" ")[2].strip()
-                required = {"round": _ROUND, "close": _CLOSE, "final": _FINAL}[kind]
-                allowed = required | {"threads"} if kind == "round" else required
+                required = {"round": _ROUND, "close": _CLOSE, "final": _FINAL, "notes": _NOTES}[kind]
+                allowed = required | {"threads"} if kind in ("round", "notes") else required
                 fields = await json_body(request, allowed, required, reject_ambiguous=True)
                 result = await run_in_threadpool(perform, request.path_params["id"], agent,
                                                  hash_key(supplied), kind, fields)
@@ -102,6 +109,8 @@ def report_routes(store: Store, public_url: str, drive: WorkspaceDrive, *, read_
                 return problem(404, "not_found", "No eligible owned report or published version.")
             except ReportLimitError:
                 return problem(413, "report_limit", "Report exceeds the safe size limit.")
+            except ReportNotesPending:
+                return problem(409, "review_notes_pending", "Verify the published round notes before adding the outcome.")
             except ReportPending:
                 return problem(409, "report_pending", "The report is closed or an operation is unresolved. "
                                "For an unresolved operation, retry only the same request.")
@@ -124,6 +133,9 @@ def report_routes(store: Store, public_url: str, drive: WorkspaceDrive, *, read_
     base = "/api/v1/artifacts/{id:artifact_id}/review-report"
     routes = [Route(base + "/source", source),
               Route(base + "/evidence/{n}", source),
+              Route(base + "/notes/source", notes_source),
+              Route(base + "/notes/evidence/{n}", notes_source),
+              Route(base + "/notes", command("notes"), methods=["POST"]),
               Route(base + "/finalize", command("final"), methods=["POST"])]
     # Local regression exercises the earlier staged protocol. The deployed
     # app mounts only closure-bound finalization, with no config to opt in.
