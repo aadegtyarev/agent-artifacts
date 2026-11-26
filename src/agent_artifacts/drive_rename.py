@@ -117,6 +117,8 @@ class DriveRenames:
             artifact = self.store._artifact(db, artifact_id, owner)
             if artifact is None:
                 return None
+            if db.execute("SELECT 1 FROM drive_moves WHERE artifact_id=?", (artifact_id,)).fetchone():
+                raise DriveConflict("Drive move is unresolved")
             active = self._active(db, artifact_id)
             if active is not None:
                 if active.new_title != title:
@@ -141,6 +143,8 @@ class DriveRenames:
                 return bool(db.execute("SELECT 1 FROM drive_names WHERE folder_id=? AND name_key=? AND artifact_id!=?",
                                        (folder, key, artifact_id)).fetchone()
                             or db.execute("SELECT 1 FROM drive_renames WHERE folder_id=? AND new_name_key=?",
+                                          (folder, key)).fetchone()
+                            or db.execute("SELECT 1 FROM drive_moves WHERE new_folder=? AND new_name_key=?",
                                           (folder, key)).fetchone())
 
             chosen = _available_name(preferred, artifact_id, occupied, blob=True)

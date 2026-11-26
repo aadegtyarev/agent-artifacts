@@ -49,6 +49,7 @@ from .drive_destination import DriveDestination, DriveDestinationError, DriveDes
 from .drive_grants import WorkspaceDriveGrants
 from .drive_project_rename import DriveProjectRenames, ProjectRename
 from .drive_rename import DriveRenames, Rename
+from .drive_moves import DriveMoves
 from .drive_storage import (
     DriveAccessError,
     DriveCapacityError,
@@ -179,6 +180,12 @@ def create_app(
 
     renames = DriveRenames(store)
     project_renames = DriveProjectRenames(store)
+    moves = DriveMoves(store)
+
+    def move_delegated(artifact_id: str, owner: str, credential_hash: str, changes: dict) -> Artifact | None:
+        assert delegated is not None
+        with delegated.open(linked_subject(owner, credential_hash)) as storage:
+            return moves.move(storage, artifact_id, owner, changes)
 
     def rename_delegated(artifact_id: str, owner: str, credential_hash: str, title: str) -> Artifact | None:
         assert delegated is not None
@@ -352,16 +359,24 @@ def create_app(
                 v = data["section"]
                 changes["section"] = None if v is None else _title(v, "section")
             try:
-                snapshot = (await run_in_threadpool(store.get_drive, artifact_id, owner=agent)
-                            if delegated is not None and "title" in changes else None)
-                if snapshot is not None:
-                    if set(changes) != {"title"}:
-                        return error(409, "storage_conflict", "Send Drive title changes separately from placement changes.")
+                snapshot = (await run_in_threadpool(store.get_with_drive, artifact_id, owner=agent)
+                            if delegated is not None and changes.keys() & {"title", "project"} else None)
+                managed = snapshot[0] if snapshot is not None and snapshot[1] is not None else None
+                moving = managed is not None and "project" in changes and managed.project != changes["project"]
+                if delegated is not None and snapshot is None and "project" in changes:
+                    moving = await run_in_threadpool(store.has_pending_drive_move, artifact_id, owner=agent)
+                renaming = managed is not None and "title" in changes and managed.title != changes["title"]
+                if moving or renaming:
+                    if not moving and set(changes) != {"title"}:
+                        return error(409, "storage_conflict", "Send Drive title changes separately from section changes.")
                     if config.drive_read_only:
                         return error(503, "drive_read_only", "Google Drive writes are paused.")
                     supplied = request.headers["authorization"].partition(" ")[2].strip()
-                    edited = await run_in_threadpool(rename_delegated, artifact_id, agent,
-                                                     hash_key(supplied), changes["title"])
+                    if moving:
+                        edited = await _stored(move_delegated, artifact_id, agent, hash_key(supplied), changes)
+                    else:
+                        edited = await run_in_threadpool(rename_delegated, artifact_id, agent,
+                                                         hash_key(supplied), changes["title"])
                 else:
                     edited = await _stored(store.edit, artifact_id, owner=agent, changes=changes)
             except DriveGrantRequired:
@@ -370,7 +385,7 @@ def create_app(
             except DriveAccessError:
                 return error(403, "drive_access_denied", "Ask your administrator to check Google Drive access.")
             except DriveError:
-                return error(503, "storage_unavailable", "Drive rename unavailable. Retry only the same title.")
+                return error(503, "storage_unavailable", "Drive metadata update unavailable. Retry only the same request.")
             except DriveConflict:
                 return error(409, "storage_conflict", "Drive rename or placement is unresolved. Do not repeat it with different input.")
             if edited is not None:

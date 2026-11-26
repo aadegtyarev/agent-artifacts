@@ -115,6 +115,8 @@ class DriveLayout:
                 return bool(db.execute("SELECT 1 FROM drive_names WHERE folder_id=? AND name_key=?",
                                        (folder_id, key)).fetchone()
                             or db.execute("SELECT 1 FROM drive_renames WHERE folder_id=? AND new_name_key=?",
+                                          (folder_id, key)).fetchone()
+                            or db.execute("SELECT 1 FROM drive_moves WHERE new_folder=? AND new_name_key=?",
                                           (folder_id, key)).fetchone())
 
             name = _available_name(preferred, artifact_id, occupied, blob=True)

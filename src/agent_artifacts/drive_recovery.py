@@ -8,8 +8,8 @@ import sqlite3
 from contextlib import closing, suppress
 from pathlib import Path
 
-_SCHEMA_VERSIONS = (14, 15, 16, 17, 18)
-_LIST_VERSION = {"renames": 15, "project_renames": 16, "pending_review_closures": 17}
+_SCHEMA_VERSIONS = (14, 15, 16, 17, 18, 19)
+_LIST_VERSION = {"renames": 15, "project_renames": 16, "pending_review_closures": 17, "moves": 19}
 _MAX_ROWS = 100_000
 
 # Include hidden/expired Drive records, not just visible working links. Do not
@@ -34,6 +34,8 @@ _LISTS = {
     "renames": "SELECT artifact_id,operation_id,file_id,revision_id,folder_id,sent FROM drive_renames ORDER BY artifact_id",
     "project_renames": ("SELECT project_id,operation_id,root_id,folder_id,sent FROM drive_project_renames "
                         "ORDER BY project_id"),
+    "moves": ("SELECT artifact_id,operation_id,file_id,revision_id,doc_id,old_folder,new_folder,blob_sent,doc_sent "
+              "FROM drive_moves ORDER BY artifact_id"),
 }
 
 

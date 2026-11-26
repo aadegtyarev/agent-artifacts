@@ -66,6 +66,8 @@ class ReviewSubmission:
         ).fetchone()
         if version is None or (self.closing and not version[1]):
             raise SubmissionUnavailable
+        if db.execute("SELECT 1 FROM drive_moves WHERE artifact_id=?", (artifact_id,)).fetchone():
+            raise SubmissionConflict
         existing = db.execute("SELECT fingerprint,threads FROM review_submissions WHERE artifact_id=? AND request_id=?",
                               (artifact_id, self.request_id)).fetchone()
         if existing is not None:

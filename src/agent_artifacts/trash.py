@@ -117,8 +117,9 @@ class Trash:
             # archive-aware close path is separate from this disk-only action.
             if kind == "project":
                 retained = db.execute(
-                    "SELECT 1 FROM drive_refs d JOIN artifacts a ON a.id = d.artifact_id "
-                    "WHERE a.project = ? LIMIT 1", (target,),
+                    "SELECT 1 FROM drive_refs d JOIN artifacts a ON a.id = d.artifact_id WHERE a.project=? "
+                    "UNION ALL SELECT 1 FROM drive_moves WHERE old_project=? OR new_project=? LIMIT 1",
+                    (target,) * 3,
                 ).fetchone()
             else:
                 retained = db.execute(
