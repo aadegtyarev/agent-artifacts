@@ -42,13 +42,19 @@ test('exchange uses only explicit safe copy and narrowly recognizes name refusal
   });
 });
 
+function reviewAction(context) {
+  const block = (a, b) => source.slice(source.indexOf(a), source.indexOf(b, source.indexOf(a)));
+  vm.runInContext(block('  const canFinishReview', '  // Where the review goes'), context);
+  vm.runInContext(block('  async function finish(closing)', '  // --- Fields'), context);
+}
+
 test('load, save and review handlers use local action copy, retaining inputs until success', () => {
   assert.match(source, /errorCopy\(e, "Could not load comments\."\)/);
   assert.match(source, /errorCopy\(e, "Could not save the draft\."\)/);
-  assert.match(source, /errorCopy\(e, "Could not finish the review\."\)/);
+  assert.match(source, /errorCopy\(e, closing \? "Could not finish the review\." : "Could not publish comments\."/);
   assert.doesNotMatch(source, /toast\([^\n]*e\.message/);
   assert.match(source, /await call\("POST", "\/drafts"[\s\S]*?fields\.compose\.value = ""[\s\S]*?catch \(e\)/);
-  assert.match(source, /await call\("POST", "\/review"[\s\S]*?fields\.general\.value = ""[\s\S]*?catch \(e\)/);
+  assert.match(source, /await call\("POST", "\/review"[\s\S]*?if \(area\.value === general\) area\.value = ""[\s\S]*?catch \(e\)/);
 });
 
 test('draft failure preserves input and re-enables retry; name refusal retains correction path', async () => {
@@ -94,17 +100,18 @@ test('finish failure retains saved draft and text, enables retry, then publishes
     }
     return { ...response(200, url.endsWith('/drafts') && failing ? [saved] : []), headers: { get: () => null } };
   });
-  Object.assign(c, { generation: 0, S: { toAgent: false, comments: [], drafts: [saved] },
+  Object.assign(c, { generation: 0, S: { toAgent: false, comments: [], drafts: [saved], submissions: {} },
+    reviewFrom: null,
     fields: { general: { value: 'typed text' } }, sending: false, deciding: false, name: 'Tester',
     finishButton: { disabled: false, isConnected: true }, flushDeletes: async () => true,
     reviewCount: () => c.S.drafts.length, liveDrafts: () => c.S.drafts, noteFile() {}, render() {},
     toast: text => notices.push(text), nameRefused: () => false });
-  vm.runInContext(source.slice(source.indexOf('  async function finish()'), source.indexOf('  // --- Fields')), c);
-  await c.finish(); await new Promise(setImmediate);
-  assert.equal(notices[0], 'Could not finish the review. This file cannot hold more comments. Remove a new comment and try again.');
+  reviewAction(c);
+  await c.finish(false); await new Promise(setImmediate);
+  assert.equal(notices[0], 'Could not publish comments. This file cannot hold more comments. Remove a new comment and try again.');
   assert.equal(c.fields.general.value, 'typed text'); assert.equal(c.S.drafts[0].text, 'saved draft');
   assert.equal(c.finishButton.disabled, false); assert.equal(payloads[0].agent, undefined);
-  failing = false; await c.finish(); await new Promise(setImmediate);
+  failing = false; await c.finish(false); await new Promise(setImmediate);
   assert.equal(notices.at(-1), 'Review published'); assert.equal(c.fields.general.value, '');
   assert.equal(c.S.drafts.length, 0); assert.equal(payloads.length, 2); assert.equal(payloads[1].text, 'typed text');
 });
@@ -123,11 +130,11 @@ test('stale Workspace review sends the page marker, preserves text and never ret
     sending: false, deciding: false, name: 'Alice', finishButton: { disabled: false, isConnected: true },
     flushDeletes: async () => true, reviewCount: () => 0, liveDrafts: () => [], load: () => {},
     toast: text => notices.push(text), nameRefused: () => false });
-  vm.runInContext(source.slice(source.indexOf('  async function finish()'), source.indexOf('  // --- Fields')), c);
-  await c.finish();
+  reviewAction(c);
+  await c.finish(false);
   assert.equal(c.fields.general.value, 'unsent review');
   assert.match(notices.at(-1), /Sign-in changed.*Copy.*reload/);
-  await c.finish();
+  await c.finish(false);
   assert.equal(calls, 1);
   assert.equal(c.fields.general.value, 'unsent review');
   assert.match(notices.at(-1), /Sign-in changed.*Copy.*reload/);
@@ -186,7 +193,7 @@ test('Show adopts the new Drive revision and download only after the open review
   const fresh = { querySelector: () => null,
     getElementById: id => id === 'comments' ? { dataset: { ...sheet.dataset, version: next } } : null };
   const c = { sheet, workspaceMarker: 'session', artifact: 'fixture', showing: false, sending: false,
-    S: {}, reviewCount: () => pendingDrafts, fields: { general: { value: '' }, reply: { value: '' } },
+    S: {}, reviewCount: () => pendingDrafts, fields: { general: { value: '' }, finalNote: { value: '' }, reply: { value: '' } },
     banner: { hidden: true }, fileAt: null, placeBanner() {}, toast: message => calls.push(message),
     location: { pathname: '/a/fixture' }, load() {}, $: id => id === 'share-download' ? download : null,
     document: { querySelector: sel => sel === 'main iframe' ? frame : null },
@@ -209,10 +216,11 @@ test('Show adopts the new Drive revision and download only after the open review
   assert.equal(c.banner.hidden, true);
 });
 
-test('the final-round choice reuses one submission ID on retry and does not assign more edits', async () => {
+test('Finish review reuses its own submission ID, preserves the regular note and does not assign edits', async () => {
   const requests = [], messages = [], version = 'v'.repeat(22);
-  const c = { S: { reviewState: 'closable', finalRound: true, toAgent: true, comments: [], drafts: [] },
-    sheet: { dataset: { version } }, fields: { general: { value: '' } },
+  const c = { S: { loaded: true, view: 'close', reviewState: 'closable', toAgent: true, comments: [], drafts: [],
+    submissions: { finish: { id: 'ordinary' } } }, reviewFrom: null,
+    sheet: { dataset: { version } }, fields: { general: { value: 'separate' }, finalNote: { value: 'final' } },
     crypto: { getRandomValues: bytes => bytes.fill(5) }, btoa: str => Buffer.from(str, 'binary').toString('base64'),
     sending: false, deciding: false, name: 'Alice', finishButton: null, changed() {}, render() {}, load() {},
     reviewCount: () => 0, flushDeletes: async () => true, liveDrafts: () => [], errorCopy: (_, message) => message,
@@ -224,14 +232,19 @@ test('the final-round choice reuses one submission ID on retry and does not assi
     }, toast: notice => messages.push(notice), nameRefused: () => false };
   vm.createContext(c);
   vm.runInContext(source.slice(source.indexOf('  function newRandomId()'), source.indexOf('  const NAME_KEY')), c);
-  vm.runInContext(source.slice(source.indexOf('  async function finish()'), source.indexOf('  // --- Fields')), c);
-  await c.finish();
+  reviewAction(c);
+  await c.finish(true);
   assert.equal(c.S.reviewState, 'closable');
-  await c.finish();
+  assert.equal(c.fields.finalNote.value, 'final');
+  await c.finish(true);
   assert.equal(c.S.reviewState, 'pending');
   assert.equal(messages.at(-1), 'Review closed');
   assert.deepEqual(requests[0], requests[1]);
-  assert.deepEqual(Object.keys(requests[0]).sort(), ['author', 'submission']);
+  assert.deepEqual(Object.keys(requests[0]).sort(), ['author', 'submission', 'text']);
+  assert.equal(requests[0].text, 'final');
+  assert.equal(c.fields.finalNote.value, '');
+  assert.equal(c.fields.general.value, 'separate');
+  assert.equal(c.S.submissions.finish.id, 'ordinary');
   assert.deepEqual(requests[0].submission, { id: requests[0].submission.id, version, close: true });
   assert.match(requests[0].submission.id, /^[A-Za-z0-9_-]{22}$/);
 });

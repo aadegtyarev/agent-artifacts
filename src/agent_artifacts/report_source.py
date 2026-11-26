@@ -193,6 +193,56 @@ def _supported_style(style: dict, *, linked: bool) -> bool:
     return True
 
 
+def _plain_body(elements: list) -> tuple[str, tuple[tuple[int, int, str], ...], int]:
+    """Verify ordinary paragraphs and collect the complete text/link layout."""
+    text_parts = []
+    links: list[tuple[int, int, str]] = []
+    index = 1
+    for element in elements[1:]:
+        if set(element) != {"startIndex", "endIndex", "paragraph"}:
+            raise ValueError
+        para = element["paragraph"]
+        if (not set(para) <= {"elements", "paragraphStyle", "bullet", "positionedObjectIds",
+                              "suggestedParagraphStyleChanges"}
+                or para.get("bullet") or para.get("positionedObjectIds")):
+            raise ValueError
+        if not _normal_paragraph(para) or element["startIndex"] != index:
+            raise ValueError
+        paragraph_parts = []
+        for part in para["elements"]:
+            if set(part) != {"startIndex", "endIndex", "textRun"}:
+                raise ValueError
+            run = part["textRun"]
+            if not set(run) <= {"content", "textStyle", "suggestedTextStyleChanges"}:
+                raise ValueError
+            content = run["content"]
+            if not isinstance(content, str) or not content or part["startIndex"] != index:
+                raise ValueError
+            index += len(content.encode("utf-16-le")) // 2
+            if part["endIndex"] != index:
+                raise ValueError
+            style = run.get("textStyle", {})
+            if not isinstance(style, dict):
+                raise ValueError
+            link = style.get("link")
+            if not _supported_style(style, linked=link is not None):
+                raise ValueError
+            if link is not None:
+                if not isinstance(link, dict) or set(link) != {"url"} or not isinstance(link["url"], str):
+                    raise ValueError
+                start, end, url = part["startIndex"] - 1, part["endIndex"] - 1, link["url"]
+                if links and links[-1][1] == start and links[-1][2] == url:
+                    links[-1] = (links[-1][0], end, url)
+                else:
+                    links.append((start, end, url))
+            paragraph_parts.append(content)
+        paragraph = "".join(paragraph_parts)
+        if not paragraph.endswith("\n") or paragraph.count("\n") != 1 or element["endIndex"] != index:
+            raise ValueError
+        text_parts.append(paragraph)
+    return "".join(text_parts), tuple(links), index
+
+
 def read_report_source(report: DocsReport, document_id: str, artifact_id: str, *,
                        expected_rounds: tuple[ExpectedReportRound, ...],
                        presentation: ReportPresentation | None = None) -> VerifiedReportSnapshot:
@@ -232,56 +282,7 @@ def read_report_source(report: DocsReport, document_id: str, artifact_id: str, *
             raise ValueError
         _validate_document_presentation(doc, elements[0], presentation, document_id=document_id,
                                         artifact_id=artifact_id, tab_id=tab_id)
-        text_parts = []
-        links = []
-        utf16_index = 1
-        for element in elements[1:]:
-            if set(element) != {"startIndex", "endIndex", "paragraph"}:
-                raise ValueError
-            para = element["paragraph"]
-            if (not set(para) <= {"elements", "paragraphStyle", "bullet", "positionedObjectIds",
-                                  "suggestedParagraphStyleChanges"}
-                    or para.get("bullet") or para.get("positionedObjectIds")):
-                raise ValueError
-            if not _normal_paragraph(para) or element["startIndex"] != utf16_index:
-                raise ValueError
-            paragraph_parts = []
-            for part in para["elements"]:
-                if set(part) != {"startIndex", "endIndex", "textRun"}:
-                    raise ValueError
-                run = part["textRun"]
-                if not set(run) <= {"content", "textStyle", "suggestedTextStyleChanges"}:
-                    raise ValueError
-                content = run["content"]
-                if not isinstance(content, str) or not content or part["startIndex"] != utf16_index:
-                    raise ValueError
-                utf16_index += len(content.encode("utf-16-le")) // 2
-                if part["endIndex"] != utf16_index:
-                    raise ValueError
-                style = run.get("textStyle", {})
-                if not isinstance(style, dict):
-                    raise ValueError
-                link = style.get("link")
-                if not _supported_style(style, linked=link is not None):
-                    raise ValueError
-                if link is not None:
-                    if (not isinstance(link, dict) or set(link) != {"url"}
-                            or not isinstance(link["url"], str)):
-                        raise ValueError
-                    start, end, url = part["startIndex"] - 1, part["endIndex"] - 1, link["url"]
-                    if links and links[-1][1] == start and links[-1][2] == url:
-                        links[-1] = (links[-1][0], end, url)
-                    else:
-                        links.append((start, end, url))
-                paragraph_parts.append(content)
-            paragraph = "".join(paragraph_parts)
-            if (not paragraph.endswith("\n") or paragraph.count("\n") != 1
-                    or element["endIndex"] != utf16_index):
-                raise ValueError
-            text_parts.append(paragraph)
-        text = "".join(text_parts)
-        if not text.endswith("\n"):
-            raise ValueError
+        text, links, utf16_index = _plain_body(elements)
         encoded = text.encode("utf-16-le")
         pos, required_links = 0, []
         for trusted in expected_rounds:
@@ -303,7 +304,7 @@ def read_report_source(report: DocsReport, document_id: str, artifact_id: str, *
                 raise ValueError
             required_links.append((link_start, link_end, url))
             pos = end
-        if encoded[2 * pos:] != b"\n\x00" or links != required_links:
+        if encoded[2 * pos:] != b"\n\x00" or links != tuple(required_links):
             raise ValueError
     except (KeyError, TypeError, ValueError, AttributeError, UnicodeEncodeError):
         raise ReportConflict("unsupported, modified or unverified report source") from None

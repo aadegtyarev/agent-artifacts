@@ -266,7 +266,7 @@ def follow(key, deadline):
 def recover(client, key):
     """Find interrupted work without assigning it or acknowledging notices."""
     _, kind, target = key
-    closures = {}
+    closures, notes = {}, {}
     if kind == "a":
         candidates = [target]
     else:
@@ -286,6 +286,8 @@ def recover(client, key):
                 raise ValueError("invalid project file")
             if (closure := cli._review_closure(row.get("review_closure"))) is not None:
                 closures[file_id] = closure
+            if (submission := cli._review_closure(row.get("review_notes"))) is not None:
+                notes[file_id] = submission
             if count:
                 candidates.append(file_id)
     files = []
@@ -297,13 +299,15 @@ def recover(client, key):
         except urllib.error.HTTPError as e:
             if kind == "p" and e.code == 404:
                 closures.pop(file_id, None)
+                notes.pop(file_id, None)
                 continue  # removed after the project listing
             raise
-        rows, closure = cli._read_watch_comments(data)
-        if closure is not None:
-            closures[file_id] = closure
-        else:
-            closures.pop(file_id, None)
+        rows, closure, submission = cli._read_watch_comments(data)
+        for pending, record in ((closures, closure), (notes, submission)):
+            if record is not None:
+                pending[file_id] = record
+            else:
+                pending.pop(file_id, None)
         working = []
         for row in rows:
             if not isinstance(row, dict) or type(n := row.get("n")) is not int or n < 1:
@@ -313,6 +317,8 @@ def recover(client, key):
         if working:
             files.append({"id": file_id, "comments": working})
     result = {"scope": {"kind": kind, "id": target}, "unfinished": files}
+    if notes:
+        result["pending_notes"] = [{"id": fid, "submission": submission} for fid, submission in notes.items()]
     if closures:
         result["pending_reports"] = [{"id": fid, "closure": closure} for fid, closure in closures.items()]
     return result

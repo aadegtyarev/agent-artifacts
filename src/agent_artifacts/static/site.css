@@ -277,12 +277,14 @@ html:has(> body > .stage.zooms) { touch-action: pan-x pan-y; }
   box-shadow: 0 1px 3px var(--shadow-1), 0 0 0 0.5px var(--hair); }
 .seg .opt:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 .sfoot .towhom { margin: 0 0 10px; }
-.close-review { display: flex; align-items: center; gap: 8px; min-height: 44px; font-size: 15px; }
-.close-review input { flex: none; accent-color: var(--blue); }
-.close-review-note { margin: 0 0 10px; }
+.review-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.sheet .review-actions .btn { min-width: 0; height: calc(48px / var(--ts)); padding: 0 6px;
+  text-align: center; white-space: normal; line-height: 1.12; }
+.review-actions .btn::before { inset: 0; }
+.review-actions [data-review-slot="first"] { grid-column: 1; grid-row: 1; }
+.review-actions [data-review-slot="second"] { grid-column: 2; grid-row: 1; }
 .review-summary-link { color: var(--blue); }
-.sfoot.typing .pill + .foot2, .sfoot.typing .towhom,
-.sfoot.typing .close-review, .sfoot.typing .close-review-note { display: none; }
+.sfoot.typing .pill + .foot2, .sfoot.typing .towhom { display: none; }
 .general textarea { min-height: 60px; }
 
 /* Pins and badges: pin.css, shared with pins.js in a page. */

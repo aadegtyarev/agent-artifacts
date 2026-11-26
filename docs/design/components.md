@@ -185,14 +185,15 @@ On a phone every title line ends with the fold button (⌄).
 | View | Holds | Footer (phone) |
 | --- | --- | --- |
 | strip | one line, see below | — |
-| list | title "Comments · N" (or "No comments yet"), groups, "+ About the whole file" in comment mode; after a confirmed Workspace close, a note linking to the summary | Finish review · N, with drafts |
-| item | navigation, one comment as a chat or one draft, then "Others" with the rest when pulled to full | reply field; Finish review · N with drafts |
+| list | title "Comments · N" (or "No comments yet"), groups, "+ About the whole file" in comment mode; Workspace review notes status and verified link | Finish review… where eligible; Review drafts · N with drafts |
+| item | navigation, one comment as a chat or one draft, then "Others" with the rest when pulled to full | reply field; Review drafts · N with drafts |
 | compose | caption "New draft" (or "New draft · about the whole file"), field with send | the field itself, so it stays above the keyboard |
-| finish | title "Finish review · N", Not decided yet, In this review, general comment field | Send to agent / Only publish, Back, Finish review |
+| draft preview | title "Review drafts · N", Not decided yet, In this review, general comment field | Send to agent / Only publish, Back, Send comments / Publish comments |
+| finish | title "Finish review", open comments, drafts to publish, optional final note | Back, Finish review |
 
 **Add comment** sits next to the list title. It is primary if there are no
 drafts; while placing pins it has a blue inset outline and `aria-pressed`.
-With drafts, **Finish review** is the primary action at the bottom right of
+With drafts, **Review drafts** is the primary action at the bottom right of
 the list or thread on both layouts. **Discard** in a new draft offers Undo.
 
 ### Desktop panel handle
@@ -298,30 +299,30 @@ Replies and edits still save with Ctrl/Meta+Enter. The item header and reply
 stay visible while the thread scrolls. Text limit: 2,000 characters. An empty
 field disables send. Focus matches the [plain field](#text-fields).
 
-### Finish review
+### Review drafts and finish review
 
 | Part | Look |
 | --- | --- |
-| Title | "Finish review · N" |
+| Title | "Review drafts · N"; link to the exact reviewed version when available |
 | Not decided yet · N | section title with the "Accept all · N" link at the right when two or more; rows of what waits for a yes |
 | In this review | section title (only after Not decided yet); new drafts with where they are, then decided and replied comments, accepted last |
 | Empty | "No drafts: you can publish a general comment only." |
 | General comment | field, min h 60, placeholder "General comment"; on a narrow screen, growing the focused field preserves the reading position and keeps a newly wrapped line at the end in view |
-| Footer | segmented Send to agent / Only publish; Back and **Finish review** (big, primary), disabled with nothing to send |
+| Footer | Send to agent / Only publish; Back and primary Send comments / Publish comments, disabled with nothing to send |
 
-A Workspace reviewer linked to the owning agent can open this same view
-without drafts. For an eligible open Drive review, the footer has one
-unchecked **This is the final round** checkbox before the existing actions.
-The label has a 44 px hit area and uses normal focus and the existing blue.
-When selected, **Close review** replaces the primary button label, and the
-recipient choice is hidden: closing publishes the last feedback but does not
-ask for changes. No summary action is added to the menu or the footer.
-The existing discussion shows a short status after closure, then a plain
-link to the verified summary without a reload.
+The linked owner of an eligible open Workspace review has a separate
+**Finish review…** action even without drafts. It opens a confirmation in
+this panel, with an optional final note and counts for open comments and
+unpublished drafts. **Finish review** publishes those drafts without
+requesting edits. Back restores the opener, note and recipient choice.
+The discussion shows **Read review notes** after the first verified write;
+a pending update or outcome does not hide the verified link.
 
-While a reply or the general comment is typed in, the footer hides the
-segmented control and the final-round choice. The name dialog appears at
-the first nonempty Finish review submission, not when entering comment mode
+The main list and both confirmation views share two fixed footer slots. The
+visible action boxes are 48 CSS px high at every Text size, on phone and
+computer. An empty slot or changed label does not move the other slot.
+While typing the general comment the recipient control is out of the way.
+The name dialog appears at the first publication, not when starting placement
 or saving drafts. Dismissing it publishes nothing.
 
 ## Project page

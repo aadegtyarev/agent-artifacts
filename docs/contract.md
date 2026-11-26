@@ -686,8 +686,8 @@ nothing selected, a tap is the page's as always.
 In a new comment on a computer, Enter saves the draft like the arrow;
 Shift+Enter, Ctrl+Enter and Meta+Enter insert a new line. Enter does not publish
 and does not save while composing with an IME. Reply and edit shortcuts are
-unchanged; publishing still uses **Finish review**.
-**Finish review** opens at middle height without starting placement. A typed
+unchanged; use **Review drafts** to publish saved drafts.
+The draft preview opens at middle height without starting placement. A typed
 new draft can be discarded explicitly with **Discard** and restored using
 **Undo**. The keyboard pushes the sheet up and the pin stays in sight above
 it. Buttons show only on the selected item:
@@ -697,15 +697,15 @@ comment, as a small chat with its replies (the agent's marked as the agent),
 **✓ Accept** when the agent is done (`done` or `wrote`), and a reply field.
 A decision shows as one line under the comment with a small **Undo**.
 With two or more waiting, **✓ Accept all · N** (in the list's Need you
-title and Finish review's "Not decided yet") accepts every piece of the
+title and the draft preview's "Not decided yet") accepts every piece of the
 agent's finished work (`done`, `wrote`) and approves every colleague's
 comment awaiting approval, as decision drafts in one call
 (`POST /a/{id}/drafts/batch`): all are made or, if one is refused, none,
 and a toast says so. A comment that already has a decision or a reply draft
 of the person's is skipped; the agent's questions (`asked`) are left to be
 answered. One **Undo** in the toast takes them all back, again in one call.
-Finish review is not sent while the call is on its way. With
-drafts, **Finish review · N** sits at the bottom of an item too. On a computer the same
+A publication cannot be sent again while its call is in flight. With
+drafts, **Review drafts · N** sits at the bottom of an item too. On a computer the same
 views sit in a panel at the right, and the strip's line heads it. At 900 px
 and wider, drag the side handle to resize the panel; release within 32 px
 of the right edge to fold it. Clicking the tab, or pressing Enter or Space
@@ -714,21 +714,26 @@ Right resize while the open panel's handle has focus. These actions do not
 change comment mode or discard drafts. The manually chosen width lasts for
 this page and is clamped to the available space.
 
-**Finish review** shows first, under "Not decided yet", what waits for the
+**Review drafts** shows first, under "Not decided yet", what waits for the
 person's yes with no decision or reply of theirs: the agent's answers
 (`done`, `wrote`, `asked`) and colleagues' comments awaiting approval. Then
 the person's new drafts and one row for each comment
 decided or replied to, a field for a general comment
 (optional, about the whole file), a choice **Send to agent** (the default) or
-**Only publish**, and **Back** / **Finish
-review**. Sent to the agent,
-the comments wait for the agent (`agent` `waiting`): it takes them to work on; only
-published, they are there for everyone to read. Finishing
+**Only publish**, and **Back** / **Send comments** or **Publish comments**.
+When feedback is sent to the agent, its affected comments wait for work
+(`agent` `waiting`); publishing alone requests no edits. Either action
 publishes all the person's drafts on this file and the general comment in one
 transaction: each becomes a comment with the next number, in the order the
 drafts were made, the general comment last. If they do not all fit under the
 limit, none is published. A draft whose anchor no longer fits the file's
 type after a replace is published as a comment about the whole file.
+
+On an eligible Workspace Drive review, the owner has a separate **Finish
+review…** action. Confirm with or without drafts, optionally giving a final
+note. This publishes any remaining personal drafts but creates no edit
+request and does not mark open comments accepted. Exact captured review
+evidence drives [the living document](plans/review-finish-implementation.md).
 
 A colleague's unseen reply on your own comment promotes it to Need you with
 “New reply”. Draft and Closed precedence and the existing agent order remain;

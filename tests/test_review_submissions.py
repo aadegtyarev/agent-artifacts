@@ -148,6 +148,42 @@ def test_evidence_is_bound_to_the_closed_thread_even_when_late_replies_share_its
         assert restored.get(route, headers=owner).status_code == 404
 
 
+def test_notes_source_captures_publish_only_and_excludes_later_discussion(env):
+    client, store, cloud, keys, config, first, second = env
+    path = urlsplit(first["url"]).path
+    owner = keys["author"]
+    headers = browser(client, config, path)
+    notes = endpoint(first, "notes/source")
+    assert client.get(notes, headers=owner).status_code == 404
+    made = client.post(path + "/review", headers=headers, json=submission(first, "n", text="Publish this only"))
+    n = made.json()[0]["n"]
+    assert made.status_code == 201 and made.json()[0]["agent"] is None
+    assert client.post(f"/api/v1/artifacts/{first['id']}/comments/{n}/reply", headers=owner,
+                       json={"text": "A later reply", "state": "done"}).status_code == 201
+    assert client.post(path + "/review", headers=headers,
+                       json=submission(second, "q", close=True, agent=True)).status_code == 400
+    assert client.post(path + "/review", headers=headers,
+                       json=submission(second, "q", close=True)).status_code == 201
+    later = client.post(path + "/review", headers=headers, json=submission(second, "r", text="Later discussion"))
+    assert later.status_code == 201
+    cloud.calls.clear()
+    assert client.get(notes).status_code == 401
+    assert client.get(notes, headers=keys["viewer"]).status_code == 404
+    source = client.get(notes, headers=owner)
+    assert source.headers["cache-control"] == "no-store"
+    assert source.json() == {"id": "n" * 22, "version_id": version(first), "version_url": first["version_url"],
+                             "threads": [n]}
+    evidence = endpoint(first, f"notes/evidence/{n}")
+    assert client.get(evidence + "?submission_id=" + "q" * 22, headers=owner).status_code == 404
+    captured = client.get(evidence + "?submission_id=" + "n" * 22, headers=owner)
+    assert captured.headers["cache-control"] == "no-store"
+    assert captured.json() == {"n": n, "submission_id": "n" * 22, "text": "Publish this only", "by_agent": False,
+                               "decision": None, "resolved": False, "replies": []}
+    with store._conn() as db:
+        assert db.execute("SELECT evidence FROM review_submissions WHERE request_id=?", ("r" * 22,)).fetchone() == (None,)
+    assert not cloud.calls  # reading a capture does not borrow a Drive grant or create a Doc
+
+
 def test_file_and_project_watch_recover_unfinished_native_doc_after_ack(env, tmp_path):
     client, _, cloud, keys, config, original, _ = env
     owner = keys["author"]
@@ -207,6 +243,10 @@ def test_one_native_summary_requires_closure_and_keeps_captured_versions_and_evi
     assert client.post(final, headers=owner, json=body).status_code == 404
     assert client.post(path + "/review", headers=headers,
                        json=submission(first, "l", text="Compact preserves the list")).status_code == 201
+    # Before living notes, ordinary publications kept version/thread IDs but
+    # no round boundary. Keep the verified legacy first-write path for these.
+    with store._conn(write=True) as db:
+        db.execute("UPDATE review_submissions SET evidence=NULL WHERE artifact_id=? AND closing=0", (first["id"],))
     assert client.post(path + "/review", headers=headers,
                        json=submission(second, "k", close=True, text="Wide uses too much space.")).status_code == 201
     assert client.post(path + "/review", headers=headers,
@@ -282,7 +322,7 @@ def test_close_requires_the_linked_workspace_user_and_a_matching_version(env, mo
     assert client.get(endpoint(first, "source"), headers=keys["author"]).status_code == 404
     with TestClient(create_app(replace(config, drive_read_only=True), store), base_url=MAIN) as paused:
         paused_headers = browser(paused, config, path)
-        assert 'data-review-state="open"' in paused.get(path).text
+        assert 'data-review-state="open:updating"' in paused.get(path).text
         assert paused.post(review, headers=paused_headers,
                            json=submission(second, "h", close=True)).json()["error"] == "drive_read_only"
     with store._conn() as db:

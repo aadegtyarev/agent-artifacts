@@ -257,8 +257,11 @@ def test_discussion_links_only_to_confirmed_summary_for_authorized_viewer(env, m
 
 
 @pytest.mark.parametrize("env", [False], indirect=True)
-def test_agent_cli_reads_closure_evidence_and_sends_saved_summary(env, monkeypatch, tmp_path):
+def test_agent_cli_saves_round_notes_and_outcome_from_captured_evidence(env, monkeypatch, tmp_path):
+    from test_review_notes import NotesDocs
+
     client, _, cloud, keys, config, first, second = env
+    cloud.docs = NotesDocs()
     path = urlsplit(first["url"]).path
     auth = WorkspaceAuthStore(config.data_dir / "workspace-auth.sqlite", POLICY)
     client.cookies.set(SESSION_COOKIE, auth.create_session(
@@ -287,6 +290,14 @@ def test_agent_cli_reads_closure_evidence_and_sends_saved_summary(env, monkeypat
         return response.text
 
     monkeypatch.setattr(cli["Client"], "call", send)
+    pending = json.loads(cli["run"](["review-notes-source", first["id"]]))
+    assert pending["id"] == "a" * 22 and pending["version_url"] == first["version_url"]
+    round_evidence = cli["run"](["review-notes-evidence", first["id"], pending["id"], "2"])
+    assert json.loads(round_evidence)["text"] == "Compact preserves the list. Список."
+    raw.write_text(json.dumps({"submission_id": pending["id"], "summary": "Keeps the list. Список.",
+                              "threads": [2]}, ensure_ascii=False), encoding="utf-8")
+    note = json.loads(cli["run"](["review-notes-update", first["id"], str(raw)]))
+    assert note["status"] == "updated"
     source = json.loads(cli["run"](["review-source", first["id"]]))
     assert source["id"] == "b" * 22
     evidence = json.loads(cli["run"](["review-evidence", first["id"], source["id"], "2"]))
@@ -296,9 +307,9 @@ def test_agent_cli_reads_closure_evidence_and_sends_saved_summary(env, monkeypat
     raw.write_text(json.dumps({"closure_id": source["id"], "outcome": outcomes["outcome"], "rows": outcomes["rows"]},
                               ensure_ascii=False), encoding="utf-8")
     args = ["review-finalize", first["id"], str(raw)]
-    assert json.loads(cli["run"](args))["status"] == "finalized"
+    assert json.loads(cli["run"](args)) == {"status": "finalized", "report_url": note["report_url"]}
     assert json.loads(cli["run"](args))["status"] == "already_finalized"
-    assert (cloud.creates, cloud.appends, cloud.docs.compact_posts) == (1, 0, 1)
+    assert (cloud.creates, cloud.appends, cloud.docs.compact_posts) == (1, 2, 0)
     raw.write_bytes(b" " * 16385)
     with pytest.raises(cli["Usage"], match="16384 bytes"):
         cli["run"](args)

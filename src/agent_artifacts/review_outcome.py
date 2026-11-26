@@ -35,11 +35,14 @@ def _option(value: object) -> tuple[str, str, tuple[int, ...]]:
 
 def outcome_with_evidence(value: object, *, allow_unknown_choice: bool = False) -> tuple[str, tuple[int, ...]]:
     """Only render explicit outcomes; caller must verify published thread numbers."""
-    if not isinstance(value, dict) or set(value) != {"chosen", "alternatives"}:
+    required = {"chosen", "alternatives"}
+    allowed = required | {"open_items"} if allow_unknown_choice else required
+    if not isinstance(value, dict) or not required <= set(value) <= allowed:
         raise ValueError("expected a chosen option and alternatives")
-    alternatives = value["alternatives"]
-    if not isinstance(alternatives, list) or len(alternatives) > _MAX_ALTERNATIVES:
-        raise ValueError("invalid alternative list")
+    alternatives, open_items = value["alternatives"], value.get("open_items", [])
+    if any(not isinstance(items, list) or len(items) > _MAX_ALTERNATIVES
+           for items in (alternatives, open_items)):
+        raise ValueError("invalid list of alternatives or open items")
     has_choice = value["chosen"] is not None
     if has_choice or not allow_unknown_choice:
         chosen, rationale, chosen_threads = _option(value["chosen"])
@@ -59,6 +62,16 @@ def outcome_with_evidence(value: object, *, allow_unknown_choice: bool = False) 
             raise ValueError("duplicate review option")
         seen.add(label.casefold())
         lines.extend((f"• {label}", f"  Why not: {reason}"))
+        evidence.update(threads)
+        if threads:
+            lines.append("  " + thread_line(threads))
+    if open_items:
+        lines.extend(("", "Still open:"))
+    for item in open_items:
+        if not isinstance(item, dict) or not {"label"} <= set(item) <= {"label", "threads"}:
+            raise ValueError("expected an open point and optional threads")
+        lines.append(f"• {_line(item['label'])}")
+        threads = thread_numbers(item.get("threads", []))
         evidence.update(threads)
         if threads:
             lines.append("  " + thread_line(threads))

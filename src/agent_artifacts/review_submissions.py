@@ -74,7 +74,9 @@ class ReviewSubmission:
             return version[0], json.loads(existing[1])
         if self.closing and db.execute(
             "SELECT 1 FROM review_submissions WHERE artifact_id=? AND closing=1 UNION ALL "
-            "SELECT 1 FROM review_documents WHERE artifact_id=? LIMIT 1",
+            "SELECT 1 FROM review_documents d WHERE d.artifact_id=? AND NOT EXISTS ("
+            "SELECT 1 FROM review_operations o WHERE o.artifact_id=d.artifact_id "
+            "AND o.kind='round' AND o.operation_key LIKE 'notes-%') LIMIT 1",
             (artifact_id, artifact_id),
         ).fetchone() is not None:
             raise SubmissionConflict
@@ -85,19 +87,21 @@ class ReviewSubmission:
                          "VALUES (?,?,?,?,?,?,?)", (artifact_id, self.version_id, self.request_id, fingerprint,
                                                     self.closing, now, json.dumps(sorted(threads))))
         if self.closing:
-            # Comments/replies are append-only in discussion (a whole thread
-            # can be deleted). Record only the reply boundary and decisions,
-            # not duplicate texts or an ambiguous wall-clock cutoff.
-            live = {n: [replies, "approved" if approved else "rejected" if rejected else None, bool(resolved)]
+            threads = {n for (saved,) in db.execute("SELECT threads FROM review_submissions WHERE artifact_id=?", (artifact_id,))
+                       for n in json.loads(saved)}
+        elif not threads or db.execute("SELECT 1 FROM review_submissions WHERE artifact_id=? AND closing=1",
+                                       (artifact_id,)).fetchone():
+            return  # no notes for an empty round or discussion after closure
+        # Comments/replies are append-only in discussion (a whole thread can
+        # be deleted). Keep just the reply boundary and decisions, not copies
+        # of the text or an ambiguous wall-clock cutoff.
+        evidence = {n: [replies, "approved" if approved else "rejected" if rejected else None, bool(resolved)]
                     for n, approved, rejected, resolved, replies in db.execute(
                         "SELECT c.n,c.approved_by,c.rejected_by,c.resolved_at IS NOT NULL, "
                         "(SELECT COUNT(*) FROM replies r WHERE r.artifact_id=c.artifact_id AND r.n=c.n) "
-                        "FROM comments c WHERE c.artifact_id=?", (artifact_id,))}
-            evidence = {}
-            for (saved,) in db.execute("SELECT threads FROM review_submissions WHERE artifact_id=?", (artifact_id,)):
-                evidence.update((n, live[n]) for n in json.loads(saved) if n in live)
-            db.execute("UPDATE review_submissions SET evidence=? WHERE sequence=?",
-                       (json.dumps(evidence, sort_keys=True), row.lastrowid))
+                        "FROM comments c WHERE c.artifact_id=?", (artifact_id,)) if n in threads}
+        db.execute("UPDATE review_submissions SET evidence=? WHERE sequence=?",
+                   (json.dumps(evidence, sort_keys=True), row.lastrowid))
 
 
 def browser_state(db: sqlite3.Connection, artifact_id: str, subject: str, *, read_only: bool) -> str | None:
@@ -106,7 +110,12 @@ def browser_state(db: sqlite3.Connection, artifact_id: str, subject: str, *, rea
         "SELECT EXISTS (SELECT 1 FROM account_agents own JOIN human_accounts h ON h.id=own.account_id "
         "WHERE own.agent=a.owner AND h.google_subject=?), "
         "EXISTS (SELECT 1 FROM review_submissions s WHERE s.artifact_id=a.id AND s.closing=1), "
-        "o.sequence IS NOT NULL, CASE WHEN o.confirmed_at IS NOT NULL THEN d.doc_id END "
+        "o.sequence IS NOT NULL, CASE WHEN o.confirmed_at IS NOT NULL THEN d.doc_id END, "
+        "CASE WHEN EXISTS (SELECT 1 FROM review_operations n WHERE n.artifact_id=d.artifact_id "
+        "AND n.kind='round' AND n.operation_key LIKE 'notes-%' AND n.confirmed_at IS NOT NULL) THEN d.doc_id END, "
+        "EXISTS (SELECT 1 FROM review_submissions s WHERE s.artifact_id=a.id AND s.closing=0 "
+        "AND s.evidence IS NOT NULL AND NOT EXISTS (SELECT 1 FROM review_operations n WHERE n.artifact_id=a.id "
+        "AND n.operation_key='notes-' || s.request_id AND n.confirmed_at IS NOT NULL)) "
         "FROM visible_artifacts a JOIN drive_refs r ON r.artifact_id=a.id "
         "LEFT JOIN review_documents d ON d.artifact_id=a.id AND d.file_id=r.file_id "
         "LEFT JOIN review_operations o ON o.artifact_id=d.artifact_id AND o.kind='close' "
@@ -115,12 +124,13 @@ def browser_state(db: sqlite3.Connection, artifact_id: str, subject: str, *, rea
     ).fetchone()
     if row is None:
         return None
-    may_close, submitted, in_docs, doc_id = row
+    may_close, submitted, in_docs, doc_id, notes_id, notes_pending = row
     if doc_id:
         return "ready:" + doc_id
-    if submitted or in_docs:
-        return "pending"
-    return "closable" if may_close and not read_only else "open"
+    status = "pending" if submitted or in_docs else "closable" if may_close and not read_only else "open"
+    if notes_id:
+        return status + (":updating:" if notes_pending else ":notes:") + notes_id
+    return status + ":updating" if notes_pending else status
 
 
 def pending_closures(db: sqlite3.Connection, owner: str, *, artifact_id: str | None = None,
@@ -142,15 +152,38 @@ def pending_closures(db: sqlite3.Connection, owner: str, *, artifact_id: str | N
     return dict(rows)
 
 
-def read_evidence(db: sqlite3.Connection, artifact_id: str, owner: str, closure_id: str, n: int) -> dict | None:
+def pending_notes(db: sqlite3.Connection, owner: str, *, artifact_id: str | None = None,
+                  project_id: str | None = None) -> dict[str, str]:
+    """Give an owner one pending notes ID per artifact, in publication order."""
+    if (artifact_id is None) == (project_id is None):
+        raise ValueError("exactly one watch scope is required")
+    found: dict[str, str] = {}
+    rows = db.execute(
+        "SELECT a.id,s.request_id FROM visible_artifacts a JOIN visible_projects p ON p.id=a.project "
+        "JOIN drive_refs r ON r.artifact_id=a.id JOIN review_submissions s ON s.artifact_id=a.id "
+        "JOIN drive_versions v ON v.version_id=s.version_id AND v.file_id=r.file_id "
+        "WHERE a.owner=:owner AND a.expires_at IS NULL AND s.closing=0 AND s.evidence IS NOT NULL "
+        "AND ((:artifact IS NOT NULL AND a.id=:artifact) OR (:project IS NOT NULL AND a.project=:project)) "
+        "AND NOT EXISTS (SELECT 1 FROM review_operations o WHERE o.artifact_id=a.id AND o.confirmed_at IS NOT NULL "
+        "AND (o.operation_key='notes-' || s.request_id OR o.kind='close')) ORDER BY s.sequence",
+        {"owner": owner, "artifact": artifact_id, "project": project_id},
+    )
+    for artifact, request in rows:
+        found.setdefault(artifact, request)
+    return found
+
+
+def read_evidence(db: sqlite3.Connection, artifact_id: str, owner: str, submission_id: str, n: int, *,
+                  closing: bool = True) -> dict | None:
     """Read one retained published thread exactly through its captured reply boundary."""
     row = db.execute(
         "SELECT s.evidence,c.text,c.by_agent FROM visible_artifacts a JOIN drive_refs d ON d.artifact_id=a.id "
-        "JOIN review_submissions s ON s.artifact_id=a.id AND s.closing=1 "
+        "JOIN review_submissions s ON s.artifact_id=a.id "
         "JOIN drive_versions v ON v.version_id=s.version_id AND v.file_id=d.file_id "
         "JOIN comments c ON c.artifact_id=a.id "
-        "WHERE a.id=? AND a.owner=? AND s.request_id=? AND c.n=? AND a.expires_at IS NULL",
-        (artifact_id, owner, closure_id, n),
+        "WHERE a.id=? AND a.owner=? AND s.request_id=? AND s.closing=? AND c.n=? "
+        "AND a.project IS NOT NULL AND a.expires_at IS NULL",
+        (artifact_id, owner, submission_id, closing, n),
     ).fetchone()
     if row is None or row[0] is None:
         return None  # a pre-capture backup cannot establish a reply boundary
@@ -162,9 +195,30 @@ def read_evidence(db: sqlite3.Connection, artifact_id: str, owner: str, closure_
                          (artifact_id, n, count)).fetchall()
     if len(replies) != count:
         return None
-    return {"n": n, "closure_id": closure_id, "text": row[1], "by_agent": bool(row[2]),
+    return {"n": n, "closure_id" if closing else "submission_id": submission_id,
+            "text": row[1], "by_agent": bool(row[2]),
             "decision": decision, "resolved": resolved,
             "replies": [{"text": text, "by_agent": bool(by_agent)} for text, by_agent in replies]}
+
+
+def next_notes_source(db: sqlite3.Connection, artifact_id: str, owner: str, origin: str) -> dict | None:
+    """Oldest recorded ordinary round not yet verified in the living Doc."""
+    row = db.execute(
+        "SELECT s.request_id,s.version_id,s.threads FROM visible_artifacts a "
+        "JOIN drive_refs d ON d.artifact_id=a.id "
+        "JOIN review_submissions s ON s.artifact_id=a.id "
+        "JOIN drive_versions v ON v.version_id=s.version_id AND v.file_id=d.file_id "
+        "WHERE a.id=? AND a.owner=? AND a.project IS NOT NULL AND a.expires_at IS NULL "
+        "AND s.closing=0 AND s.evidence IS NOT NULL "
+        "AND NOT EXISTS (SELECT 1 FROM review_operations o WHERE o.artifact_id=a.id AND o.confirmed_at IS NOT NULL "
+        "AND (o.operation_key='notes-' || s.request_id OR o.kind='close')) "
+        "ORDER BY s.sequence LIMIT 1", (artifact_id, owner),
+    ).fetchone()
+    if row is None:
+        return None
+    request, version, threads = row
+    return {"id": request, "version_id": version, "version_url": f"{origin}/a/{artifact_id}/versions/{version}",
+            "threads": json.loads(threads)}
 
 
 def close_source(db: sqlite3.Connection, artifact_id: str, owner: str, origin: str) -> dict | None:

@@ -14,8 +14,10 @@ from .report_compaction import CompactionRow, VerifiedReportSnapshot, _text, pla
 from .report_compaction_dispatch import compact_report, dispatch_verified
 from .report_compaction_readback import verify_compacted_report
 from .report_source import ExpectedReportRound, ReportPresentation, read_blank_report, read_report_source
+from .review_notes_body import NotesBody, NotesSection, render_notes
+from .review_notes_doc import dispatch_notes, read_notes
 from .review_outcome import outcome_with_evidence, thread_line, thread_numbers
-from .review_submissions import close_source
+from .review_submissions import close_source, next_notes_source, read_evidence
 from .store import ID_RE
 
 if TYPE_CHECKING:
@@ -57,13 +59,17 @@ class ReportPending(RuntimeError):
     """A possibly dispatched operation is not confirmed or another one holds the slot."""
 
 
+class ReportNotesPending(ReportPending):
+    """Published round notes must be verified before adding the outcome."""
+
+
 def _json(value: object) -> str:
     return json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
 
 def _key(value: object) -> str:
     key = _reference(value)
-    if len(key) > 128 or key.startswith("browser-"):
+    if len(key) > 128 or key.startswith(("browser-", "notes-")):
         raise ValueError("invalid operation key")
     return key
 
@@ -148,7 +154,8 @@ class ReviewReports:
     def _round_sources(self, db, artifact_id: str, *, before: int | None = None) -> list[dict]:
         return [json.loads(row[0]) for row in db.execute(
             "SELECT source FROM review_operations WHERE artifact_id = ? AND kind = 'round' "
-            "AND confirmed_at IS NOT NULL AND (? IS NULL OR sequence < ?) ORDER BY sequence",
+            "AND operation_key NOT LIKE 'notes-%' AND confirmed_at IS NOT NULL "
+            "AND (? IS NULL OR sequence < ?) ORDER BY sequence",
             (artifact_id, before, before),
         )]
 
@@ -179,6 +186,59 @@ class ReviewReports:
         ).lastrowid
         return ReportTask(sequence, artifact_id, owner, file_id, kind, key, digest, payload)
 
+    @staticmethod
+    def _notes_sources(db, artifact_id: str, *, before: int | None = None) -> list[dict]:
+        return [json.loads(row[0]) for row in db.execute(
+            "SELECT source FROM review_operations WHERE artifact_id=? AND kind='round' "
+            "AND operation_key LIKE 'notes-%' AND confirmed_at IS NOT NULL "
+            "AND (? IS NULL OR sequence<?) ORDER BY sequence", (artifact_id, before, before),
+        )]
+
+    def _notes_body(self, artifact_id: str, notes: list[dict], *, summary: str | None = None,
+                    rows: list[dict] | None = None) -> NotesBody:
+        versions: dict[str, list[str]] = {}
+        for item in notes:
+            versions.setdefault(item["version"], []).append(item["text"])
+        if rows is None:
+            sections = tuple(NotesSection(version, tuple(entries)) for version, entries in versions.items())
+        else:
+            choices = {row["version_url"].rsplit("/", 1)[-1]: (row["decision"], row["reason"]) for row in rows}
+            if not versions.keys() <= choices.keys():
+                raise ReportConflict("verified review notes have versions outside the closing capture")
+            sections = tuple(NotesSection(v, tuple(versions.get(v, ())), result) for v, result in choices.items())
+        return render_notes(self.origin, artifact_id, sections, outcome=summary)
+
+    def prepare_notes(self, artifact_id: str, owner: str, fields: dict) -> ReportTask:
+        request, summary = fields["submission_id"], fields["summary"]
+        if not isinstance(request, str) or not re.fullmatch(ID_RE, request):
+            raise ValueError("invalid notes submission ID")
+        _text(summary, "round summary")
+        threads = thread_numbers(fields.get("threads", []))
+        key = "notes-" + request
+        with self.store._conn(write=True) as db:
+            file_id = self._owned_file(db, artifact_id, owner)
+            known = db.execute("SELECT source FROM review_operations WHERE artifact_id=? AND operation_key=?",
+                               (artifact_id, key)).fetchone()
+            if known:
+                version = json.loads(known[0])["version"]
+            else:
+                if self._round_sources(db, artifact_id):
+                    raise ReportConflict("legacy report is not a living notes document")
+                round_ = next_notes_source(db, artifact_id, owner, self.origin)
+                if round_ is None or round_["id"] != request:
+                    raise ReportNotFound("no matching pending notes source")
+                version = round_["version_id"]
+                if any(n not in round_["threads"] or read_evidence(db, artifact_id, owner, request, n,
+                                                                  closing=False) is None for n in threads):
+                    raise ValueError("notes reference uncaptured or unavailable evidence")
+            self._check_version(db, artifact_id, file_id, version)
+            item = {"version": version, "text": summary + ("\n" + thread_line(threads) if threads else "")}
+            payload = _json({"notes": item, "threads": threads})
+            if not known:
+                previous = self._notes_sources(db, artifact_id)
+                self._notes_body(artifact_id, [*previous, item])
+            return self._reserve(db, artifact_id, owner, file_id, "round", key, payload, _json(item))
+
     def prepare_round(self, artifact_id: str, owner: str, fields: dict) -> ReportTask:
         key = _key(fields["key"])
         version = fields["version_id"]
@@ -199,6 +259,7 @@ class ReviewReports:
         payload = _json({"candidate": asdict(candidate), "threads": threads})
         with self.store._conn(write=True) as db:
             file_id = self._owned_file(db, artifact_id, owner)
+            self._reject_manual_on_living(db, artifact_id)
             self._reject_manual_after_closure(db, artifact_id)
             self._check_version(db, artifact_id, file_id, version)
             self._check_threads(db, artifact_id, threads)
@@ -218,6 +279,7 @@ class ReviewReports:
         choices = _choices(fields["rows"])
         with self.store._conn(write=True) as db:
             file_id = self._owned_file(db, artifact_id, owner)
+            self._reject_manual_on_living(db, artifact_id)
             self._reject_manual_after_closure(db, artifact_id)
             sources = self._round_sources(db, artifact_id)
             if not sources:
@@ -232,6 +294,12 @@ class ReviewReports:
             rows = [asdict(CompactionRow(url, *choices[v])) for v, url in versions.items()]
             payload = _json({"summary": summary, "rows": rows, "threads": threads})
             return self._reserve(db, artifact_id, owner, file_id, "close", key, payload)
+
+    @staticmethod
+    def _reject_manual_on_living(db, artifact_id: str) -> None:
+        if db.execute("SELECT 1 FROM review_operations WHERE artifact_id=? AND operation_key LIKE 'notes-%'",
+                      (artifact_id,)).fetchone():
+            raise ReportConflict("living review notes require their recorded source")
 
     @staticmethod
     def _reject_manual_after_closure(db, artifact_id: str) -> None:
@@ -250,6 +318,8 @@ class ReviewReports:
             closure = close_source(db, artifact_id, owner, self.origin)
             if closure is None or closure["id"] != closure_id:
                 raise ReportNotFound("no matching browser closure")
+            if next_notes_source(db, artifact_id, owner, self.origin) is not None:
+                raise ReportNotesPending("verify the captured round notes before finishing the document")
             versions = {row["version_id"]: row["version_url"] for row in closure["versions"]}
             if set(versions) != set(choices):
                 raise ValueError("keep every reviewed version, and only reviewed versions")
@@ -257,17 +327,22 @@ class ReviewReports:
             if any(n not in evidence for n in threads):
                 raise ValueError("evidence was not part of the closing review")
             self._check_threads(db, artifact_id, threads)
-            if db.execute("SELECT 1 FROM review_operations WHERE artifact_id=? AND kind='round' LIMIT 1",
-                          (artifact_id,)).fetchone():
+            if db.execute("SELECT 1 FROM review_operations WHERE artifact_id=? AND kind='round' "
+                          "AND operation_key NOT LIKE 'notes-%' LIMIT 1", (artifact_id,)).fetchone():
                 raise ReportConflict("report has older manual rounds; cannot replace them as a new blank Doc")
             rows = tuple(CompactionRow(url, *choices[v]) for v, url in versions.items())
-            # Check content/size before the first possible Google write. This
-            # batch is discarded; only the live verified tab/revision may dispatch.
-            preflight = _blank_snapshot("preflight", artifact_id, "preflight", "preflight", rows)
-            plan_compaction(preflight, public_url=self.origin, operation_key=key, summary=summary, rows=rows)
-            payload = _json({"closure_id": closure_id, "summary": summary,
-                             "rows": [asdict(row) for row in rows], "threads": threads})
-            return self._reserve(db, artifact_id, owner, file_id, "close", key, payload)
+            rows_json = [asdict(row) for row in rows]
+            full = {"closure_id": closure_id, "summary": summary, "rows": rows_json, "threads": threads}
+            previous = self._notes_sources(db, artifact_id)
+            if previous:
+                self._notes_body(artifact_id, previous, summary=summary, rows=rows_json)
+                full["living"] = True
+            else:
+                # Keep the verified behavior for older closures and for those
+                # without any confirmed notes yet.
+                preflight = _blank_snapshot("preflight", artifact_id, "preflight", "preflight", rows)
+                plan_compaction(preflight, public_url=self.origin, operation_key=key, summary=summary, rows=rows)
+            return self._reserve(db, artifact_id, owner, file_id, "close", key, _json(full))
 
     def _state(self, db, task: ReportTask) -> _State:
         if self._owned_file(db, task.artifact_id, task.owner) != task.file_id:
@@ -396,6 +471,32 @@ class ReviewReports:
         dispatch_verified(report, snapshot, presentation=baseline,
                           before_write=lambda tab: self._claim(task, doc, baseline, tab=tab), **args)
 
+    def _write_notes(self, report: DocsReport, task: ReportTask, doc: str, inputs: dict) -> None:
+        with self.store._conn() as db:
+            state = self._state(db, task)
+            previous = self._notes_sources(db, task.artifact_id, before=task.sequence)
+        if task.kind == "close":
+            candidate = self._notes_body(task.artifact_id, previous, summary=inputs["summary"], rows=inputs["rows"])
+        else:
+            candidate = self._notes_body(task.artifact_id, [*previous, inputs["notes"]])
+        start = ReportPresentation(**json.loads(state.presentation)) if state.presentation else None
+        if state.sent:
+            if start is None:
+                raise ReportConflict("report has no trusted blank presentation")
+            read_notes(report, doc, task.artifact_id, expected=candidate, presentation=start)
+            return
+        if previous:
+            if start is None:
+                raise ReportConflict("report has no trusted blank presentation")
+            before = self._notes_body(task.artifact_id, previous)
+            _, revision, end = read_notes(report, doc, task.artifact_id, expected=before, presentation=start)
+        else:
+            start, revision = read_blank_report(report, doc, task.artifact_id)
+            self._remember_presentation(task, doc, start)
+            end = 2
+        dispatch_notes(report, doc, task.artifact_id, candidate=candidate, presentation=start,
+                       revision=revision, end=end, before_write=lambda tab: self._claim(task, doc, start, tab=tab))
+
     def execute(self, task: ReportTask, report: DocsReport) -> ReportResult:
         state = self._read(task)
         if state.confirmed:
@@ -406,7 +507,9 @@ class ReviewReports:
         final = task.kind == "close" and "closure_id" in inputs
         doc = self._ensure_doc(report, task, state, create=task.kind == "round" or final)
         try:
-            if final:
+            if "notes" in inputs or inputs.get("living") is True:
+                self._write_notes(report, task, doc, inputs)
+            elif final:
                 self._final(report, task, doc, inputs, state)
             elif task.kind == "round":
                 self._round(report, task, doc, inputs)

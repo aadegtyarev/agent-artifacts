@@ -45,7 +45,7 @@ async function geometry(area) {
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(artifact.href);
-    await page.locator('#sheet-strip').getByRole('button', {name: 'Finish review'}).click();
+    await page.locator('#sheet-strip').getByRole('button', {name: 'Review drafts'}).click();
     const area = page.getByRole('textbox', {name: 'General comment, optional'});
     await area.fill(general);
     // Approximate the keyboard's resized content area. CDP supplies actual
@@ -84,7 +84,7 @@ async function geometry(area) {
     assert.equal(edited.selection, 18);
     assert(edited.focused && Math.abs(edited.scroll - early) < 2, 'Editing earlier text must not jump to the end');
     assert.deepEqual(errors, []);
-    console.log('Mobile Finish review: IME commit, wrapped line, idle pause and mid-text selection stayed visible');
+    console.log('Mobile Review drafts: IME commit, wrapped line, idle pause and mid-text selection stayed visible');
   } finally {
     await browser.close();
   }

@@ -49,14 +49,15 @@ def _number(value):
 
 def _event(event, kind, target):
     # Construct an allowlisted record; never serialize arbitrary server data.
-    if not isinstance(event, dict) or event.get("event") not in ("waiting", "accepted", "review_closed"):
+    if not isinstance(event, dict) or event.get("event") not in ("waiting", "accepted", "review_closed", "review_notes"):
         raise ValueError("invalid event")
     name = event["event"]
-    if name == "review_closed":
-        keys = {"event", "artifact", "closure"} | ({"project"} if kind == "p" else set())
+    if name in ("review_closed", "review_notes"):
+        field = "closure" if name == "review_closed" else "submission"
+        keys = {"event", "artifact", field} | ({"project"} if kind == "p" else set())
         if set(event) != keys or event.get("project" if kind == "p" else "artifact") != target:
             raise ValueError("invalid review event scope")
-        result = {"event": name, "artifact": _id(event["artifact"]), "closure": _id(event["closure"])}
+        result = {"event": name, "artifact": _id(event["artifact"]), field: _id(event[field])}
         if kind == "p":
             result["project"] = target
     elif kind == "a":
@@ -101,6 +102,7 @@ def _checkpoint(state):
         "accepted": {_id(fid): _number(n) for fid, n in state.accepted.items()},
         "next_detail": None if state.next_detail is None else _id(state.next_detail),
         "review_closures": {_id(fid): _id(closure) for fid, closure in state.review_closures.items()},
+        "review_notes": {_id(fid): _id(submission) for fid, submission in state.review_notes.items()},
     }
     encoded = json.dumps(data, separators=(",", ":"), allow_nan=False)
     if len(encoded.encode()) > MAX_CHECKPOINT_BYTES:
@@ -123,6 +125,7 @@ def _restore(state, encoded):
         data["next_detail"],
     )
     state.review_closures = {_id(fid): _id(closure) for fid, closure in data.get("review_closures", {}).items()}
+    state.review_notes = {_id(fid): _id(submission) for fid, submission in data.get("review_notes", {}).items()}
 
 
 def _origin(origin):
