@@ -83,11 +83,9 @@ class GoogleOIDC:
 
     def authorization_url(
         self, *, redirect_uri: str, state: str, nonce: str, code_challenge: str,
-        drive: bool = False, consent: bool = False,
+        drive: bool = False,
     ) -> str:
         self._callback(redirect_uri)
-        if consent and not drive:
-            raise ValueError("Drive consent requires Drive authorization")
         params = {
             "client_id": self.config.client_id,
             "redirect_uri": redirect_uri,
@@ -100,10 +98,11 @@ class GoogleOIDC:
             "code_challenge_method": "S256",
         }
         if drive:
+            # Ask for the offline grant in the same Google flow as identity.
+            # An earlier Google authorization can otherwise skip consent and
+            # return no refresh token to this installation.
             params.update(scope=params["scope"] + " " + DRIVE_SCOPE, access_type="offline",
-                          include_granted_scopes="false")
-            if consent:
-                params["prompt"] = "consent"
+                          include_granted_scopes="false", prompt="consent")
         return AUTHORIZATION_ENDPOINT + "?" + urlencode(params)
 
     def exchange(self, *, code: str, redirect_uri: str, code_verifier: str, nonce: str,

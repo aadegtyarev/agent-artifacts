@@ -112,13 +112,15 @@ pause writes without disabling old links. See [enable, pause and
 recover](workspace-drive-release.md) for release checks and the inventory
 command. A settings change does not migrate files.
 
-When enabled, the main sign-in asks for identity and `drive` together. Google
-can return a verified identity without a new Drive refresh token. Keep that
-sign-in usable for disk content and retain any existing grant for that same
-subject. On a Drive link with no valid grant, offer explicit reauthorization
-and return to the same link. Renewal is tied to the current browser session
-and the same verified subject; it cannot switch accounts. The raw origin
-still requests identity only and does not serve delegated Drive bytes.
+With Drive enabled, **Sign in with Google** asks for identity and `drive`
+in one flow. Request offline access and explicit consent so an earlier
+Google authorization does not silently skip the prompt. A valid browser
+session does not ask again when the user opens another page. If Google does
+not return a new refresh token, keep any existing grant for the same
+verified account and keep disk content accessible. An older browser session
+without a grant can reauthorize on first Drive use. Renewal keeps the same
+session and verified account and returns to the requested link. The raw
+origin requests identity only and does not serve delegated Drive bytes.
 
 Save refresh tokens in the private `workspace-drive-grants-v1/` directory,
 not in the session database, artifact database, or ordinary backups. The
@@ -160,14 +162,9 @@ Users do not choose a Drive folder and do not use Google Picker. Keep the curren
 `wb-art.adsrv.ru` domain, OAuth client and `/auth/callback`. Use the current
 server for the isolated test rather than waiting for a move.
 
-When the Workspace installation starts using Drive, request the identity and
-Drive scopes in one Google authorization flow. No separate account-page
-setup is needed for a new sign-in. Existing sessions without the grant need
-one Google consent when they first use Drive. Key the refresh grant by the
-verified Google subject (not the display name, email or agent API key), store
-it separately from the app session, and do not force consent again when the
-grant is valid. The unlinked, read-only test window does not change normal
-sign-in.
+The isolated consent pilot left normal sign-in unchanged. The Workspace
+Drive mode uses the combined sign-in described above, not the pilot's
+separate setup page.
 
 The operator chose user delegation, not a shared server or service-account
 credential. The folder ID chooses the destination, not permissions. Browser

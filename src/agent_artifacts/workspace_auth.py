@@ -286,7 +286,7 @@ class WorkspaceAuth:
         bound_state = state + "." + self.page_marker(request) if renew else state
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest())
         await run_in_threadpool(self.store.begin, bound_state, browser, self.origin, nonce, verifier, values[0])
-        options = {"drive": True, "consent": renew} if self.drive_grants is not None else {}
+        options = {"drive": True} if self.drive_grants is not None else {}
         url = self.oidc.authorization_url(redirect_uri=self.callback_uri, state=state, nonce=nonce,
                                           code_challenge=challenge.rstrip(b"=").decode("ascii"), **options)
         response = RedirectResponse(url, status_code=303, headers=_AUTH_HEADERS)
