@@ -135,8 +135,9 @@ class ReviewReports:
         ).fetchone()
         if row is None:
             raise ReportNotFound("a live owned Drive artifact in a project is required")
-        if db.execute("SELECT 1 FROM drive_renames WHERE artifact_id=?", (artifact_id,)).fetchone():
-            raise ReportPending("Drive rename is unresolved")
+        if db.execute("SELECT 1 FROM drive_renames WHERE artifact_id=? UNION ALL "
+                      "SELECT 1 FROM drive_moves WHERE artifact_id=?", (artifact_id, artifact_id)).fetchone():
+            raise ReportPending("Drive rename or move is unresolved")
         return row[0]
 
     @staticmethod

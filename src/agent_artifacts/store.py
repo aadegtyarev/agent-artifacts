@@ -335,6 +335,13 @@ def _migrate_to_v18(db: sqlite3.Connection) -> None:
     db.execute("ALTER TABLE review_submissions ADD COLUMN evidence TEXT")
 
 
+def _migrate_to_v19(db: sqlite3.Connection) -> None:
+    from .drive_moves import SCHEMA
+
+    for statement in _statements(SCHEMA):
+        db.execute(statement)
+
+
 def _repair_comment_seq(db: sqlite3.Connection) -> None:
     """A counter behind its comments (added to a database that had comments,
     or comments written by an older version after a rollback) would hand out
@@ -368,6 +375,7 @@ _MIGRATIONS: tuple[Callable[[sqlite3.Connection], None], ...] = (
     _migrate_to_v16,
     _migrate_to_v17,
     _migrate_to_v18,
+    _migrate_to_v19,
 )
 
 
@@ -932,6 +940,13 @@ class Store:
                     return None
         return artifact
 
+    def has_pending_drive_move(self, artifact_id: str, *, owner: str) -> bool:
+        with self._conn() as db:
+            return db.execute(
+                "SELECT 1 FROM drive_moves m JOIN visible_artifacts a ON a.id=m.artifact_id "
+                "WHERE a.id=? AND a.owner=?", (artifact_id, owner),
+            ).fetchone() is not None
+
     def has_drive_artifacts(self) -> bool:
         """Drive-backed rows, including expired rows retained by policy."""
         with self._conn() as db:
@@ -1073,8 +1088,9 @@ class Store:
                     raise _DrivePreflightMissing
                 if row != (expected.file_id, expected.revision_id):
                     raise DriveConflict("published Drive revision changed")
-                if db.execute("SELECT 1 FROM drive_renames WHERE artifact_id=?", (new_id,)).fetchone():
-                    raise DriveConflict("Drive rename is unresolved")
+                if db.execute("SELECT 1 FROM drive_renames WHERE artifact_id=? UNION ALL "
+                              "SELECT 1 FROM drive_moves WHERE artifact_id=?", (new_id, new_id)).fetchone():
+                    raise DriveConflict("Drive rename or move is unresolved")
             elif db.execute("SELECT 1 FROM agents WHERE name = ?", (owner,)).fetchone() is None:
                 raise sqlite3.IntegrityError("FOREIGN KEY constraint failed")
             placed = self._validate_put(db, new_id, owner, size, project, section,
@@ -1268,6 +1284,8 @@ class Store:
             ).fetchone()
             if row is None:
                 return None
+            if db.execute("SELECT 1 FROM drive_moves WHERE artifact_id=?", (artifact_id,)).fetchone():
+                raise DriveConflict("Drive move is unresolved")
             placed = self._placed(db, owner, artifact_id, row[:3], changes, now)
             managed = db.execute("SELECT preferred FROM drive_names WHERE artifact_id = ?", (artifact_id,)).fetchone()
             new_title = changes.get("title")
@@ -1286,7 +1304,12 @@ class Store:
                 "section = ?, added_at = ? WHERE id = ?",
                 (changes.get("title"), expires, *placed, artifact_id),
             )
-            return self._artifact(db, artifact_id)
+            edited = self._artifact(db, artifact_id)
+            if managed:
+                from .drive_rename import DriveRenames
+
+                return DriveRenames._with_version(db, edited)
+            return edited
 
     def _placed(
         self,
@@ -1316,8 +1339,9 @@ class Store:
         if db.execute(sql, (project, owner)).fetchone() is None:
             raise NoSuchProject
         files, same, sections = db.execute(
-            "SELECT COUNT(*), COALESCE(SUM(section = :section), 0), COUNT(DISTINCT section) "
-            "FROM artifacts WHERE project = :project AND id != :id",
+            "WITH occupied AS (SELECT section FROM artifacts WHERE project=:project AND id!=:id "
+            "UNION ALL SELECT section FROM drive_moves WHERE new_project=:project AND artifact_id!=:id) "
+            "SELECT COUNT(*), COALESCE(SUM(section=:section), 0), COUNT(DISTINCT section) FROM occupied",
             {"project": project, "section": section, "id": artifact_id},
         ).fetchone()
         if files >= MAX_PROJECT_FILES:
@@ -1496,8 +1520,9 @@ class Store:
             ).fetchone():
                 raise DeletionPending
             if db.execute(
-                "SELECT 1 FROM drive_refs d JOIN artifacts a ON a.id = d.artifact_id "
-                "WHERE a.project = ? LIMIT 1", (project_id,),
+                "SELECT 1 FROM drive_refs d JOIN artifacts a ON a.id = d.artifact_id WHERE a.project=? "
+                "UNION ALL SELECT 1 FROM drive_moves WHERE old_project=? OR new_project=? LIMIT 1",
+                (project_id,) * 3,
             ).fetchone():
                 raise DriveRetentionBlocked
             ids = [r[0] for r in db.execute("SELECT id FROM artifacts WHERE project = ?", (project_id,))]

@@ -113,6 +113,18 @@ field; an empty body, an unknown field or `"title": null` answers `400
 bad_request`. Another agent's, a missing or an expired artifact answers `404
 not_found`. `null` clears `project` or `section`, see [Projects](#projects).
 
+A Workspace Drive-backed file can change projects without a replace. Write
+through the current owner's linked Workspace account. Both managed folders
+must be in the same configured My Drive root, with verifiably equivalent
+access. A real project change may include `title` and `section`. The
+artifact ID, Drive file, exact revisions, comments and mapped review Doc
+stay the same. Do not unfile a file with retained review evidence or a Doc.
+If the move is unresolved, retry only the identical request. The project
+changes in SQLite only after the Drive objects reach the verified target.
+An expired unfiled artifact may complete an already journaled move by its
+owner, but its browser URL stays expired until completion. See the
+[Drive move plan](plans/workspace-drive-move.md).
+
 Artifact JSON:
 
 ```json

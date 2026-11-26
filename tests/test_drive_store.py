@@ -189,6 +189,7 @@ def test_version_backfill_migrates_existing_drive_reference_and_is_stable(setup)
     store, drive, _ = setup
     art = put(store, drive, b"old")
     with store._conn(write=True) as db:
+        db.execute("DROP TABLE drive_moves")
         db.execute("DROP TABLE review_submissions")
         db.execute("DROP TABLE drive_project_renames")
         db.execute("DROP TABLE drive_renames")

@@ -144,8 +144,7 @@ def test_rename_respects_owner_read_only_and_keeps_placement_separate(report_env
     href = "/api/v1/artifacts/" + first["id"]
     data = {"title": "New name"}
     assert client.patch(href, headers=keys["viewer"], json=data).status_code == 404
-    assert client.patch(href, headers=keys["author"], json=data | {"project": None}).status_code == 409
-    assert client.patch(href, headers=keys["author"], json={"project": None}).status_code == 409
+    assert client.patch(href, headers=keys["author"], json=data | {"section": "Local metadata"}).status_code == 409
     assert client.patch(href, headers=keys["author"], json={"section": "Local metadata"}).status_code == 200
     with TestClient(create_app(replace(config, drive_read_only=True), store), base_url=MAIN) as paused:
         result = paused.patch(href, headers=keys["author"], json=data)

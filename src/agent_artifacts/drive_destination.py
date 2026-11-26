@@ -22,7 +22,7 @@ CREATE TABLE drive_destination (
 # happened remotely. Refuse to adopt old metadata based on current env values.
 _EVIDENCE = (
     "drive_refs", "drive_versions", "drive_attempts", "drive_folders", "drive_names",
-    "review_documents", "review_operations", "drive_renames", "drive_project_renames", "review_submissions",
+    "review_documents", "review_operations", "drive_renames", "drive_project_renames", "review_submissions", "drive_moves",
 )
 
 

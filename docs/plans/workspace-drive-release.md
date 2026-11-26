@@ -85,7 +85,7 @@ or copy the pilot grant to avoid this step.
 
 ## Read-only recovery inventory
 
-Run this on a standalone SQLite backup, not the live database (versions 14–18):
+Run this on a standalone SQLite backup, not the live database (versions 14–19):
 
 ```sh
 python -m agent_artifacts.drive_recovery \

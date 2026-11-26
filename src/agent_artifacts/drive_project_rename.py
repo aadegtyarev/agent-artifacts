@@ -77,6 +77,9 @@ class DriveProjectRenames:
             project = self.store._project(db, project_id, owner)
             if project is None:
                 return None
+            if db.execute("SELECT 1 FROM drive_moves WHERE old_project=? OR new_project=?",
+                          (project_id, project_id)).fetchone():
+                raise DriveConflict("a file move involving this project is unresolved")
             active = self._active(db, project_id)
             if active is not None:
                 if active.new_title != title:

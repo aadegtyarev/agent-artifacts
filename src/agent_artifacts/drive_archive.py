@@ -91,7 +91,7 @@ def plan_archive(backup: Path, expected: DriveDestination, artifact: str, *, inc
         raise ArchiveError("no committed Drive artifact in the backup")
     file_id = _reference(blobs[0]["file_id"])
     if (any(row["artifact_id"] == artifact or row["file_id"] == file_id
-            for row in (*data["media_attempts"], *data["renames"]))
+            for row in (*data["media_attempts"], *data["renames"], *data["moves"]))
             or any(row["artifact_id"] == artifact
                    for row in (*data["report_attempts"], *data["pending_review_closures"]))):
         raise ArchiveError("resolve pending Drive or Docs operations before exporting this artifact")
