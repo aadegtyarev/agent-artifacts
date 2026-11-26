@@ -92,7 +92,7 @@ def test_source_keeps_reviewed_versions_at_closure_and_later_discussion_stays_op
     with store._conn() as current, closing(sqlite3.connect(backup)) as copy:
         current.backup(copy)
     state = inventory(backup)
-    assert state["metadata_schema"] == 18
+    assert state["metadata_schema"] == 19
     assert state["pending_review_closures"] == [{"artifact_id": first["id"], "version_id": version(second),
                                                   "request_id": "b" * 22}]
     assert "Later discussion" not in str(state) and "Still private" not in str(state)
@@ -140,6 +140,7 @@ def test_evidence_is_bound_to_the_closed_thread_even_when_late_replies_share_its
     # Opening a v17 copy must not reconstruct the closed reply set using
     # today's replies. Its known version references still exist.
     with store._conn(write=True) as db:
+        db.execute("DROP TABLE drive_moves")
         db.execute("ALTER TABLE review_submissions DROP COLUMN evidence")
         db.execute("PRAGMA user_version=17")
     migrated = Store(config.data_dir, max_total_bytes=100_000)

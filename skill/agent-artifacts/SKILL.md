@@ -296,7 +296,13 @@ One project per job; every file gets a `--title` and a `--section`. The
 project page lists them by section with what waits for the person; each
 file's header lists the others. `replace` keeps project, section and title;
 `set <id> --project none` takes a file out (it expires again). A file in a
-project shows the whole project to whoever has its link.
+project shows the whole project to whoever has its link, subject to the
+instance's access checks. Use `set <id> --project <project-id>` to move an
+owned file without replacing it. On Workspace Drive, only managed folders
+with equivalent access in the same configured My Drive root can move a file;
+a file with captured review evidence or a Doc cannot be taken out of projects.
+If a move is unresolved, retry only the identical `set` command. Do not
+upload a copy or recreate the Doc to work around it.
 `wait <pid>` watches all the project's files, including files added later.
 
 ## When the space runs out

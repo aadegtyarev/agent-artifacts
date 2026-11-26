@@ -394,14 +394,14 @@ def test_upgrade_from_v12_keeps_existing_exact_project_version(tmp_path):
                                  kind="txt", size=9, project=project.id)
     before = old.get_drive_version(old_artifact.id, old_artifact.version_id)
     with old._conn(write=True) as db:
-        for name in ("review_submissions", "drive_project_renames", "drive_renames", "drive_destination",
+        for name in ("drive_moves", "review_submissions", "drive_project_renames", "drive_renames", "drive_destination",
                      "review_operations", "review_documents"):
             db.execute(f"DROP TABLE {name}")
         db.execute("PRAGMA user_version = 12")
     new = Store(tmp_path, max_total_bytes=1000)
     assert new.get_drive_version(old_artifact.id, old_artifact.version_id) == before
     with new._conn() as db:
-        assert db.execute("PRAGMA user_version").fetchone() == (18,)
+        assert db.execute("PRAGMA user_version").fetchone() == (19,)
         assert db.execute("SELECT count(*) FROM review_documents").fetchone() == (0,)
         assert db.execute("SELECT count(*) FROM drive_destination").fetchone() == (0,)
 

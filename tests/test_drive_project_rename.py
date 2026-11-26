@@ -91,7 +91,7 @@ def test_lost_project_rename_reply_is_reconciled_read_only_after_restart(report_
     with store._conn() as src, closing(sqlite3.connect(backup)) as out:
         src.backup(out)
     state = inventory(backup)
-    assert state["metadata_schema"] == 18 and state["project_renames"][0]["sent"] == 1
+    assert state["metadata_schema"] == 19 and state["project_renames"][0]["sent"] == 1
     assert state["project_renames"][0]["folder_id"] == folder
     cloud.calls.clear()
     with TestClient(create_app(config), base_url=MAIN) as restarted:

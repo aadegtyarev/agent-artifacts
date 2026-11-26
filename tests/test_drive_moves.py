@@ -145,6 +145,37 @@ def test_partial_blob_and_doc_moves_reconcile_by_id_and_keep_the_original_projec
         assert client.get(urlsplit(item["version_url"]).path + "/download").content == data
 
 
+def test_expired_pending_move_can_only_be_reconciled_by_its_owner(report_env, monkeypatch):
+    client, store, _, keys, _, first, _ = report_env
+    owner = keys["author"]
+    item = upload(client, owner, "expiring.txt", b"retained bytes").json()
+    artifact, revision = store.get_drive(item["id"], owner="author")
+    actions = transport(report_env, monkeypatch, lose=(revision.file_id,))
+    href = "/api/v1/artifacts/" + item["id"]
+    change = {"project": first["project"]}
+    assert client.patch(href, headers=owner, json=change).status_code == 503
+    store.clock = lambda: artifact.expires_at + 1
+    assert store.get(item["id"]) is None
+    assert client.patch(href, headers=keys["viewer"], json=change).status_code == 404
+    assert client.patch(href, headers=owner, json=change | {"title": "Different"}).status_code == 409
+    result = client.patch(href, headers=owner, json=change)
+    assert result.status_code == 200 and result.json()["version_url"] == item["version_url"]
+    assert store.get(item["id"]).expires_at is None and actions == [revision.file_id]
+
+
+def test_doc_preflight_does_not_move_blob_when_doc_is_outside_its_folder(report_env, monkeypatch):
+    client, store, cloud, keys, _, first, _ = report_env
+    close(report_env)
+    owner = keys["author"]
+    target = client.post("/api/v1/projects", headers=owner, json={"title": "Other scope"}).json()
+    assert upload(client, owner, "already.txt", b"existing", project=target["id"]).status_code == 201
+    actions = transport(report_env, monkeypatch)
+    cloud.metadata["parents"] = ["unregistered-folder"]
+    result = client.patch("/api/v1/artifacts/" + first["id"], headers=owner, json={"project": target["id"]})
+    assert result.status_code == 409 and not actions
+    assert store.get(first["id"]).project == first["project"]
+
+
 def test_move_does_not_cross_different_folder_permissions(report_env, monkeypatch):
     client, store, cloud, keys, _, first, _ = report_env
     owner = keys["author"]
