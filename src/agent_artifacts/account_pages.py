@@ -14,11 +14,12 @@ from starlette.responses import JSONResponse, RedirectResponse, Response
 from starlette.routing import Route
 
 from . import pages
-from .accounts import CLAIM_TTL, DEVICE_TTL, AccountFull, AgentNameUnavailable, ClaimUnavailable, Device
+from .accounts import CLAIM_TTL, DEVICE_TTL, AccountFull, AgentNameUnavailable, ClaimPreview, ClaimUnavailable, Device
 from .api import error, iso
 from .config import Config
 from .google_oidc import GoogleIdentity
 from .store import ID_RE, NAME_RE, Store, hash_key
+from .trash import project_delete_scope
 from .workspace_auth import WorkspaceAuth, same_origin
 
 DEVICE_COOKIE = "__Host-aa-account-device"
@@ -172,44 +173,57 @@ class AccountPages:
         if self.google_enabled and principal is None:
             return _redirect("/auth/login?return=/account/claim")
         if request.method in ("GET", "HEAD"):
-            return self._claim_page(principal)
-        values = await _form(request, {"code", "confirm"})
-        token = values.get("code", "").strip() if values else ""
-        if not values or "code" not in values or values.get("confirm", "1") != "1":
-            return self._claim_page(principal, notice="Enter the setup code again.", status=400)
-        if "confirm" not in values:
-            name = await run_in_threadpool(self.accounts.claim_name, token)
-            if name:
-                return self._claim_page(principal, agent=name, code=token)
-            return self._claim_page(principal, notice="The setup code did not work. Ask your agent for a new one.", status=400)
+            return await self._claim_page(request, principal)
+        values = await _form(request, {"code", "confirm", "proof"}) or {}
+        token = values.get("code", "").strip()
+        if values.keys() == {"code"}:
+            preview = await run_in_threadpool(self.accounts.claim_preview, token, principal.account_id if principal else None)
+            if preview:
+                if request.headers.get("accept") == "application/json":
+                    return JSONResponse({"agent": preview.agent, "proof": preview.proof}, headers=_HEADERS)
+                return await self._claim_page(request, principal, preview=preview, token=token)
+            message = ("Use the setup code, not the agent's key." if re.fullmatch(r"aa_[A-Za-z0-9_-]{43}", token)
+                       else "The setup code did not work. Ask your agent for a new one.")
+            if request.headers.get("accept") == "application/json":
+                return JSONResponse({"message": message}, status_code=400, headers=_HEADERS)
+            return await self._claim_page(request, principal, notice=message, status=400)
+        if values.keys() != {"code", "confirm", "proof"} or values.get("confirm") != "1":
+            return await self._claim_page(request, principal, notice="Check the setup code again.", status=400)
         try:
             result = await run_in_threadpool(
                 self.accounts.claim_agent, token, device_token=request.cookies.get(DEVICE_COOKIE) if not self.google_enabled else None,
                 google_subject=principal.google.subject if principal and principal.google else None,
+                proof=values["proof"],
             )
         except ClaimUnavailable:
-            return self._claim_page(principal, notice="Could not link the agent. Sign in if needed, then try again.", status=409)
+            return await self._claim_page(request, principal, notice="Could not link the agent. Check the code and account again.", status=409)
         except AccountFull:
-            return self._claim_page(principal, notice="This account already has the maximum number of agents.", status=409)
-        response = _redirect("/account")
+            return await self._claim_page(request, principal, notice="This account already has the maximum number of agents.", status=409)
+        response = _redirect("/account?linked=1#account-agents")
         if result.device_token:
             _remember(response, result.device_token)
         return response
 
-    def _claim_page(self, principal: Principal | None, *, agent: str | None = None, code: str | None = None,
-                    notice: str | None = None, status: int = 200) -> Response:
-        return pages.account_page("account-entry.html", status, title="Link an agent", view="claim",
-                                  signed_in=principal is not None, agent=agent, code=code, notice=notice)
+    async def _claim_page(self, request: Request, principal: Principal | None, *, preview: ClaimPreview | None = None,
+                          token: str | None = None, notice: str | None = None, status: int = 200) -> Response:
+        if principal:
+            return await self._render_account(request, principal, notice=notice, status=status, setup_mode="claim",
+                                              claim_preview=preview, claim_code=token)
+        return pages.account_page("account-entry.html", status, title="Link an agent", view="claim", account_setup=True,
+                                  signed_in=False, claim_preview=preview, claim_code=token, notice=notice)
 
     async def account(self, request: Request) -> Response:
         principal = await self.principal(request)
         if not principal:
             return _redirect("/auth/login?return=/account" if self.google_enabled else "/")
-        notice = "Restored." if request.query_params.get("restored") == "1" else None
+        notice = ("Restored." if request.query_params.get("restored") == "1" else
+                  "Agent linked." if request.query_params.get("linked") == "1" else None)
         return await self._render_account(request, principal, notice=notice)
 
     async def _render_account(self, request: Request, principal: Principal, *, code: str | None = None,
-                              notice: str | None = None, status: int = 200) -> Response:
+                              notice: str | None = None, status: int = 200, setup_mode: str | None = None,
+                              claim_preview: ClaimPreview | None = None, claim_code: str | None = None,
+                              issued_name: str | None = None, setup: str | None = None) -> Response:
         def collect():
             agents = self.accounts.linked_agents(principal.account_id)
             projects, standalone, grouped = [], [], defaultdict(list)
@@ -232,14 +246,18 @@ class AccountPages:
             deletions = [(d, int((d.deadline - now) * 1000)) for d in pending if d.can_undo and d.deadline > now]
             return {
                 "agents": agents, "projects": [(p, grouped[p.id]) for p in projects],
+                "project_scopes": {p.id: project_delete_scope(p.title, (a.id for a in grouped[p.id])).fingerprint
+                                   for p in projects},
                 "standalone": standalone, "devices": devices, "has_recovery": has_recovery,
-                "deletions": deletions,
+                "deletions": deletions, "suggested_name": self.accounts.suggested_agent_name(),
             }
 
         context = await run_in_threadpool(collect)
         return pages.account_page("account.html", status, title="Your account", pairing=not self.google_enabled,
                                   code=code, notice=notice, email=principal.google.email if principal.google else None,
-                                  origin=self.origin, account_dashboard=True, **context)
+                                  setup_mode=setup_mode, claim_preview=claim_preview, claim_code=claim_code,
+                                  issued_name=issued_name, setup=setup, signed_in=True, copy=True,
+                                  origin=self.origin, account_dashboard=True, account_setup=True, **context)
 
     @staticmethod
     def _binding(request: Request, principal: Principal) -> dict[str, str | None]:
@@ -269,9 +287,8 @@ class AccountPages:
             return await self._render_account(request, principal, status=409,
                                               notice="Drive files cannot be deleted here yet.")
         if result.status in ("confirm", "changed"):
-            return pages.account_page("account-delete-project.html", 409 if result.status == "changed" else 200,
-                                      title="Delete project?", scope=result.scope,
-                                      target=target, changed=result.status == "changed")
+            return await self._render_account(request, principal, status=409,
+                                              notice="The project changed. Check its files before deleting it.")
         return _redirect(f"/account#account-undo-{result.deletion_id}")
 
     async def undo(self, request: Request) -> Response:
@@ -297,20 +314,31 @@ class AccountPages:
         principal = await self.principal(request)
         if not principal:
             return _redirect("/")
-        values = await _form(request, {"name"})
-        name = values.get("name", "").strip() if values else ""
-        if not re.fullmatch(NAME_RE, name):
-            return await self._render_account(request, principal, status=400,
-                                              notice="Use 1 to 64 letters, numbers, dots, hyphens or underscores for the agent name.")
+        as_json = request.headers.get("accept") == "application/json"
+
+        async def failed(message: str, status: int) -> Response:
+            if as_json:
+                return JSONResponse({"message": message}, status_code=status, headers=_HEADERS)
+            return await self._render_account(request, principal, status=status, notice=message, setup_mode="new")
+
+        values = await _form(request, {"name", "purpose"}) or {}
+        name = values.get("name", "").strip()
+        purpose = values.get("purpose", "new")
+        if purpose not in ("new", "reissue") or not re.fullmatch(NAME_RE, name):
+            return await failed("Use 1 to 64 letters, numbers, dots, hyphens or underscores for the agent name.", 400)
         try:
-            key = await run_in_threadpool(self.accounts.issue_agent_key, name, **self._binding(request, principal))
+            key = await run_in_threadpool(self.accounts.issue_agent_key, name, reissue=purpose == "reissue",
+                                          **self._binding(request, principal))
         except AgentNameUnavailable:
-            return await self._render_account(request, principal, status=409, notice="This agent name is not available.")
+            return await failed("This agent name is not available. Check Agent keys or choose another name.", 409)
         except AccountFull:
-            return await self._render_account(request, principal, status=409, notice="This account already has the maximum number of agents.")
+            return await failed("This account already has the maximum number of agents.", 409)
         if key is None:
             return _redirect("/")
-        return pages.key_page(name, key, self.origin, account_back=True)
+        setup = pages.key_setup(key, self.origin)
+        if as_json:
+            return JSONResponse({"name": name, "setup": setup}, status_code=201, headers=_HEADERS)
+        return await self._render_account(request, principal, setup_mode="new", issued_name=name, setup=setup)
 
     async def revoke_key(self, request: Request) -> Response:
         if not self._same_origin(request):

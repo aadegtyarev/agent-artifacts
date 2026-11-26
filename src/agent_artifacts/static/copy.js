@@ -11,7 +11,12 @@ for (const button of document.querySelectorAll("[data-copy]")) {
         button.classList.add("done");
         setTimeout(() => button.classList.remove("done"), 1500);
       },
-      () => source.select(),
+      () => {
+        const details = source.closest("details");
+        if (details) details.open = true;
+        source.focus({ preventScroll: true });
+        source.select();
+      },
     );
   });
 }

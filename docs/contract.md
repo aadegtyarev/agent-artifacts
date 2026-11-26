@@ -571,24 +571,32 @@ project routes still work without signing in.
   destination. Google browser sessions are listed by verified subject.
 - `POST /api/v1/me/account-claim` takes the existing agent's bearer key and
   returns a `201` JSON object with `url`, a one-time `code`, and `expires_in`
-  (600 seconds). Use the code on the claim page and confirm the named agent.
+  (600 seconds). Use the code on the claim page. A same-origin check shows the
+  agent and destination account without consuming the code. **Link agent**
+  requires that preview's proof, and verifies the code, agent and account
+  again in the write transaction. A different code or signed-in account needs
+  a new preview. No code or proof goes in a URL; responses are `no-store`.
   It is not an API key. A new code replaces the old one, and rotating the agent
   key invalidates the claim. An already linked agent returns `409`.
-- In **Agent keys**, issue a key for a new agent or replace a revoked key.
-  The key is shown once. Revoking stops one key without deleting its files,
-  projects, or account link. It does not sign anyone out. A revoked key is
-  never restored; issue a fresh key. Admin keys remain managed by an admin.
+- In **Agent keys**, **Create key** uses the displayed name, which is prefilled
+  with a free name and checked again on write. The same submission cannot mint
+  another agent or rotate an existing key. **Copy setup** appears in the same
+  panel; only the successful issuance response includes the credential.
+  Revoking stops one key without deleting its files, projects or account link.
+  It does not sign anyone out. To replace a revoked key, use **Issue new key**.
+  Admin keys remain managed by an admin.
 - Without Google, **Account recovery** generates a separate, single-use code
   to save outside the current browser. Replacing it invalidates the previous
   code. **Use a recovery code** signs out all old browsers, cancels their
   device codes, and connects this browser without changing agent keys or files.
   An agent key or an expired device cannot restore the account. If there is
   no connected device or saved recovery code, there is no self-service recovery.
-- **Delete** hides a file from its existing links and agent API. Deleting a
-  project asks for confirmation with the file count; a change to the scope
-  requires a new confirmation. **Undo** in the toast at the top restores the
-  same links and metadata within one minute. It does not undo earlier separate
-  file deletions inside that project. Retained bytes count towards quotas until
+- **Delete** hides a file or project from its existing links and agent API.
+  A project action carries the name and file set from the account view as a
+  fingerprint. If either changed, the action refreshes the account with a
+  notice and does not delete anything. The toast counts the files actually
+  hidden. **Undo** restores the same links and metadata within one minute.
+  It does not undo earlier separate file deletions inside that project. Retained bytes count towards quotas until
   cleanup. A permanent agent-API project deletion returns `409 deletion_pending`
   if it would remove a file that can still be restored.
 

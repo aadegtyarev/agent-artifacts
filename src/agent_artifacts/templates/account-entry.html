@@ -25,22 +25,8 @@
   </form>
   <p><a href="/">Back</a></p>
   {% elif view == 'claim' %}
-  {% if agent %}
-  <p>Link <strong>{{ agent }}</strong> and its files and projects to {% if signed_in %}this account{% else %}a new account{% endif %}.</p>
-  <form method="post" action="/account/claim">
-    <input type="hidden" name="code" value="{{ code }}">
-    <input type="hidden" name="confirm" value="1">
-    <button type="submit" class="btn pri">Link agent</button>
-  </form>
-  {% else %}
-  <p>Ask your agent for a one-time setup code. Do not enter an agent key here.</p>
-  <form method="post" action="/account/claim" class="account-form">
-    <label for="setup-code">Setup code</label>
-    <input id="setup-code" type="text" name="code" maxlength="43" spellcheck="false" autocomplete="off" required>
-    <button type="submit" class="btn pri">Continue</button>
-  </form>
-  {% endif %}
-  <p><a href="{% if signed_in %}/account{% else %}/{% endif %}">Back</a></p>
+  {% include "account-claim-fields.html" %}
+  <p><a href="/">Back</a></p>
   {% endif %}
   <footer class="account-footer"><a href="https://github.com/aadegtyarev/agent-artifacts" rel="noreferrer">GitHub</a></footer>
 </main>

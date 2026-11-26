@@ -1,0 +1,35 @@
+{% import "icons.html" as icon %}
+<details class="account-details account-setup" id="account-setup"{% if not agents or setup_mode %} open{% endif %}>
+  <summary>Add an agent</summary>
+  <div role="group" aria-label="Agent setup" class="account-setup-modes" data-account-modes hidden>
+    <button type="button" class="btn" data-setup-choice="new" aria-controls="account-setup-new" aria-pressed="{{ 'false' if setup_mode == 'claim' else 'true' }}">New agent</button>
+    <button type="button" class="btn" data-setup-choice="claim" aria-controls="account-setup-claim" aria-pressed="{{ 'true' if setup_mode == 'claim' else 'false' }}">Existing agent</button>
+  </div>
+  <div class="account-setup-branches">
+    <section id="account-setup-new" data-setup-branch="new" aria-label="New agent"{% if setup_mode == 'claim' %} hidden{% endif %}>
+      <form method="post" action="/account/agents/key" class="account-form" data-account-issue{% if setup %} hidden{% endif %}>
+        <label for="agent-name">Agent name</label>
+        <input id="agent-name" type="text" name="name" value="{{ suggested_name }}" maxlength="64" autocomplete="off" spellcheck="false" required>
+        <input type="hidden" name="purpose" value="new">
+        <button type="submit" class="btn pri">Create key</button>
+      </form>
+      <p role="status" data-key-status hidden></p>
+      <div data-key-result{% if not setup %} hidden{% endif %}>
+        <p><strong>Key issued · <span data-issued-name>{{ issued_name or '' }}</span></strong></p>
+        <p>Copy the setup and paste it into the agent you want to connect. Keep the key secret.</p>
+        <button type="button" class="btn pri" data-copy="setup"{% if setup %} autofocus{% endif %}><span>Copy setup</span>{{ icon.check() }}</button>
+        <details class="account-details">
+          <summary>Show setup text</summary>
+          <textarea id="setup" readonly aria-label="Setup text" autocomplete="off">{{ setup or '' }}</textarea>
+        </details>
+        <p class="meta">The key is shown only here.</p>
+        <p><a href="/account#account-agents" data-key-done>Done</a></p>
+      </div>
+      <p data-setup-route><a href="/account/claim#account-setup">Link an agent</a></p>
+    </section>
+    <section id="account-setup-claim" data-setup-branch="claim" aria-label="Existing agent"{% if setup_mode != 'claim' %} hidden{% endif %}>
+      {% include "account-claim-fields.html" %}
+      <p data-setup-route><a href="/account#account-setup">Back</a></p>
+    </section>
+  </div>
+</details>

@@ -1,0 +1,17 @@
+<div data-account-claim>
+  <form method="post" action="/account/claim" class="account-form" data-claim-check>
+    <p>Ask your agent for a one-time setup code. Do not enter an agent key here.</p>
+    <label for="setup-code">Setup code</label>
+    <input id="setup-code" type="text" name="code" value="{{ claim_code or '' }}" spellcheck="false" autocomplete="off" autocapitalize="off" required>
+    <button type="submit" class="btn pri" data-claim-continue>Continue</button>
+  </form>
+  <p role="status" data-claim-status hidden></p>
+  <button type="button" class="btn" data-claim-retry hidden>Try again</button>
+  <form method="post" action="/account/claim" class="account-form" data-claim-confirm{% if not claim_preview %} hidden{% endif %}>
+    <p>Link <strong data-claim-name>{{ claim_preview.agent if claim_preview else '' }}</strong> and its files and projects to {% if email %}<strong>{{ email }}</strong>{% elif signed_in %}this account{% else %}a new account{% endif %}.</p>
+    <input type="hidden" name="code" value="{{ claim_code or '' }}">
+    <input type="hidden" name="proof" value="{{ claim_preview.proof if claim_preview else '' }}">
+    <input type="hidden" name="confirm" value="1">
+    <button type="submit" class="btn pri">Link agent</button>
+  </form>
+</div>

@@ -26,8 +26,10 @@ def workspace(tmp_path, monkeypatch):
     with TestClient(create_app(config, store, drive=drive), base_url=MAIN) as browser:
         sign_in(browser, MAIN, "/account")
         code = browser.post("/api/v1/me/account-claim", headers=agent).json()["code"]
+        proof = browser.post("/account/claim", headers={"Origin": MAIN, "Accept": "application/json"},
+                             data={"code": code}).json()["proof"]
         claim_response = browser.post("/account/claim", headers={"Origin": MAIN},
-                                      data={"code": code, "confirm": "1"})
+                                      data={"code": code, "confirm": "1", "proof": proof})
         assert claim_response.status_code == 200 and "Your account" in claim_response.text
         yield browser, store, drive, agent, now
 

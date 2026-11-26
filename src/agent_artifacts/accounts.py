@@ -8,6 +8,7 @@ infer an owner from agent names, file links, email or unsigned profile data.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import re
 import secrets
 import sqlite3
@@ -117,6 +118,12 @@ class Device:
 
 
 @dataclass(frozen=True)
+class ClaimPreview:
+    agent: str
+    proof: str
+
+
+@dataclass(frozen=True)
 class ClaimResult:
     account_id: str
     device_token: str | None  # issued only when the non-Google account is first created
@@ -180,8 +187,22 @@ class Accounts:
             return device.account_id if device else None
         return None
 
+    def suggested_agent_name(self) -> str:
+        """Prefill a free name. Issuing still checks it under the write lock."""
+        with self._conn() as db:
+            used = {row[0] for row in db.execute(
+                "SELECT name FROM agents WHERE name = 'Agent' OR name GLOB 'Agent-*' "
+                "UNION SELECT name FROM invites WHERE expires_at > ? AND (name = 'Agent' OR name GLOB 'Agent-*')",
+                (self._clock(),),
+            )}
+        n, name = 1, "Agent"
+        while name in used:
+            n += 1
+            name = f"Agent-{n}"
+        return name
+
     def issue_agent_key(self, name: str, *, device_token: str | None = None,
-                        google_subject: str | None = None) -> str | None:
+                        google_subject: str | None = None, reissue: bool | None = None) -> str | None:
         """Create a new linked agent, or issue a fresh key for a revoked one.
 
         Authorization and the write are in the same metadata transaction.
@@ -202,10 +223,12 @@ class Accounts:
             digest = hash_key(key)
             if found:
                 old, admin, owner = found
-                if owner != account_id or admin or not is_revoked(old):
+                if reissue is False or owner != account_id or admin or not is_revoked(old):
                     raise AgentNameUnavailable
                 db.execute("UPDATE agents SET key_hash = ? WHERE name = ?", (digest, name))
             else:
+                if reissue is True:
+                    raise AgentNameUnavailable
                 if db.execute("SELECT 1 FROM invites WHERE name = ? AND expires_at > ?",
                               (name, self._clock())).fetchone():
                     raise AgentNameUnavailable
@@ -259,8 +282,20 @@ class Accounts:
         ).fetchone()
         return row[0] if row else None
 
+    def _claim_proof(self, db: sqlite3.Connection, token: str, agent: str, account_id: str | None) -> str:
+        message = b"\0".join((b"aa-account-claim-preview-v1", token.encode(), agent.encode(),
+                               (account_id or "").encode()))
+        return hmac.new(self._salt(db), message, hashlib.sha256).hexdigest()
+
+    def claim_preview(self, token: str, account_id: str | None) -> ClaimPreview | None:
+        if not _valid_token(token):
+            return None
+        with self._conn() as db:
+            name = self._claim(db, token)
+            return ClaimPreview(name, self._claim_proof(db, token, name, account_id)) if name else None
+
     def claim_agent(self, token: str, *, device_token: str | None = None,
-                    google_subject: str | None = None) -> ClaimResult:
+                    google_subject: str | None = None, proof: str | None = None) -> ClaimResult:
         """Consume a claim after explicit browser confirmation. A stale browser
         credential must not silently create a different account."""
         if not _valid_token(token) or (device_token is not None and google_subject is not None):
@@ -269,18 +304,15 @@ class Accounts:
             agent = self._claim(db, token)
             if agent is None:
                 raise ClaimUnavailable
+            account_id = self.bound_account(db, device_token, google_subject)
+            if account_id is None and (google_subject is not None or device_token is not None):
+                raise ClaimUnavailable
+            if proof is not None and (not re.fullmatch(r"[a-f0-9]{64}", proof) or not hmac.compare_digest(
+                proof, self._claim_proof(db, token, agent, account_id),
+            )):
+                raise ClaimUnavailable
             browser_token = None
-            if google_subject is not None:
-                row = db.execute("SELECT id FROM human_accounts WHERE google_subject = ?", (google_subject,)).fetchone()
-                if row is None:
-                    raise ClaimUnavailable
-                account_id = row[0]
-            elif device_token is not None:
-                device = self._device(db, device_token)
-                if not device:
-                    raise ClaimUnavailable
-                account_id = device.account_id
-            else:
+            if account_id is None:
                 account_id = secrets.token_urlsafe(16)
                 db.execute("INSERT INTO human_accounts VALUES (?, NULL, ?)", (account_id, self._clock()))
                 browser_token = self._add_device(db, account_id)

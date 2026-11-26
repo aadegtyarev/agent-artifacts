@@ -393,16 +393,27 @@ button to the account page.
 ## Account and device connection
 
 When account pages are enabled, the signed-in landing becomes **Your
-account**. Both entry modes use the same account page: **Projects** with
-nested files, **Files without a project**, **Devices**, and **Agent keys**.
-File and project **Share…** buttons reuse the Share dialog, return focus to
-the row button and copy the existing link. Show whether sign-in is required.
-**Delete** on a file uses the top-centred [Undo toast](#toast). Confirm
-project deletion with the project name and number of files; keep independent
-deletions separate.
-Use the `.join` column, the compact `.btn` from the sheet, and the existing
-short dialog field. Keep the same pre-Text dimensions in both entry modes and
-the account at narrow and desktop widths. A larger tap target is not a larger
+account**. Both entry modes use the same account page. With files or
+projects, **Projects** and **Files without a project** come first, with real
+links to the work. **Agent keys** and **Devices** follow in reading and
+keyboard order; from 900 px they sit in a narrower column to the right.
+An empty account stays in one column, starts with agent setup and doesn't
+reserve a column for an empty file list.
+
+Each project or file has a three-dot **Actions for …** button (32 visual,
+44 × 44 touch). **Share…** and **Delete** are 44 px rows. They open in a
+popover next to the button from 900 px; on a phone use a bottom sheet. Opening
+or dismissing actions does not move the list; Escape returns focus to the
+trigger. Without the menu script the two actions remain in the row.
+**Share…** reuses the Share dialog, returns focus to the trigger and copies
+the existing link. Show whether sign-in is required.
+**Delete** on a file or project hides it immediately and uses the top-centred
+[Undo toast](#toast). Show the project name and number of files there, not in
+an extra confirmation. Keep independent deletions separate. If the project
+changed since the account was shown, refresh the list without deleting it.
+Use the `.join` column for other account forms, the compact `.btn` from the
+sheet and the existing short dialog field. Keep the same pre-Text dimensions
+in both entry modes and the account at narrow and desktop widths. A larger tap target is not a larger
 drawn button. The key setup text is the shared read-only multi-line field.
 With Google, use the company sign-in screen above. Without Google, **Connect
 a device** shows the code field when a connection code is active, or explains
@@ -413,8 +424,19 @@ why to save the separate recovery code; the code display reuses the read-only
 field and Copy control. The recovery form names what will be signed out before
 the person presses **Restore account**.
 
-Under **Agent keys**, show the agent label, not its credential. Issuing a key
-reuses the key page. Confirm **Revoke key** because the old credential cannot
-be restored. After revocation offer **Issue new key** without changing the
-files or projects. The muted **GitHub** footer appears on the account and
-device entry pages.
+Under **Agent keys**, show the agent label, not its credential. **Add an
+agent** opens one panel; it is already open in an account with no agents. The
+**New agent** and **Existing agent** choices stay in place as the fields
+change. Prefill a free name that the person can edit. **Create key** shows
+**Copy setup** in the same panel, with **Show setup text** for a manual copy.
+**Key issued** is not a claim that the agent has used the key.
+
+A link from an existing agent opens the code form directly. Check a complete
+code in place; **Continue** is only the form fallback when the script is not
+available. **Link agent** confirms the named agent, the account and the files
+and projects that will join it. Editing the code clears the preview; a failed
+request can be retried. No second sign-in or new key is part of this path.
+
+Confirm **Revoke key** because the old credential cannot be restored. After
+revocation offer **Issue new key** without changing the files or projects.
+The muted **GitHub** footer appears on the account and device entry pages.
