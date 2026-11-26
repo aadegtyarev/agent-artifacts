@@ -86,6 +86,58 @@ time.sleep(60)
     assert b"private" not in (tmp_path / "watches.sqlite3").read_bytes()
 
 
+@pytest.mark.parametrize("kind", ["a", "p"])
+def test_pending_review_notified_once_and_recovered_without_comments(tmp_path, kind):
+    closure = "c" * 22
+    scope = TARGET if kind == "a" else OTHER
+
+    class ClosedReview(Client):
+        ready = False
+
+        def send(self, method, path):
+            value = None if self.ready else closure
+            assert method == "GET"
+            if "/summary" in path:
+                return json.dumps({"now": 0, "files": [
+                    {"id": TARGET, "title": "Sensitive title", "waiting": 0, "accepted": 0, "review_closure": value},
+                ]})
+            return json.dumps({"comments": [], "review_closure": value, "ignored": "Sensitive body"})
+
+    def open_watch():
+        return ws.WatchState(tmp_path, ORIGIN, kind, scope)
+
+    def expected():
+        event = {"event": "review_closed", "artifact": TARGET, "closure": closure}
+        return event | ({"project": OTHER} if kind == "p" else {})
+
+    service = ClosedReview()
+    if kind == "p":
+        assert artifacts_cli.wait_project(service, scope, 5, 5, maybe_file=False) == expected()
+    else:
+        assert artifacts_cli.wait(service, scope, 5, 5) == expected()
+    state = open_watch()
+    # Simulate a checkpoint written by the older collector before upgrading.
+    previous = '{"waiting":{},"resolved":[],"since":null,"accepted":{},"next_detail":null}'
+    state._commit(0, previous, [], None)
+    state.poll(service)
+    pending, = state.pending()
+    assert pending["event"] == expected()
+    state.close()
+    state = open_watch()
+    state.poll(service)
+    assert state.pending() == [pending]
+    with pytest.raises(ValueError, match="invalid review event scope"):
+        ws._event(expected() | {"comment": "text"}, kind, scope)
+    state.ack(pending["id"])
+    state.poll(service)
+    assert state.pending() == []  # Delivery/ack does not write to the server.
+    service.ready = True
+    state.poll(service)
+    assert state.pending() == []
+    state.close()
+    assert b"Sensitive" not in (tmp_path / "watches.sqlite3").read_bytes()
+
+
 def test_failed_poll_does_not_advance_and_scope_isolation(tmp_path):
     state = journal(tmp_path)
     state.poll(Client())

@@ -146,7 +146,7 @@ test('file refresh never adopts another session marker or reloads old input', as
     toast: text => { notice = text; } };
   vm.createContext(c);
   vm.runInContext(source.slice(source.indexOf('  async function showNewFile()'),
-    source.indexOf('  // The first answer sets')), c);
+    source.indexOf('  function noteFile')), c);
   await c.showNewFile();
   assert.equal(c.sessionChanged, true); assert.equal(reloaded, false);
   assert.equal(c.sheet.dataset.workspaceMarker, 'old-session');
@@ -169,10 +169,69 @@ test('file refresh 404 preserves unsent text and reports that the file is gone',
     toast: text => { notice = text; } };
   vm.createContext(c);
   vm.runInContext(source.slice(source.indexOf('  async function showNewFile()'),
-    source.indexOf('  // The first answer sets')), c);
+    source.indexOf('  function noteFile')), c);
   await c.showNewFile();
   assert.equal(calls, 1); assert.equal(reloaded, false); assert.equal(c.sessionChanged, false);
   assert.equal(c.fields.general.value, 'unsent review');
   assert.match(notice, /file is no longer available/i);
   assert.doesNotMatch(notice, /sign-in changed/i);
+});
+
+test('Show adopts the new Drive revision and download only after the open review has no drafts', async () => {
+  const old = 'a'.repeat(22), next = 'b'.repeat(22), calls = [];
+  let pendingDrafts = 1;
+  const frame = { dataset: {}, contentWindow: { location: { replace: url => calls.push(url) } } };
+  const download = { href: `/a/fixture/versions/${old}/download` };
+  const sheet = { dataset: { workspaceMarker: 'session', kind: 'html', version: old } };
+  const fresh = { querySelector: () => null,
+    getElementById: id => id === 'comments' ? { dataset: { ...sheet.dataset, version: next } } : null };
+  const c = { sheet, workspaceMarker: 'session', artifact: 'fixture', showing: false, sending: false,
+    S: {}, reviewCount: () => pendingDrafts, fields: { general: { value: '' }, reply: { value: '' } },
+    banner: { hidden: true }, fileAt: null, placeBanner() {}, toast: message => calls.push(message),
+    location: { pathname: '/a/fixture' }, load() {}, $: id => id === 'share-download' ? download : null,
+    document: { querySelector: sel => sel === 'main iframe' ? frame : null },
+    fetch: async () => ({ ok: true, text: async () => 'fresh' }),
+    DOMParser: class { parseFromString() { return fresh; } } };
+  vm.createContext(c);
+  vm.runInContext(source.slice(source.indexOf('  async function showNewFile()'), source.indexOf('  let pollSeq')), c);
+  c.noteFile('same-second', next);
+  assert.equal(c.banner.hidden, false); // the first poll already detects a newer ID
+  await c.showNewFile();
+  assert.match(calls.pop(), /draft review/);
+  assert.equal(sheet.dataset.version, old);
+  assert.equal(download.href, `/a/fixture/versions/${old}/download`);
+  pendingDrafts = 0;
+  await c.showNewFile();
+  assert.deepEqual(calls, [`/a/fixture/versions/${next}/raw`]);
+  assert.equal(sheet.dataset.version, next);
+  assert.equal(frame.dataset.reviewRaw, `/a/fixture/versions/${next}/raw`);
+  assert.equal(download.href, `/a/fixture/versions/${next}/download`);
+  assert.equal(c.banner.hidden, true);
+});
+
+test('the final-round choice reuses one submission ID on retry and does not assign more edits', async () => {
+  const requests = [], messages = [], version = 'v'.repeat(22);
+  const c = { S: { reviewState: 'closable', finalRound: true, toAgent: true, comments: [], drafts: [] },
+    sheet: { dataset: { version } }, fields: { general: { value: '' } },
+    crypto: { getRandomValues: bytes => bytes.fill(5) }, btoa: str => Buffer.from(str, 'binary').toString('base64'),
+    sending: false, deciding: false, name: 'Alice', finishButton: null, changed() {}, render() {}, load() {},
+    reviewCount: () => 0, flushDeletes: async () => true, liveDrafts: () => [], errorCopy: (_, message) => message,
+    call: async (method, url, payload) => {
+      assert.equal(method, 'POST'); assert.equal(url, '/review');
+      requests.push(JSON.parse(JSON.stringify(payload)));
+      if (requests.length === 1) throw Error('connection interrupted');
+      return [];
+    }, toast: notice => messages.push(notice), nameRefused: () => false };
+  vm.createContext(c);
+  vm.runInContext(source.slice(source.indexOf('  function newRandomId()'), source.indexOf('  const NAME_KEY')), c);
+  vm.runInContext(source.slice(source.indexOf('  async function finish()'), source.indexOf('  // --- Fields')), c);
+  await c.finish();
+  assert.equal(c.S.reviewState, 'closable');
+  await c.finish();
+  assert.equal(c.S.reviewState, 'pending');
+  assert.equal(messages.at(-1), 'Review closed');
+  assert.deepEqual(requests[0], requests[1]);
+  assert.deepEqual(Object.keys(requests[0]).sort(), ['author', 'submission']);
+  assert.deepEqual(requests[0].submission, { id: requests[0].submission.id, version, close: true });
+  assert.match(requests[0].submission.id, /^[A-Za-z0-9_-]{22}$/);
 });

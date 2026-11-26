@@ -185,7 +185,7 @@ On a phone every title line ends with the fold button (⌄).
 | View | Holds | Footer (phone) |
 | --- | --- | --- |
 | strip | one line, see below | — |
-| list | title "Comments · N" (or "No comments yet"), groups, "+ About the whole file" in comment mode | Finish review · N, with drafts |
+| list | title "Comments · N" (or "No comments yet"), groups, "+ About the whole file" in comment mode; after a confirmed Workspace close, a note linking to the summary | Finish review · N, with drafts |
 | item | navigation, one comment as a chat or one draft, then "Others" with the rest when pulled to full | reply field; Finish review · N with drafts |
 | compose | caption "New draft" (or "New draft · about the whole file"), field with send | the field itself, so it stays above the keyboard |
 | finish | title "Finish review · N", Not decided yet, In this review, general comment field | Send to agent / Only publish, Back, Finish review |
@@ -309,8 +309,18 @@ field disables send. Focus matches the [plain field](#text-fields).
 | General comment | field, min h 60, placeholder "General comment"; on a narrow screen, growing the focused field preserves the reading position and keeps a newly wrapped line at the end in view |
 | Footer | segmented Send to agent / Only publish; Back and **Finish review** (big, primary), disabled with nothing to send |
 
+A Workspace reviewer linked to the owning agent can open this same view
+without drafts. For an eligible open Drive review, the footer has one
+unchecked **This is the final round** checkbox before the existing actions.
+The label has a 44 px hit area and uses normal focus and the existing blue.
+When selected, **Close review** replaces the primary button label, and the
+recipient choice is hidden: closing publishes the last feedback but does not
+ask for changes. No summary action is added to the menu or the footer.
+The existing discussion shows a short status after closure, then a plain
+link to the verified summary without a reload.
+
 While a reply or the general comment is typed in, the footer hides the
-segmented control and the buttons under the field. The name dialog appears at
+segmented control and the final-round choice. The name dialog appears at
 the first nonempty Finish review submission, not when entering comment mode
 or saving drafts. Dismissing it publishes nothing.
 
@@ -371,6 +381,14 @@ allowed domain and has one action, **Sign in with Google**. A failed sign-in
 keeps that action and explains how to retry. At the home page after sign-in,
 show the signed-in email and **Sign out**; this is not a file list or account
 settings page.
+
+On a Workspace installation with Drive enabled, **Sign in with Google** asks
+for sign-in and Drive access together. An existing session that needs Drive
+permission sees **Google Drive access needed** in the same column, with one
+primary action, **Continue with Google**. Explain the Google scope and the
+configured folder in the page text. Keep the return link and use the account
+button's keyboard focus and hit area. Do not add a permanent second sign-in
+button to the account page.
 
 ## Account and device connection
 

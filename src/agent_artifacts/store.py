@@ -17,12 +17,15 @@ import sqlite3
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import BinaryIO
 
 from . import accounts, kinds, trash
 from .credentials import NAME_RE as NAME_RE, hash_key as hash_key, new_key as _new_key
+from .drive_layout import SCHEMA as DRIVE_LAYOUT_SCHEMA, DriveLayout, display_name, project_scope
+from .drive_storage import DriveError, DriveRevision, DriveStorage
+from .review_submissions import SCHEMA as REVIEW_SUBMISSIONS_SCHEMA, ReviewSubmission, browser_state
 from .storage import DiskStorage
 
 log = logging.getLogger(__name__)
@@ -261,6 +264,77 @@ def _migrate_to_v8(db: sqlite3.Connection) -> None:
         db.execute(statement)
 
 
+def _migrate_to_v9(db: sqlite3.Connection) -> None:
+    """A committed Drive revision belongs to exactly one artifact."""
+    db.execute("CREATE TABLE drive_refs (artifact_id TEXT PRIMARY KEY "
+               "REFERENCES artifacts(id) ON DELETE RESTRICT, "
+               "file_id TEXT NOT NULL, revision_id TEXT NOT NULL)")
+
+
+def _migrate_to_v10(db: sqlite3.Connection) -> None:
+    """Keep unresolved remote writes independently of artifact lifetime."""
+    db.execute("CREATE TABLE drive_attempts (operation_id TEXT PRIMARY KEY, "
+               "artifact_id TEXT NOT NULL, file_id TEXT NOT NULL UNIQUE, "
+               "previous_revision TEXT, returned_revision TEXT, created_at REAL NOT NULL)")
+
+
+def _migrate_to_v11(db: sqlite3.Connection) -> None:
+    """Snapshot every published Drive revision; backfill the current ones."""
+    db.execute("CREATE TABLE drive_versions (version_id TEXT PRIMARY KEY, "
+               "artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE, "
+               "file_id TEXT NOT NULL, revision_id TEXT NOT NULL, "
+               "name TEXT NOT NULL, kind TEXT NOT NULL, size INTEGER NOT NULL)")
+    db.execute("CREATE INDEX drive_versions_artifact ON drive_versions(artifact_id)")
+    rows = db.execute(
+        "SELECT a.id, d.file_id, d.revision_id, a.name, a.kind, a.size "
+        "FROM artifacts a JOIN drive_refs d ON d.artifact_id = a.id"
+    ).fetchall()
+    db.executemany("INSERT INTO drive_versions VALUES (?, ?, ?, ?, ?, ?, ?)",
+                   [(secrets.token_urlsafe(16), *row) for row in rows])
+
+
+def _migrate_to_v12(db: sqlite3.Connection) -> None:
+    for statement in DRIVE_LAYOUT_SCHEMA:
+        db.execute(statement)
+
+
+def _migrate_to_v13(db: sqlite3.Connection) -> None:
+    from .review_reports import SCHEMA
+
+    for statement in _statements(SCHEMA):
+        db.execute(statement)
+
+
+def _migrate_to_v14(db: sqlite3.Connection) -> None:
+    from .drive_destination import SCHEMA
+
+    for statement in _statements(SCHEMA):
+        db.execute(statement)
+
+
+def _migrate_to_v15(db: sqlite3.Connection) -> None:
+    from .drive_rename import SCHEMA
+
+    for statement in _statements(SCHEMA):
+        db.execute(statement)
+
+
+def _migrate_to_v16(db: sqlite3.Connection) -> None:
+    from .drive_project_rename import SCHEMA
+
+    for statement in _statements(SCHEMA):
+        db.execute(statement)
+
+
+def _migrate_to_v17(db: sqlite3.Connection) -> None:
+    for statement in _statements(REVIEW_SUBMISSIONS_SCHEMA):
+        db.execute(statement)
+
+
+def _migrate_to_v18(db: sqlite3.Connection) -> None:
+    db.execute("ALTER TABLE review_submissions ADD COLUMN evidence TEXT")
+
+
 def _repair_comment_seq(db: sqlite3.Connection) -> None:
     """A counter behind its comments (added to a database that had comments,
     or comments written by an older version after a rollback) would hand out
@@ -284,6 +358,16 @@ _MIGRATIONS: tuple[Callable[[sqlite3.Connection], None], ...] = (
     _migrate_to_v6,
     _migrate_to_v7,
     _migrate_to_v8,
+    _migrate_to_v9,
+    _migrate_to_v10,
+    _migrate_to_v11,
+    _migrate_to_v12,
+    _migrate_to_v13,
+    _migrate_to_v14,
+    _migrate_to_v15,
+    _migrate_to_v16,
+    _migrate_to_v17,
+    _migrate_to_v18,
 )
 
 
@@ -336,6 +420,7 @@ class Artifact:
     title: str = ""
     project: str | None = None
     section: str | None = None
+    version_id: str | None = field(default=None, compare=False)
 
 
 # An artifact row with its comment counts, for Artifact(*row).
@@ -470,6 +555,39 @@ class StorageFull(Exception):
     pass
 
 
+class DriveConflict(Exception):
+    """The published revision changed while a Drive write was in flight."""
+
+
+@dataclass(frozen=True)
+class DriveAttempt:
+    operation_id: str
+    artifact_id: str
+    file_id: str
+    previous_revision: str | None
+    returned_revision: str | None
+    created_at: float
+
+
+@dataclass(frozen=True)
+class DriveAttemptObservation:
+    attempt: DriveAttempt
+    status: str  # observed, unconfirmed, or unavailable
+    current_head: str | None = None  # not necessarily the attempted revision
+
+
+class DriveRetentionBlocked(sqlite3.IntegrityError):
+    """Drive-backed metadata is retained until deletion policy is decided."""
+
+
+class DriveArtifactError(Exception):
+    """A Drive artifact cannot be replaced through the disk path."""
+
+
+class _DrivePreflightMissing(Exception):
+    """A previously live Drive artifact is no longer owned or live."""
+
+
 class NoSuchProject(Exception):
     """A project field naming no project of the owner's."""
 
@@ -571,6 +689,7 @@ class Store:
             db.close()
         self.accounts = accounts.Accounts(self._conn, self.clock)
         self.trash = trash.Trash(self._conn, self.clock, self.accounts.bound_account, DRAFT_TTL_SECONDS)
+        self.drive_layout = DriveLayout(self._conn)
 
     @contextmanager
     def _conn(self, *, write: bool = False) -> Iterator[sqlite3.Connection]:
@@ -664,6 +783,9 @@ class Store:
 
     def remove_agent(self, name: str) -> bool:
         with self._conn(write=True) as db:
+            if db.execute("SELECT 1 FROM drive_refs d JOIN artifacts a ON a.id = d.artifact_id "
+                          "WHERE a.owner = ? LIMIT 1", (name,)).fetchone():
+                raise DriveRetentionBlocked
             ids = [r[0] for r in db.execute("SELECT id FROM artifacts WHERE owner = ?", (name,))]
             gone = db.execute("DELETE FROM agents WHERE name = ?", (name,)).rowcount > 0
         for artifact_id in ids:
@@ -789,66 +911,348 @@ class Store:
         its title; the same for ``project`` and ``section``, which cannot be
         cleared here. Raises what _placed raises, storing nothing."""
         new_id = artifact_id or secrets.token_urlsafe(16)
-        live = "(expires_at IS NULL OR expires_at > ?)"
-        # Keep pending bytes in the quotas, even when a file's original
-        # lifetime would have elapsed during its Undo window.
-        retained = "(" + live + " OR id IN (SELECT artifact_id FROM account_deletions))"
         with self.storage.stage(new_id, src) as staged:
             now = self.clock()
             with self._conn(write=True) as db:
-                # Hold the write lock from the size checks to the insert, so two
-                # uploads cannot both fit into the same free space.
-                settings = self.settings(db)
-                ttl = settings["ttl_seconds"]
-                quota = self._quota_for(owner, db)
-                if quota is not None:
-                    own = db.execute(
-                        f"SELECT COALESCE(SUM(size), 0) FROM artifacts "  # noqa: S608
-                        f"WHERE owner = ? AND id != ? AND {retained}",
-                        (owner, new_id, now),
-                    ).fetchone()[0]
-                    if own + size > quota:
-                        raise QuotaExceeded(own, quota)
-                used = db.execute(
-                    f"SELECT COALESCE(SUM(size), 0) FROM artifacts WHERE id != ? AND {retained}",  # noqa: S608
-                    (new_id, now),
-                ).fetchone()[0]
-                if used + size > settings["max_total_bytes"]:
-                    raise StorageFull
-                old = (None, None, None)
-                if artifact_id is not None:
-                    old = db.execute(
-                        f"SELECT project, section, added_at FROM visible_artifacts "  # noqa: S608
-                        f"WHERE id = ? AND owner = ? AND {live}",
-                        (new_id, owner, now),
-                    ).fetchone()
-                    if old is None:
-                        return None
-                given = {"project": project} if project is not None else {}
-                if section is not None:
-                    given["section"] = section
-                placed = self._placed(db, owner, new_id, old, given, now)
-                expires = None if placed[0] is not None else now + ttl
-                if artifact_id is None:
-                    db.execute(
-                        "INSERT INTO artifacts (id, owner, name, title, kind, size, created_at, "
-                        "expires_at, project, section, added_at) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                        (new_id, owner, name, title or name, kind, size, now, expires, *placed),
-                    )
-                else:
-                    # Read under the lock, so a comment posted before this
-                    # replace always has an earlier created_at.
-                    db.execute(
-                        "UPDATE artifacts SET name = ?, title = COALESCE(?, title), kind = ?, "
-                        "size = ?, expires_at = ?, replaced_at = ?, project = ?, section = ?, "
-                        "added_at = ? WHERE id = ?",
-                        (name, title, kind, size, expires, self.clock(), *placed, new_id),
-                    )
-                db.execute("UPDATE agents SET last_upload_at = ? WHERE name = ?", (now, owner))
-                artifact = self._artifact(db, new_id)
+                if artifact_id is not None and db.execute(
+                    "SELECT 1 FROM drive_refs d JOIN visible_artifacts a ON a.id = d.artifact_id "
+                    "WHERE a.id = ? AND a.owner = ? "
+                    "AND (a.expires_at IS NULL OR a.expires_at > ?)",
+                    (new_id, owner, now),
+                ).fetchone():
+                    raise DriveArtifactError("Drive artifact requires Drive replacement")
+                artifact = self._put_metadata(
+                    db, new_id, owner, name, kind, size, title, project, section,
+                    replacing=artifact_id is not None, now=now, allow_expired=True,
+                )
+                if artifact is None:
+                    return None
                 self.storage.publish(staged, new_id)
+                if artifact.expires_at is not None and artifact.expires_at <= now:
+                    return None
         return artifact
+
+    def has_drive_artifacts(self) -> bool:
+        """Drive-backed rows, including expired rows retained by policy."""
+        with self._conn() as db:
+            return db.execute("SELECT 1 FROM drive_refs LIMIT 1").fetchone() is not None
+
+    def get_with_drive(
+        self, artifact_id: str, *, owner: str | None = None,
+    ) -> tuple[Artifact, DriveRevision | None] | None:
+        """Read artifact metadata and optional committed revision in one statement."""
+        sql = _ARTIFACT_SQL.replace(
+            " FROM visible_artifacts a", " , d.file_id, d.revision_id FROM visible_artifacts a "
+            "LEFT JOIN drive_refs d ON d.artifact_id = a.id",
+        )
+        with self._conn() as db:
+            row = db.execute(
+                sql + " WHERE a.id = ? AND (a.expires_at IS NULL OR a.expires_at > ?) "
+                "AND (? IS NULL OR a.owner = ?)",
+                (artifact_id, self.clock(), owner, owner),
+            ).fetchone()
+        if row is None:
+            return None
+        return Artifact(*row[:-2]), DriveRevision(*row[-2:]) if row[-2] is not None else None
+
+    def get_drive(
+        self, artifact_id: str, *, owner: str | None = None,
+    ) -> tuple[Artifact, DriveRevision] | None:
+        """Read the live artifact and its published Drive reference in one snapshot."""
+        sql = _ARTIFACT_SQL.replace(
+            " FROM visible_artifacts a", " , d.file_id, d.revision_id FROM visible_artifacts a "
+            "JOIN drive_refs d ON d.artifact_id = a.id",
+        )
+        with self._conn() as db:
+            row = db.execute(
+                sql + " WHERE a.id = ? AND (a.expires_at IS NULL OR a.expires_at > ?) "
+                "AND (? IS NULL OR a.owner = ?)",
+                (artifact_id, self.clock(), owner, owner),
+            ).fetchone()
+        return (Artifact(*row[:-2]), DriveRevision(*row[-2:])) if row else None
+
+    def drive_version_id(self, artifact: Artifact, revision: DriveRevision) -> str | None:
+        """Resolve the snapshot already selected by the viewer, not the latest head."""
+        with self._conn() as db:
+            row = db.execute(
+                "SELECT version_id FROM drive_versions WHERE artifact_id=? AND file_id=? AND revision_id=? "
+                "AND name=? AND kind=? AND size=? ORDER BY rowid DESC LIMIT 1",
+                (artifact.id, revision.file_id, revision.revision_id, artifact.name, artifact.kind, artifact.size),
+            ).fetchone()
+        return row[0] if row else None
+
+    def browser_review_state(self, artifact_id: str, subject: str, *, read_only: bool) -> str | None:
+        with self._conn() as db:
+            return browser_state(db, artifact_id, subject, read_only=read_only)
+
+    def current_drive_version_id(self, artifact_id: str) -> str | None:
+        """Version advertised by the discussion poll, without rewriting an open viewer."""
+        with self._conn() as db:
+            row = db.execute(
+                "SELECT v.version_id FROM visible_artifacts a JOIN drive_refs r ON r.artifact_id=a.id "
+                "JOIN drive_versions v ON v.artifact_id=a.id AND v.file_id=r.file_id "
+                "AND v.revision_id=r.revision_id AND v.name=a.name AND v.kind=a.kind AND v.size=a.size "
+                "WHERE a.id=? AND (a.expires_at IS NULL OR a.expires_at>?) ORDER BY v.rowid DESC LIMIT 1",
+                (artifact_id, self.clock()),
+            ).fetchone()
+        return row[0] if row else None
+
+    def get_drive_version(
+        self, artifact_id: str, version_id: str,
+    ) -> tuple[Artifact, DriveRevision] | None:
+        """Read a published snapshot only while its owning artifact is live."""
+        sql = _ARTIFACT_SQL.replace(
+            " FROM visible_artifacts a", " , v.file_id, v.revision_id, v.name, v.kind, v.size "
+            "FROM visible_artifacts a JOIN drive_versions v ON v.artifact_id = a.id",
+        )
+        with self._conn() as db:
+            row = db.execute(
+                sql + " WHERE a.id = ? AND v.version_id = ? "
+                "AND (a.expires_at IS NULL OR a.expires_at > ?)",
+                (artifact_id, version_id, self.clock()),
+            ).fetchone()
+        if row is None:
+            return None
+        artifact = replace(Artifact(*row[:-5]), name=row[-3], kind=row[-2], size=row[-1])
+        return artifact, DriveRevision(row[-5], row[-4])
+
+    def drive_attempts(self) -> list[DriveAttempt]:
+        """List unresolved attempts, including those with a known returned revision."""
+        with self._conn() as db:
+            rows = db.execute(
+                "SELECT operation_id, artifact_id, file_id, previous_revision, "
+                "returned_revision, created_at FROM drive_attempts "
+                "ORDER BY created_at, operation_id"
+            ).fetchall()
+        return [DriveAttempt(*row) for row in rows]
+
+    def inspect_drive_attempt(
+        self, drive: DriveStorage, attempt: DriveAttempt,
+    ) -> DriveAttemptObservation:
+        """Observe a marker without publishing, clearing, retrying or deleting anything.
+
+        A marker confirms that the operation's metadata was observed; another
+        writer may subsequently change HEAD while leaving the marker in place.
+        """
+        try:
+            matched, head = drive.inspect_operation(attempt.file_id, attempt.operation_id)
+        except DriveError:
+            return DriveAttemptObservation(attempt, "unavailable")
+        return DriveAttemptObservation(attempt, "observed" if matched else "unconfirmed", head)
+
+    def put_drive(
+        self, drive: DriveStorage, src: BinaryIO, *, owner: str, name: str, kind: str,
+        size: int, artifact_id: str | None = None, title: str | None = None,
+        project: str | None = None, section: str | None = None,
+    ) -> Artifact | None:
+        """Publish the exact Drive revision after an unlocked remote write.
+
+        Attempts survive ambiguous responses and failed publication. Inspection
+        is read-only; it cannot safely publish or clean up an unresolved write.
+        """
+        new_id = artifact_id or secrets.token_urlsafe(16)
+        expected = None
+        old_artifact = None
+        if artifact_id is not None:
+            snapshot = self.get_drive(new_id, owner=owner)
+            if snapshot is None:
+                return None
+            old_artifact, expected = snapshot
+
+        def preflight(db: sqlite3.Connection) -> tuple[str | None, str | None, float | None]:
+            now = self.clock()
+            if expected is not None:
+                row = db.execute(
+                    "SELECT d.file_id, d.revision_id FROM drive_refs d "
+                    "JOIN visible_artifacts a ON a.id = d.artifact_id "
+                    "WHERE a.id = ? AND a.owner = ? "
+                    "AND (a.expires_at IS NULL OR a.expires_at > ?)",
+                    (new_id, owner, now),
+                ).fetchone()
+                if row is None:
+                    raise _DrivePreflightMissing
+                if row != (expected.file_id, expected.revision_id):
+                    raise DriveConflict("published Drive revision changed")
+                if db.execute("SELECT 1 FROM drive_renames WHERE artifact_id=?", (new_id,)).fetchone():
+                    raise DriveConflict("Drive rename is unresolved")
+            elif db.execute("SELECT 1 FROM agents WHERE name = ?", (owner,)).fetchone() is None:
+                raise sqlite3.IntegrityError("FOREIGN KEY constraint failed")
+            placed = self._validate_put(db, new_id, owner, size, project, section,
+                                        replacing=expected is not None, now=now)
+            if placed is None:
+                raise _DrivePreflightMissing
+            if placed[0] is None and self.settings(db)["ttl_seconds"] <= 0:
+                raise DriveArtifactError("Drive artifact would immediately expire")
+            if old_artifact is not None:
+                managed = db.execute("SELECT preferred FROM drive_names WHERE artifact_id = ?", (new_id,)).fetchone()
+                if managed and (placed[0] != old_artifact.project
+                                or display_name(title or old_artifact.title, name) != managed[0]):
+                    raise DriveConflict("Drive rename and move are not ready")
+            return placed
+
+        def check() -> tuple[str | None, str | None, float | None]:
+            with self._conn() as db:
+                db.execute("BEGIN")
+                return preflight(db)
+
+        reserved = False
+        try:
+            placement = check()
+            kwargs = {}
+            provider_name = name
+            if expected is None and drive.project_layout:
+                scope = project_scope(placement[0])
+                folder = self.drive_layout.folder(drive, scope, preflight)
+                provider_name = self.drive_layout.reserve_name(new_id, folder, display_name(title or name, name))
+                reserved = True
+                kwargs["parent"] = (folder, scope)
+            file_id = expected.file_id if expected else drive.generate_file_id()
+            operation_id = secrets.token_urlsafe(24)
+
+            def claim() -> None:
+                with self._conn(write=True) as db:
+                    preflight(db)
+                    try:
+                        db.execute(
+                            "INSERT INTO drive_attempts VALUES (?, ?, ?, ?, NULL, ?)",
+                            (operation_id, new_id, file_id,
+                             expected.revision_id if expected else None, self.clock()),
+                        )
+                    except sqlite3.IntegrityError:
+                        raise DriveConflict("Drive file has an unresolved write") from None
+
+            if expected is not None:
+                revision = drive.replace(file_id, src, operation_id=operation_id,
+                                         before_write=claim)
+            else:
+                revision = drive.create(provider_name, src, file_id=file_id, operation_id=operation_id,
+                                        before_write=claim, **kwargs)
+            if revision.file_id != file_id:
+                raise DriveArtifactError("Drive write returned a different file ID")
+        except _DrivePreflightMissing:
+            return None
+        finally:
+            if reserved:
+                self.drive_layout.release_unused_name(new_id)
+        # Preserve a known response even when later validation or publication fails.
+        with self._conn(write=True) as db:
+            updated = db.execute(
+                "UPDATE drive_attempts SET returned_revision = ? WHERE operation_id = ?",
+                (revision.revision_id, operation_id),
+            ).rowcount
+            if updated != 1:
+                raise RuntimeError("Drive write attempt missing")
+        with self._conn(write=True) as db:
+            now = self.clock()
+            if expected is not None:
+                row = db.execute(
+                    "SELECT d.file_id, d.revision_id FROM drive_refs d "
+                    "JOIN visible_artifacts a ON a.id = d.artifact_id "
+                    "WHERE a.id = ? AND a.owner = ? "
+                    "AND (a.expires_at IS NULL OR a.expires_at > ?)",
+                    (new_id, owner, now),
+                ).fetchone()
+                if row is None:
+                    return None
+                if row != (expected.file_id, expected.revision_id):
+                    raise DriveConflict("published Drive revision changed")
+            artifact = self._put_metadata(
+                db, new_id, owner, name, kind, size, title, project, section,
+                replacing=expected is not None, now=now,
+            )
+            if artifact is None:
+                return None
+            if expected is None:
+                db.execute("INSERT INTO drive_refs VALUES (?, ?, ?)",
+                           (new_id, revision.file_id, revision.revision_id))
+            else:
+                db.execute(
+                    "UPDATE drive_refs SET file_id = ?, revision_id = ? WHERE artifact_id = ?",
+                    (revision.file_id, revision.revision_id, new_id),
+                )
+            version_id = secrets.token_urlsafe(16)
+            db.execute(
+                "INSERT INTO drive_versions VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (version_id, new_id, revision.file_id, revision.revision_id, name, kind, size),
+            )
+            db.execute("DELETE FROM drive_attempts WHERE operation_id = ?", (operation_id,))
+        return replace(artifact, version_id=version_id)
+
+    def _put_metadata(
+        self, db: sqlite3.Connection, new_id: str, owner: str, name: str, kind: str,
+        size: int, title: str | None, project: str | None, section: str | None,
+        *, replacing: bool, now: float, allow_expired: bool = False,
+    ) -> Artifact | None:
+        placed = self._validate_put(
+            db, new_id, owner, size, project, section, replacing=replacing, now=now,
+        )
+        if placed is None:
+            return None
+        ttl = self.settings(db)["ttl_seconds"]
+        expires = None if placed[0] is not None else now + ttl
+        if not replacing:
+            db.execute(
+                "INSERT INTO artifacts (id, owner, name, title, kind, size, created_at, "
+                "expires_at, project, section, added_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (new_id, owner, name, title or name, kind, size, now, expires, *placed),
+            )
+        else:
+            # Read under the lock, so a comment posted before this
+            # replace always has an earlier created_at.
+            db.execute(
+                "UPDATE artifacts SET name = ?, title = COALESCE(?, title), kind = ?, "
+                "size = ?, expires_at = ?, replaced_at = ?, project = ?, section = ?, "
+                "added_at = ? WHERE id = ?",
+                (name, title, kind, size, expires, self.clock(), *placed, new_id),
+            )
+        db.execute("UPDATE agents SET last_upload_at = ? WHERE name = ?", (now, owner))
+        artifact = self._artifact(db, new_id, now=now)
+        if artifact is None and allow_expired and expires is not None and expires <= now:
+            row = db.execute(f"{_ARTIFACT_SQL} WHERE a.id = ?", (new_id,)).fetchone()
+            artifact = Artifact(*row) if row else None
+        if artifact is None:
+            raise RuntimeError("written artifact missing from transaction")
+        return artifact
+
+    def _validate_put(
+        self, db: sqlite3.Connection, new_id: str, owner: str, size: int,
+        project: str | None, section: str | None, *, replacing: bool, now: float,
+    ) -> tuple[str | None, str | None, float | None] | None:
+        """Apply the common quota, liveness and placement rules without writing."""
+        live = "(expires_at IS NULL OR expires_at > ?)"
+        # Pending disk bytes still occupy quota, even after their old TTL.
+        retained = "(" + live + " OR id IN (SELECT artifact_id FROM account_deletions))"
+        settings = self.settings(db)
+        quota = self._quota_for(owner, db)
+        if quota is not None:
+            own = db.execute(
+                f"SELECT COALESCE(SUM(size), 0) FROM artifacts "  # noqa: S608
+                f"WHERE owner = ? AND id != ? AND {retained}",
+                (owner, new_id, now),
+            ).fetchone()[0]
+            if own + size > quota:
+                raise QuotaExceeded(own, quota)
+        used = db.execute(
+            f"SELECT COALESCE(SUM(size), 0) FROM artifacts WHERE id != ? AND {retained}",  # noqa: S608
+            (new_id, now),
+        ).fetchone()[0]
+        if used + size > settings["max_total_bytes"]:
+            raise StorageFull
+        old = (None, None, None)
+        if replacing:
+            old = db.execute(
+                f"SELECT project, section, added_at FROM visible_artifacts "  # noqa: S608
+                f"WHERE id = ? AND owner = ? AND {live}",
+                (new_id, owner, now),
+            ).fetchone()
+            if old is None:
+                return None
+        given = {"project": project} if project is not None else {}
+        if section is not None:
+            given["section"] = section
+        placed = self._placed(db, owner, new_id, old, given, now)
+        return placed
 
     def edit(self, artifact_id: str, *, owner: str, changes: dict) -> Artifact | None:
         """Change a live artifact's ``title``, ``project`` or ``section``
@@ -858,13 +1262,20 @@ class Store:
         now = self.clock()
         with self._conn(write=True) as db:
             row = db.execute(
-                "SELECT project, section, added_at, expires_at FROM visible_artifacts "
+                "SELECT project, section, added_at, expires_at, name FROM visible_artifacts "
                 "WHERE id = ? AND owner = ? AND (expires_at IS NULL OR expires_at > ?)",
                 (artifact_id, owner, now),
             ).fetchone()
             if row is None:
                 return None
             placed = self._placed(db, owner, artifact_id, row[:3], changes, now)
+            managed = db.execute("SELECT preferred FROM drive_names WHERE artifact_id = ?", (artifact_id,)).fetchone()
+            new_title = changes.get("title")
+            if new_title is not None and db.execute("SELECT 1 FROM drive_renames WHERE artifact_id=?",
+                                                    (artifact_id,)).fetchone():
+                raise DriveConflict("Drive rename is unresolved")
+            if managed and (placed[0] != row[0] or (new_title is not None and display_name(new_title, row[4]) != managed[0])):
+                raise DriveConflict("Drive rename and move are not ready")
             expires = row[3]
             if placed[0] is not None:
                 expires = None
@@ -1061,8 +1472,12 @@ class Store:
 
     def rename_project(self, project_id: str, *, owner: str, title: str) -> Project | None:
         with self._conn(write=True) as db:
-            if self._project(db, project_id, owner) is None:
+            project = self._project(db, project_id, owner)
+            if project is None:
                 return None
+            if title != project.title and db.execute("SELECT 1 FROM drive_folders WHERE scope = ?",
+                                                    (project_scope(project_id),)).fetchone():
+                raise DriveConflict("Drive project rename is not ready")
             db.execute(
                 "UPDATE projects SET title = ? WHERE id = ? AND owner = ?",
                 (title, project_id, owner),
@@ -1080,6 +1495,11 @@ class Store:
                 "WHERE a.project = ? AND d.deadline > ? LIMIT 1", (project_id, self.clock()),
             ).fetchone():
                 raise DeletionPending
+            if db.execute(
+                "SELECT 1 FROM drive_refs d JOIN artifacts a ON a.id = d.artifact_id "
+                "WHERE a.project = ? LIMIT 1", (project_id,),
+            ).fetchone():
+                raise DriveRetentionBlocked
             ids = [r[0] for r in db.execute("SELECT id FROM artifacts WHERE project = ?", (project_id,))]
             gone = db.execute("DELETE FROM projects WHERE id = ? AND owner = ?", (project_id, owner)).rowcount > 0
         if gone:
@@ -1364,6 +1784,7 @@ class Store:
         author: str,
         text: str | None,
         for_agent: bool = False,
+        submission: ReviewSubmission | None = None,
     ) -> list[Comment] | None:
         """Finish ``key_hash``'s review, all or nothing. Its comment drafts on
         the artifact, in the order made, then ``text`` as a comment about the
@@ -1379,6 +1800,10 @@ class Store:
         effect only on a comment the agent has answered, after the rest of the
         review, and not on one this review replies to (a reply asks for more).
 
+        A Workspace submission records the exact displayed version in this
+        transaction. Only an authorized closure can publish with no drafts
+        or text. Repeating the same submission never consumes newer drafts.
+
         Returns the comments made or touched and still open, by number; None
         if the artifact is gone. Raises NothingToPublish, TooManyComments,
         TooManyReplies."""
@@ -1386,17 +1811,24 @@ class Store:
             artifact = self._artifact(db, artifact_id)
             if artifact is None:
                 return None
-            # The file's type now: a draft pinned to a type it no longer has
-            # (replaced since) becomes a comment about the whole file.
-            pin = kinds.get(artifact.kind).pin
+            kind = artifact.kind
             args = self._draft_args(artifact_id, key_hash)
+            fingerprint = ""
+            if submission is not None:
+                fingerprint = submission.fingerprint(key_hash=key_hash, text=text, for_agent=for_agent)
+                kind, previous = submission.check(db, artifact_id, fingerprint)
+                if previous is not None:
+                    return self._published_threads(db, args, previous)
+            # Use the displayed version's type when it is known. The disk
+            # viewer still uses the live type, as it always did.
+            pin = kinds.get(kind).pin
             drafts = db.execute(
                 "SELECT d.rowid, d.author, d.text, d.anchor, d.created_at, d.kind, d.of_n "
                 "FROM drafts d WHERE d.artifact_id = :id AND d.author_key_hash = :key "
                 "AND d.updated_at > :stale ORDER BY d.created_at, d.rowid",
                 args,
             ).fetchall()
-            if not drafts and text is None:
+            if not drafts and text is None and not (submission and submission.closing):
                 raise NothingToPublish
             items = [
                 (
@@ -1479,16 +1911,25 @@ class Store:
                 )
             # Last, on the state the rest left: someone may have sent the
             # comment back to the agent since the accept was drafted.
-            db.executemany(
-                "UPDATE comments SET resolved_at = COALESCE(resolved_at, ?) "
-                "WHERE artifact_id = ? AND n = ? AND agent IN ('done', 'wrote', 'asked')",
-                [(args["now"], artifact_id, n) for n in accepts],
-            )
+            for n in accepts:
+                result = db.execute(
+                    "UPDATE comments SET resolved_at = COALESCE(resolved_at, ?) "
+                    "WHERE artifact_id = ? AND n = ? AND agent IN ('done', 'wrote', 'asked')",
+                    (args["now"], artifact_id, n),
+                )
+                if result.rowcount:
+                    touched.add(n)
             db.executemany("DELETE FROM drafts WHERE rowid = ?", [(d[0],) for d in drafts])
-            if not touched:
-                return []
-            numbers = ", ".join(str(n) for n in sorted(touched))
-            return _load(db, f"AND c.n IN ({numbers}) AND c.resolved_at IS NULL ORDER BY c.n", args)
+            if submission is not None:
+                submission.record(db, artifact_id, fingerprint, args["now"], touched)
+            return self._published_threads(db, args, touched)
+
+    @staticmethod
+    def _published_threads(db, args, touched) -> list[Comment]:
+        if not touched:
+            return []
+        numbers = ", ".join(str(n) for n in sorted(touched))
+        return _load(db, f"AND c.n IN ({numbers}) AND c.resolved_at IS NULL ORDER BY c.n", args)
 
     def _check_replies(self, db: sqlite3.Connection, artifact_id: str, numbers: list[int]) -> None:
         """Raise TooManyReplies if adding a reply to each of ``numbers`` (one
@@ -1510,6 +1951,11 @@ class Store:
 
     def delete(self, artifact_id: str, *, owner: str) -> bool:
         with self._conn(write=True) as db:
+            if db.execute(
+                "SELECT 1 FROM drive_refs d JOIN visible_artifacts a ON a.id = d.artifact_id "
+                "WHERE a.id = ? AND a.owner = ?", (artifact_id, owner),
+            ).fetchone():
+                raise DriveRetentionBlocked
             sql = ("DELETE FROM artifacts WHERE id = ? AND owner = ? "
                    "AND id IN (SELECT id FROM visible_artifacts WHERE id = ?)")
             gone = db.execute(sql, (artifact_id, owner, artifact_id)).rowcount > 0
@@ -1528,7 +1974,10 @@ class Store:
             # with their comments. Looked for under the write lock: an upload
             # puts its file in place before its row commits, so a committed
             # row without a file never gets it back.
-            rows = db.execute("SELECT id, owner, name FROM visible_artifacts").fetchall()
+            rows = db.execute(
+                "SELECT id, owner, name FROM visible_artifacts a WHERE NOT EXISTS "
+                "(SELECT 1 FROM drive_refs d WHERE d.artifact_id = a.id)"
+            ).fetchall()
             lost = [r for r in rows if self._lost(r[0])]
             # Many at once is a files folder not (yet) there — a restore in
             # progress, an unmounted volume — not lost files: nothing goes,

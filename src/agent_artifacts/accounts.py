@@ -147,6 +147,18 @@ class Accounts:
                        (account_id, subject, self._clock()))
             return db.execute("SELECT id FROM human_accounts WHERE google_subject = ?", (subject,)).fetchone()[0]
 
+    def google_subject_for_agent(self, authenticated_agent: str, credential_hash: str) -> str | None:
+        """Resolve the link only while the credential still belongs to that agent."""
+        with self._conn() as db:
+            row = db.execute(
+                "SELECT account.google_subject FROM account_agents AS owned "
+                "JOIN human_accounts AS account ON account.id = owned.account_id "
+                "JOIN agents AS agent ON agent.name = owned.agent "
+                "WHERE agent.name = ? AND agent.key_hash = ?",
+                (authenticated_agent, credential_hash),
+            ).fetchone()
+        return row[0] if row else None
+
     def linked_agents(self, account_id: str) -> list[LinkedAgent]:
         with self._conn() as db:
             return [LinkedAgent(name, not is_revoked(digest), bool(admin)) for name, digest, admin in db.execute(

@@ -6,13 +6,19 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import hashlib
 import hmac
+import html
+import json
 import logging
 import math
 import re
+import tempfile
+import time
 import unicodedata
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager, suppress
+from collections.abc import AsyncIterator, Callable
+from contextlib import AbstractContextManager, asynccontextmanager, suppress
+from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 from starlette.applications import Starlette
@@ -23,6 +29,7 @@ from starlette.middleware import Middleware
 from starlette.requests import Request
 from starlette.responses import (
     FileResponse,
+    HTMLResponse,
     JSONResponse,
     RedirectResponse,
     Response,
@@ -37,13 +44,32 @@ from .admin import admin_routes
 from .api import ApiError, error, iso, json_body, on_api_error, require_agent, user_json
 from .comments import _workspace_author, comment_routes, one_line
 from .config import Config, normal_host
+from .credentials import hash_key
+from .drive_destination import DriveDestination, DriveDestinationError, DriveDestinationStore
+from .drive_grants import WorkspaceDriveGrants
+from .drive_project_rename import DriveProjectRenames, ProjectRename
+from .drive_rename import DriveRenames, Rename
+from .drive_storage import (
+    DriveAccessError,
+    DriveCapacityError,
+    DriveError,
+    DriveReadControl,
+    DriveRevision,
+    DriveStorage,
+    DriveUploadLimitError,
+)
 from .google_oidc import GoogleOIDC
+from .review_report_routes import report_routes
+from .review_submissions import pending_closures
 from .storage import DiskStorage
 from .store import (
     ID_RE,
     TOKEN_RE,
     Artifact,
     DeletionPending,
+    DriveArtifactError,
+    DriveConflict,
+    DriveRetentionBlocked,
     NameTaken,
     NoSuchProject,
     Project,
@@ -54,8 +80,10 @@ from .store import (
     TooMany,
 )
 from .workspace_auth import ACCOUNT_ENTRY_PATHS, WorkspaceAuth, WorkspaceAuthStore, same_origin
+from .workspace_drive import DriveGrantRequired, WorkspaceDrive
 
 PURGE_INTERVAL_SECONDS = 600
+_DRIVE_READ_BUDGET_SECONDS = 30.0
 
 
 class _ArtifactId(StringConvertor):
@@ -78,7 +106,11 @@ MAX_TITLE = 200  # a file's or a project's
 MAX_SECTION = 64
 
 
-def create_app(config: Config, store: Store | None = None) -> Starlette:
+def create_app(
+    config: Config, store: Store | None = None, *, drive: DriveStorage | None = None,
+) -> Starlette:
+    if drive is not None and (config.workspace is None or config.drive is not None):
+        raise ValueError("injected Drive is only for Workspace without configured Drive routing")
     store = store or Store(
         config.data_dir,
         max_total_bytes=config.max_total_bytes,
@@ -86,9 +118,22 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         ttl_seconds=config.ttl_seconds,
         storage=DiskStorage(config.data_dir),
     )
+    if config.workspace is None and store.has_drive_artifacts():
+        raise ValueError("Drive-backed artifacts require Workspace authentication")
+    destination = (DriveDestination.from_config(config.drive, config.workspace, config.public_url)
+                   if config.drive is not None and config.workspace is not None else None)
+    destination_store = DriveDestinationStore(store._conn)
+    destination_store.check(destination)
+    grants = None
+    delegated = None
+    if config.workspace is not None and destination is not None:
+        grants = WorkspaceDriveGrants(config.data_dir, config.workspace)
+        delegated = WorkspaceDrive(config.workspace, grants, folder_id=destination.folder_id,
+                                   folder_kind=destination.folder_kind, max_bytes=config.max_file_bytes,
+                                   check_destination=functools.partial(destination_store.check, destination))
 
     def as_json(a: Artifact) -> dict:
-        return {
+        body = {
             "id": a.id,
             "url": f"{config.public_url}/a/{a.id}",
             "name": a.name,
@@ -103,6 +148,9 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             "comments": a.comments,
             "open_comments": a.open_comments,
         }
+        if a.version_id is not None:
+            body["version_url"] = f"{config.public_url}/a/{a.id}/versions/{a.version_id}"
+        return body
 
     def project_json(p: Project) -> dict:
         return {
@@ -114,7 +162,58 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             "used_bytes": p.used_bytes,
         }
 
-    async def save(request: Request, agent: str, artifact_id: str | None) -> Response:
+    def linked_subject(owner: str, credential_hash: str) -> str:
+        subject = store.accounts.google_subject_for_agent(owner, credential_hash)
+        if subject is None:
+            raise ApiError(403, "drive_account_required", "Link this agent to your Workspace account.",
+                           account_url=config.public_url + "/account")
+        return subject
+
+    def put_delegated(source, *, owner: str, credential_hash: str, **fields):
+        assert delegated is not None and destination is not None
+        with delegated.open(linked_subject(owner, credential_hash)) as storage:
+            if not destination_store.check(destination):
+                storage.validate_folder()
+                destination_store.pin(destination)
+            return store.put_drive(storage, source, owner=owner, **fields)
+
+    renames = DriveRenames(store)
+    project_renames = DriveProjectRenames(store)
+
+    def rename_delegated(artifact_id: str, owner: str, credential_hash: str, title: str) -> Artifact | None:
+        assert delegated is not None
+        subject = linked_subject(owner, credential_hash)
+        operation = renames.prepare(artifact_id, owner, title)
+        if not isinstance(operation, Rename):
+            return operation
+        try:
+            with delegated.open(subject) as drive_storage:
+                return renames.execute(drive_storage, operation, owner)
+        except (DriveConflict, DriveError):
+            renames.discard_unsent(operation)
+            raise
+
+    def rename_project_delegated(project_id: str, owner: str, credential_hash: str, title: str) -> Project | None:
+        assert delegated is not None
+        operation = project_renames.prepare(project_id, owner, title)
+        if not isinstance(operation, ProjectRename):
+            return operation
+        try:
+            if config.drive_read_only:
+                raise ApiError(503, "drive_read_only", "Google Drive writes are paused.")
+            with delegated.open(linked_subject(owner, credential_hash)) as storage:
+                return project_renames.execute(storage, operation, owner)
+        except (ApiError, DriveConflict, DriveError):
+            project_renames.discard_unsent(operation)
+            raise
+
+    async def save(
+        request: Request, agent: str, artifact_id: str | None, *, use_drive: bool,
+    ) -> Response:
+        if use_drive and config.drive_read_only:
+            return error(503, "drive_read_only", "Google Drive writes are paused.")
+        if use_drive and drive is None and delegated is None:
+            return error(503, "storage_unavailable", "storage is temporarily unavailable")
         length = request.headers.get("content-length")
         if length is None or not length.isdigit():
             return error(411, "bad_request", "Content-Length is required")
@@ -147,8 +246,15 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
                 return error(413, "too_large", "Markdown and text are limited to 2 MB; use .zip")
             await upload.seek(0)
             try:
+                put = store.put
+                if use_drive:
+                    if delegated is None:
+                        put = functools.partial(store.put_drive, drive)
+                    else:
+                        supplied_key = request.headers["authorization"].partition(" ")[2].strip()
+                        put = functools.partial(put_delegated, credential_hash=hash_key(supplied_key))
                 artifact = await _stored(
-                    store.put,
+                    put,
                     upload.file,
                     owner=agent,
                     name=name,
@@ -171,6 +277,22 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
                 )
             except StorageFull:
                 return error(507, "storage_full", "the service is out of space, try later")
+            except DriveUploadLimitError:
+                return error(413, "too_large", "file exceeds storage transfer limit")
+            except DriveCapacityError:
+                return error(507, "storage_unavailable", "storage capacity is unavailable")
+            except DriveGrantRequired:
+                return error(403, "drive_authorization_required", "Authorize Google Drive for the linked account.",
+                             authorization_url=config.public_url + "/auth/drive-access?return=/account")
+            except DriveAccessError:
+                if delegated is not None:
+                    return error(403, "drive_access_denied",
+                                 "Google Drive denied this operation. Ask your administrator to check folder access.")
+                return error(503, "storage_unavailable", "storage is temporarily unavailable")
+            except DriveError:
+                return error(503, "storage_unavailable", "storage is temporarily unavailable")
+            except (DriveConflict, DriveArtifactError):
+                return error(409, "storage_conflict", "storage write cannot be published")
         finally:
             await form.close()
         if artifact is None:
@@ -180,7 +302,12 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
     async def collection(request: Request) -> Response:
         agent = require_agent(store, request)
         if request.method == "POST":
-            return await save(request, agent, None)
+            if config.workspace is not None and drive is None and delegated is None:
+                try:
+                    await run_in_threadpool(destination_store.check, None)
+                except DriveDestinationError:
+                    return error(503, "storage_unavailable", "storage configuration is out of date")
+            return await save(request, agent, None, use_drive=drive is not None or delegated is not None)
         found = await run_in_threadpool(store.list, agent)  # counts comments too
         return JSONResponse([as_json(a) for a in found])
 
@@ -208,8 +335,11 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         agent = require_agent(store, request)
         artifact_id = request.path_params["id"]
         if request.method == "DELETE":
-            if await run_in_threadpool(store.delete, artifact_id, owner=agent):
-                return Response(status_code=204)
+            try:
+                if await run_in_threadpool(store.delete, artifact_id, owner=agent):
+                    return Response(status_code=204)
+            except DriveRetentionBlocked:
+                return error(409, "retention_unresolved", "Drive retention policy is unresolved")
         elif request.method == "PATCH":
             data = await json_body(request, {"title", "project", "section"})
             changes = {}
@@ -221,11 +351,35 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             if "section" in data:
                 v = data["section"]
                 changes["section"] = None if v is None else _title(v, "section")
-            edited = await _stored(store.edit, artifact_id, owner=agent, changes=changes)
+            try:
+                snapshot = (await run_in_threadpool(store.get_drive, artifact_id, owner=agent)
+                            if delegated is not None and "title" in changes else None)
+                if snapshot is not None:
+                    if set(changes) != {"title"}:
+                        return error(409, "storage_conflict", "Send Drive title changes separately from placement changes.")
+                    if config.drive_read_only:
+                        return error(503, "drive_read_only", "Google Drive writes are paused.")
+                    supplied = request.headers["authorization"].partition(" ")[2].strip()
+                    edited = await run_in_threadpool(rename_delegated, artifact_id, agent,
+                                                     hash_key(supplied), changes["title"])
+                else:
+                    edited = await _stored(store.edit, artifact_id, owner=agent, changes=changes)
+            except DriveGrantRequired:
+                return error(403, "drive_authorization_required", "Authorize Google Drive for the linked account.",
+                             authorization_url=config.public_url + "/auth/drive-access?return=/account")
+            except DriveAccessError:
+                return error(403, "drive_access_denied", "Ask your administrator to check Google Drive access.")
+            except DriveError:
+                return error(503, "storage_unavailable", "Drive rename unavailable. Retry only the same title.")
+            except DriveConflict:
+                return error(409, "storage_conflict", "Drive rename or placement is unresolved. Do not repeat it with different input.")
             if edited is not None:
                 return JSONResponse(as_json(edited))
-        elif store.get(artifact_id, owner=agent) is not None:
-            return await save(request, agent, artifact_id)
+        else:
+            # Replacing never moves an existing file to a different provider.
+            snapshot = await run_in_threadpool(store.get_with_drive, artifact_id, owner=agent)
+            if snapshot is not None:
+                return await save(request, agent, artifact_id, use_drive=snapshot[1] is not None)
         return error(404, "not_found", "no such artifact")
 
     async def projects(request: Request) -> Response:
@@ -237,29 +391,51 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         found = await run_in_threadpool(store.projects, agent)
         return JSONResponse([project_json(p) for p in found])
 
+    def project_closures(project_id: str, owner: str) -> dict[str, str]:
+        if not config.review_docs or delegated is None:
+            return {}
+        with store._conn() as db:
+            return pending_closures(db, owner, project_id=project_id)
+
     async def project(request: Request) -> Response:
         agent = require_agent(store, request)
         project_id = request.path_params["id"]
         if request.method == "DELETE":
             try:
-                deleted = await run_in_threadpool(store.delete_project, project_id, owner=agent)
+                if await run_in_threadpool(store.delete_project, project_id, owner=agent):
+                    return Response(status_code=204)
             except DeletionPending:
                 return error(409, "deletion_pending", "a file is still within its Undo window")
-            if deleted:
-                return Response(status_code=204)
+            except DriveRetentionBlocked:
+                return error(409, "retention_unresolved", "Drive retention policy is unresolved")
         elif request.method == "PATCH":
             data = await json_body(request, {"title"}, {"title"})
             title = _title(data["title"])
-            renamed = await run_in_threadpool(
-                store.rename_project, project_id, owner=agent, title=title
-            )
+            try:
+                if delegated is None:
+                    renamed = await run_in_threadpool(store.rename_project, project_id, owner=agent, title=title)
+                else:
+                    supplied = request.headers["authorization"].partition(" ")[2].strip()
+                    renamed = await run_in_threadpool(rename_project_delegated, project_id, agent, hash_key(supplied), title)
+            except DriveGrantRequired:
+                return error(403, "drive_authorization_required", "Authorize Google Drive for the linked account.",
+                             authorization_url=config.public_url + "/auth/drive-access?return=/account")
+            except DriveAccessError:
+                return error(403, "drive_access_denied", "Ask your administrator to check Google Drive access.")
+            except DriveError:
+                return error(503, "storage_unavailable", "Drive project rename unavailable. Retry only the same title.")
+            except DriveConflict:
+                return error(409, "storage_conflict", "Drive project rename is unavailable or unresolved.")
             if renamed is not None:
                 return JSONResponse(project_json(renamed))
         else:
             found = await run_in_threadpool(store.project, project_id, owner=agent)
             if found is not None:
                 p, files = found
-                return JSONResponse(project_json(p) | {"artifacts": [as_json(a) for a in files]})
+                closures = await run_in_threadpool(project_closures, project_id, agent)
+                artifacts = [as_json(a) | ({"review_closure": closures[a.id]} if a.id in closures else {})
+                             for a in files]
+                return JSONResponse(project_json(p) | {"artifacts": artifacts}, headers={"Cache-Control": "no-store"})
         return error(404, "not_found", "no such project")
 
     async def project_news(request: Request) -> Response:
@@ -281,13 +457,16 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         if found is None:
             return error(404, "not_found", "no such project")
         now, files = found
+        closures = await run_in_threadpool(project_closures, request.path_params["id"], agent)
         return JSONResponse(
             {
                 "now": now,
                 "files": [
-                    {"id": i, "title": t, "waiting": w, "accepted": a} for i, t, w, a in files
+                    {"id": i, "title": t, "waiting": w, "accepted": a}
+                    | ({"review_closure": closures[i]} if i in closures else {}) for i, t, w, a in files
                 ],
-            }
+            },
+            headers={"Cache-Control": "no-store"},
         )
 
     def on_disk(a: Artifact) -> bool:
@@ -298,26 +477,48 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         logging.getLogger(__name__).warning("file of %s's %r is missing", a.owner, a.name)
         return False
 
-    def live(request: Request) -> Artifact | None:
-        a = store.get(request.path_params["id"])
-        return a if a and on_disk(a) else None
+    def live(artifact_id: str) -> tuple[Artifact, DriveRevision | None] | None:
+        snapshot = store.get_with_drive(artifact_id)
+        if snapshot is None:
+            return None
+        artifact, revision = snapshot
+        return snapshot if revision is not None or on_disk(artifact) else None
 
     async def view(request: Request) -> Response:
-        a = live(request)
-        if a is None:
+        snapshot = live(request.path_params["id"])
+        if snapshot is None:
             return pages.not_found()
+        a, revision = snapshot
+        version_id = None
+        if revision is not None:
+            if delegated is not None:
+                version_id = await run_in_threadpool(store.drive_version_id, a, revision)
+                if version_id is None:
+                    return _storage_unavailable()
+            try:
+                temp = await materialize(request, a, revision)
+            except _ClientDisconnected:
+                return _DisconnectedResponse()
+            except DriveError as exc:
+                return drive_failure(request, exc)
+            temp.cleanup()
         kind = kinds.get(a.kind)
-        # "Open separately": the file at the raw origin, if there is one.
-        separate = f"{config.raw_url}/a/{a.id}/raw" if config.raw_url and kind.viewable else None
-        # A file in a project lists the project's files in its header: as
-        # open as the project, whose page anyone with the link may see.
+        separate = (f"{config.raw_url}/a/{a.id}/raw" if config.raw_url and kind.viewable
+                    and (revision is None or delegated is None) else None)
         project = None
         if a.project:
             project = await run_in_threadpool(store.public_project, a.project)
+        review_state = None
+        identity = getattr(request.state, "workspace_identity", None)
+        if version_id is not None and config.review_docs and identity is not None:
+            review_state = await run_in_threadpool(store.browser_review_state, a.id, identity.subject,
+                                                   read_only=config.drive_read_only)
         return pages.viewer_page(
             a, f"{config.public_url}/a/{a.id}", separate, project, store.clock(),
             workspace_author=_workspace_author(request),
             workspace_marker=getattr(request.state, "workspace_marker", None),
+            review_state=review_state,
+            version_id=version_id,
         )
 
     async def project_view(request: Request) -> Response:
@@ -329,54 +530,165 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
         return pages.project_page(p, files, f"{config.public_url}/p/{p.id}", store.clock(),
                                   workspace_author=_workspace_author(request))
 
+    def drive_failure(request: Request, exc: DriveError) -> Response:
+        if delegated is not None and isinstance(exc, DriveGrantRequired):
+            return RedirectResponse("/auth/drive-access?return=" + quote(request.url.path, safe="/"),
+                                    status_code=303, headers={"Cache-Control": "no-store"})
+        if delegated is not None and isinstance(exc, DriveAccessError):
+            return pages.message(403, "Google Drive could not open this file with your account. "
+                                 "Ask your administrator to check access.")
+        return _storage_unavailable()
+
+    async def materialize(request: Request, a: Artifact, revision: DriveRevision):
+        try:
+            if delegated is not None:
+                identity = getattr(request.state, "workspace_identity", None)
+                subject = identity.subject if identity is not None else None
+                return await _materialize_async(request, None, revision, a.size, config.max_file_bytes,
+                                                opener=lambda control: delegated.open(subject, control=control))
+            if drive is None:
+                raise DriveError("Drive transport unavailable")
+            return await _materialize_async(request, drive, revision, a.size, config.max_file_bytes)
+        except OSError:
+            raise DriveError("Drive materialization failed") from None
+
     async def raw(request: Request) -> Response:
-        a = live(request)
-        if a is None:
+        snapshot = live(request.path_params["id"])
+        if snapshot is None:
             return pages.not_found()
+        a, revision = snapshot
         kind = kinds.get(a.kind)
         if not kind.viewable:
-            return _download(store.storage, a.id, a.name)
+            return await download_snapshot(request, a, revision)
         if kind.sandboxed and request.headers.get("sec-fetch-dest") == "document":
-            # Opened on its own, a page would look like a page of this site;
-            # show it with the viewer's header instead. Images and PDFs open
-            # as they are, in the browser's own viewer.
             return RedirectResponse(f"/a/{a.id}", status_code=303)
-        return await content(a, kind)
+        return await content(request, a, revision, kind)
 
     async def raw_origin(request: Request) -> Response:
-        """Every request to the raw origin: /a/{id}/raw of a file that can be
-        shown, as it is, and 404 for anything else."""
         match = _RAW_PATH.fullmatch(request.scope["path"])
         if request.method not in ("GET", "HEAD") or match is None:
             return _raw_origin_not_found()
-        a = store.get(match[1])
-        if a is None or not on_disk(a):
+        snapshot = live(match[1])
+        if snapshot is None:
+            return _raw_origin_not_found()
+        a, revision = snapshot
+        if revision is not None and delegated is not None:
             return _raw_origin_not_found()
         kind = kinds.get(a.kind)
         if not kind.viewable:
             return _raw_origin_not_found()
-        response = await content(a, kind)
+        response = await content(request, a, revision, kind)
         return _raw_origin_not_found() if response.status_code == 404 else response
 
-    async def content(a: Artifact, kind: kinds.Kind) -> Response:
+    async def content(
+        request: Request, a: Artifact, revision: DriveRevision | None, kind: kinds.Kind,
+    ) -> Response:
         csp = pages.SANDBOX_CSP if kind.sandboxed else pages.RAW_CSP
         headers = {"Cache-Control": "no-store", "Content-Security-Policy": csp}
-        # Pages get the pin script: appended to HTML, inside the Markdown and
-        # text pages built here. Sent as they are read, so a big file is never
-        # whole in memory; the file is open already, a purge cannot cut it.
-        if kind.name in ("html", "md", "txt"):
+        temp = None
+        storage = store.storage
+        if revision is not None:
             try:
-                body, length = await run_in_threadpool(_prepare_page, store.storage, a)
-            except FileNotFoundError:  # purged since the lookup
-                return pages.not_found()
-            if length is not None:
-                headers["Content-Length"] = str(length)
-            return StreamingResponse(body, headers=headers, media_type="text/html")
-        return _disk_response(store.storage, a.id, media_type=kind.mime, headers=headers)
+                temp = await materialize(request, a, revision)
+            except _ClientDisconnected:
+                return _DisconnectedResponse()
+            except DriveError as exc:
+                return drive_failure(request, exc)
+            storage = temp
+        try:
+            if kind.name in ("html", "md", "txt"):
+                body, length = await run_in_threadpool(_prepare_page, storage, a)
+                if length is not None:
+                    headers["Content-Length"] = str(length)
+                response = StreamingResponse(body, headers=headers, media_type="text/html")
+            else:
+                response = _disk_response(storage, a.id, revision=revision, media_type=kind.mime,
+                                          headers=headers)
+            return _TemporaryResponse(response, temp) if temp is not None else response
+        except FileNotFoundError:
+            if temp is not None:
+                temp.cleanup()
+            return pages.not_found()
+        except BaseException:
+            if temp is not None:
+                temp.cleanup()
+            raise
+
+    async def download_snapshot(
+        request: Request, a: Artifact, revision: DriveRevision | None,
+    ) -> Response:
+        if revision is None:
+            return _download(store.storage, a.id, a.name)
+        try:
+            temp = await materialize(request, a, revision)
+        except _ClientDisconnected:
+            return _DisconnectedResponse()
+        except DriveError as exc:
+            return drive_failure(request, exc)
+        try:
+            return _TemporaryResponse(_download(temp, a.id, a.name, revision=revision), temp)
+        except BaseException:
+            temp.cleanup()
+            raise
 
     async def download(request: Request) -> Response:
-        a = live(request)
-        return pages.not_found() if a is None else _download(store.storage, a.id, a.name)
+        snapshot = live(request.path_params["id"])
+        if snapshot is None:
+            return pages.not_found()
+        return await download_snapshot(request, *snapshot)
+
+    def version_snapshot(request: Request) -> tuple[Artifact, DriveRevision] | None:
+        if config.workspace is None:
+            return None
+        return store.get_drive_version(request.path_params["id"], request.path_params["version"])
+
+    async def version_view(request: Request) -> Response:
+        snapshot = version_snapshot(request)
+        if snapshot is None:
+            return pages.not_found()
+        a, revision = snapshot
+        try:
+            temp = await materialize(request, a, revision)
+        except _ClientDisconnected:
+            return _DisconnectedResponse()
+        except DriveError as exc:
+            return drive_failure(request, exc)
+        temp.cleanup()
+        path = f"/a/{a.id}/versions/{request.path_params['version']}"
+        name = html.escape(a.name)
+        kind = kinds.get(a.kind)
+        sandbox = f' sandbox="{pages.SANDBOX}"' if kind.sandboxed else ""
+        frame = (f'<iframe title="{name}"{sandbox} src="{path}/raw"></iframe>'
+                 if kind.viewable else "")
+        return HTMLResponse(
+            f'<!doctype html><html lang="en"><head><meta charset="utf-8">'
+            f'<meta name="viewport" content="width=device-width, initial-scale=1">'
+            f'<link rel="stylesheet" href="/static/site.css"><title>{name}</title></head>'
+            f'<body><header><div class="name"><h1>{name}</h1></div>'
+            f'<div class="actions"><a href="{path}/download">Download</a></div></header>'
+            f'<div class="stage"><main>{frame}</main></div></body></html>',
+            headers={"Content-Security-Policy": pages.VIEWER_CSP, "Cache-Control": "no-store"},
+        )
+
+    async def version_raw(request: Request) -> Response:
+        snapshot = version_snapshot(request)
+        if snapshot is None:
+            return pages.not_found()
+        a, revision = snapshot
+        kind = kinds.get(a.kind)
+        if not kind.viewable:
+            return await download_snapshot(request, a, revision)
+        if kind.sandboxed and request.headers.get("sec-fetch-dest") == "document":
+            return RedirectResponse(
+                f"/a/{a.id}/versions/{request.path_params['version']}", status_code=303,
+            )
+        return await content(request, a, revision, kind)
+
+    async def version_download(request: Request) -> Response:
+        snapshot = version_snapshot(request)
+        if snapshot is None:
+            return pages.not_found()
+        return await download_snapshot(request, *snapshot)
 
     async def join(request: Request) -> Response:
         token = request.path_params["token"]
@@ -403,6 +715,15 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
     async def health(request: Request) -> Response:
         return Response("ok", media_type="text/plain")
 
+    def authorize_drive_review(artifact_id: str, subject: str) -> None:
+        assert delegated is not None
+        snapshot = store.get_with_drive(artifact_id)
+        if snapshot is None or snapshot[1] is None:
+            return  # missing and disk-backed items retain the existing review rules
+        control = DriveReadControl(time.monotonic() + _DRIVE_READ_BUDGET_SECONDS)
+        with delegated.open(subject, control=control) as storage:
+            storage.check_read_access(snapshot[1].file_id, control=control)
+
     @asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncIterator[None]:
         task = asyncio.create_task(_purge_forever(store))
@@ -418,10 +739,12 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
     if config.workspace is not None:
         auth_store = WorkspaceAuthStore(config.data_dir / "workspace-auth.sqlite", config.workspace)
         oidc = GoogleOIDC(config.workspace, config.public_url, config.raw_url)
-        main_auth = WorkspaceAuth(auth_store, oidc, origin=config.public_url, accounts=config.accounts)
+        main_auth = WorkspaceAuth(auth_store, oidc, origin=config.public_url, accounts=config.accounts,
+                                  drive_grants=grants)
         raw_auth = (WorkspaceAuth(auth_store, oidc, origin=config.raw_url, raw=True)
                     if config.raw_url else None)
-        middleware.append(Middleware(_WorkspaceAccess, main=main_auth, raw=raw_auth))
+        middleware.append(Middleware(_WorkspaceAccess, main=main_auth, raw=raw_auth,
+                                     review_permission=authorize_drive_review if delegated is not None else None))
     middleware.append(
         Middleware(_RawOrigin, host=urlsplit(config.raw_url).hostname, app_there=raw_origin)
     )
@@ -440,11 +763,18 @@ def create_app(config: Config, store: Store | None = None) -> Starlette:
             Route("/a/{id:artifact_id}", view),
             Route("/a/{id:artifact_id}/raw", raw),
             Route("/a/{id:artifact_id}/download", download),
+            Route("/a/{id:artifact_id}/versions/{version:artifact_id}", version_view),
+            Route("/a/{id:artifact_id}/versions/{version:artifact_id}/raw", version_raw),
+            Route("/a/{id:artifact_id}/versions/{version:artifact_id}/download", version_download),
             Route("/p/{id:artifact_id}", project_view),
             Route("/join/{token:invite_token}", join, methods=["GET", "POST"]),
             Mount("/static", StaticFiles(directory=pages.STATIC_DIR), name="static"),
             *admin_routes(store, config.public_url),
-            *comment_routes(store),
+            *comment_routes(store, drive_viewer=delegated is not None,
+                            versioned_reviews=config.review_docs and delegated is not None,
+                            read_only=config.drive_read_only),
+            *(report_routes(store, config.public_url, delegated, read_only=config.drive_read_only)
+              if config.review_docs and delegated is not None else []),
             *(AccountPages(store, config, main_auth).routes() if config.accounts else []),
         ],
         middleware=middleware,
@@ -505,8 +835,10 @@ def _raw_origin_not_found() -> Response:
     )
 
 
-_BROWSER_NAV = re.compile(rf"(?:/a/{ID_RE}|/p/{ID_RE}|/join/{TOKEN_RE})")
-_REVIEW_PATH = re.compile(rf"/a/{ID_RE}/(?:comments|drafts|review)(?:/.*)?")
+_BROWSER_NAV = re.compile(
+    rf"(?:/a/{ID_RE}(?:/versions/{ID_RE})?|/p/{ID_RE}|/join/{TOKEN_RE})"
+)
+_REVIEW_PATH = re.compile(rf"/a/({ID_RE})/(?:comments|drafts|review)(?:/.*)?")
 
 
 def _authority(value: str) -> tuple[str, int] | None:
@@ -526,10 +858,12 @@ def _authority(value: str) -> tuple[str, int] | None:
 class _WorkspaceAccess:
     """Authenticate browser paths and isolate both configured authorities."""
 
-    def __init__(self, app, main: WorkspaceAuth, raw: WorkspaceAuth | None) -> None:  # noqa: ANN001
+    def __init__(self, app, main: WorkspaceAuth, raw: WorkspaceAuth | None,  # noqa: ANN001
+                 review_permission: Callable[[str, str], None] | None = None) -> None:
         self.app = app
         self.main = main
         self.raw = raw
+        self.review_permission = review_permission
         self.main_authority = _authority(urlsplit(main.origin).netloc)
         self.raw_authority = _authority(urlsplit(raw.origin).netloc) if raw else None
         if (self.main_authority is None or (raw and self.raw_authority is None)
@@ -565,6 +899,8 @@ class _WorkspaceAccess:
                 "/auth/start": ("GET", auth.login),
                 "/auth/signed-out": ("GET", auth.sign_in),
             })
+            if auth.drive_grants is not None:
+                auth_routes["/auth/drive-access"] = ("GET", auth.drive_access)
         if path in auth_routes:
             expected, handler = auth_routes[path]
             response = (await handler(request) if method == expected else
@@ -609,7 +945,8 @@ class _WorkspaceAccess:
                 )
                 return
         marker = auth.page_marker(request)
-        if not auth.raw and _REVIEW_PATH.fullmatch(path):
+        review = _REVIEW_PATH.fullmatch(path) if not auth.raw else None
+        if review:
             markers = request.headers.getlist("x-workspace-session")
             if len(markers) != 1 or not hmac.compare_digest(
                 markers[0].encode("utf-8"), marker.encode("ascii")
@@ -621,6 +958,20 @@ class _WorkspaceAccess:
                 )
                 await response(scope, receive, send)
                 return
+            if self.review_permission is not None:
+                blocked = None
+                try:
+                    await run_in_threadpool(self.review_permission, review[1], identity.subject)
+                except DriveGrantRequired:
+                    blocked = error(403, "drive_authorization_required", "Authorize Google Drive to open this review.")
+                except DriveAccessError:
+                    blocked = error(403, "drive_access_denied", "Ask your administrator to check access to the Drive file.")
+                except DriveError:
+                    blocked = error(503, "storage_unavailable", "Drive is temporarily unavailable.")
+                if blocked is not None:
+                    blocked.headers["Cache-Control"] = "no-store"
+                    await blocked(scope, receive, send)
+                    return
         state = scope.setdefault("state", {})
         state["workspace_identity"] = identity
         state["workspace_marker"] = marker
@@ -693,6 +1044,137 @@ async def _purge_forever(store: Store) -> None:
         await asyncio.sleep(PURGE_INTERVAL_SECONDS)
 
 
+class _ClientDisconnected(Exception):
+    pass
+
+
+class _DisconnectedResponse(Response):
+    async def __call__(self, scope, receive, send) -> None:  # noqa: ANN001
+        return
+
+
+class _TemporaryStorage:
+    """One private, bounded Drive download, owned by one response."""
+
+    def __init__(self, directory: tempfile.TemporaryDirectory) -> None:
+        self.directory = directory
+        self.path = Path(directory.name) / "content"
+        self.opened = []
+
+    def open(self, artifact_id: str):
+        f = self.path.open("rb")
+        self.opened.append(f)
+        return f
+
+    def size(self, f):
+        return self.path.stat().st_size
+
+    def file_path(self, artifact_id: str) -> Path:
+        return self.path
+
+    def cleanup(self) -> None:
+        for f in self.opened:
+            f.close()
+        self.directory.cleanup()
+
+
+class _TemporaryResponse(Response):
+    def __init__(self, response: Response, storage: _TemporaryStorage) -> None:
+        super().__init__(status_code=response.status_code)
+        self.response = response
+        self.storage = storage
+
+    async def __call__(self, scope, receive, send) -> None:  # noqa: ANN001
+        try:
+            await self.response(scope, receive, send)
+        finally:
+            self.storage.cleanup()
+
+
+async def _materialize_async(
+    request: Request, drive: DriveStorage | None, revision: DriveRevision, expected_size: int,
+    max_bytes: int, *, opener: Callable[[DriveReadControl], AbstractContextManager[DriveStorage]] | None = None,
+) -> _TemporaryStorage:
+    control = DriveReadControl(time.monotonic() + _DRIVE_READ_BUDGET_SECONDS)
+
+    def read() -> _TemporaryStorage:
+        if opener is None:
+            return _materialize_revision(drive, revision, expected_size, max_bytes, control)
+        with opener(control) as authorized:
+            return _materialize_revision(authorized, revision, expected_size, max_bytes, control)
+
+    worker = asyncio.create_task(run_in_threadpool(read))
+
+    async def watch_disconnect() -> None:
+        while (await request.receive())["type"] != "http.disconnect":
+            pass
+
+    watcher = asyncio.create_task(watch_disconnect())
+
+    def finish_detached(task: asyncio.Task) -> None:
+        try:
+            storage = task.result()
+        except asyncio.CancelledError:
+            logging.getLogger(__name__).warning("detached Drive worker cancelled")
+        except Exception as exc:
+            logging.getLogger(__name__).warning("detached Drive worker: %s", type(exc).__name__)
+        else:
+            storage.cleanup()
+
+    detached = True
+    try:
+        done, _ = await asyncio.wait(
+            (worker, watcher), timeout=_DRIVE_READ_BUDGET_SECONDS,
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if watcher in done:
+            watcher.result()
+            raise _ClientDisconnected
+        if worker not in done:
+            raise DriveError("Drive read deadline exceeded")
+        result = worker.result()
+        detached = False
+        return result
+    finally:
+        watcher.cancel()
+        if detached:
+            control.stop()
+            worker.add_done_callback(finish_detached)
+
+
+def _materialize_revision(
+    drive: DriveStorage, revision: DriveRevision, expected_size: int, max_bytes: int,
+    control: DriveReadControl,
+) -> _TemporaryStorage:
+    control.check()
+    storage = _TemporaryStorage(tempfile.TemporaryDirectory(prefix="aa-drive-"))
+    try:
+        size = 0
+        with (
+            storage.path.open("wb") as out,
+            drive.open_revision(revision, control=control) as chunks,
+        ):
+            for chunk in chunks:
+                control.check()
+                size += len(chunk)
+                if size > max_bytes or size > expected_size:
+                    raise DriveError("Drive revision exceeds expected size")
+                out.write(chunk)
+        control.check()
+        if size != expected_size:
+            raise DriveError("Drive revision size mismatch")
+        return storage
+    except BaseException as exc:
+        storage.cleanup()
+        if isinstance(exc, OSError):
+            raise DriveError("Drive materialization failed") from None
+        raise
+
+
+def _storage_unavailable() -> Response:
+    return pages.message(503, "This file is temporarily unavailable.")
+
+
 def _prepare_page(storage: DiskStorage, artifact: Artifact) -> pages.Page:
     f = storage.open(artifact.id)
     try:
@@ -705,15 +1187,35 @@ def _prepare_page(storage: DiskStorage, artifact: Artifact) -> pages.Page:
         raise
 
 
-def _disk_response(storage: DiskStorage, artifact_id: str, **kwargs) -> Response:  # noqa: ANN003
-    return FileResponse(storage.file_path(artifact_id), **kwargs)
+class _DriveFileResponse(FileResponse):
+    """A temporary copy uses the committed revision, never spool timestamps, as validator."""
+
+    def set_stat_headers(self, stat_result) -> None:  # noqa: ANN001
+        self.headers.setdefault("content-length", str(stat_result.st_size))
+
+    def _should_use_range(self, http_if_range: str) -> bool:
+        return http_if_range == self.headers["etag"]
 
 
-def _download(storage: DiskStorage, artifact_id: str, name: str) -> Response:
+def _disk_response(
+    storage: DiskStorage, artifact_id: str, *, revision: DriveRevision | None = None, **kwargs,
+) -> Response:  # noqa: ANN003
+    if revision is None:
+        return FileResponse(storage.file_path(artifact_id), **kwargs)
+    value = json.dumps(["drive-blob-v1", revision.file_id, revision.revision_id],
+                       separators=(",", ":")).encode()
+    etag = '"' + hashlib.sha256(value).hexdigest() + '"'
+    kwargs["headers"] = {**kwargs.get("headers", {}), "ETag": etag}
+    return _DriveFileResponse(storage.file_path(artifact_id), **kwargs)
+
+
+def _download(
+    storage: DiskStorage, artifact_id: str, name: str, *, revision: DriveRevision | None = None,
+) -> Response:
     ascii_name = name.encode("ascii", "replace").decode().replace("?", "_")
     disposition = f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name)}"
     return _disk_response(
-        storage, artifact_id,
+        storage, artifact_id, revision=revision,
         media_type="application/octet-stream",
         headers={"Content-Disposition": disposition, "Cache-Control": "no-store"},
     )

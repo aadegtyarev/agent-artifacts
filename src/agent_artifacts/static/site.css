@@ -277,7 +277,12 @@ html:has(> body > .stage.zooms) { touch-action: pan-x pan-y; }
   box-shadow: 0 1px 3px var(--shadow-1), 0 0 0 0.5px var(--hair); }
 .seg .opt:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 .sfoot .towhom { margin: 0 0 10px; }
-.sfoot.typing .pill + .foot2, .sfoot.typing .towhom { display: none; }
+.close-review { display: flex; align-items: center; gap: 8px; min-height: 44px; font-size: 15px; }
+.close-review input { flex: none; accent-color: var(--blue); }
+.close-review-note { margin: 0 0 10px; }
+.review-summary-link { color: var(--blue); }
+.sfoot.typing .pill + .foot2, .sfoot.typing .towhom,
+.sfoot.typing .close-review, .sfoot.typing .close-review-note { display: none; }
 .general textarea { min-height: 60px; }
 
 /* Pins and badges: pin.css, shared with pins.js in a page. */

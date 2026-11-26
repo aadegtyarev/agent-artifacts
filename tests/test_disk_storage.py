@@ -46,6 +46,23 @@ def test_existing_disk_files_and_failed_replacement(tmp_path, monkeypatch):
         assert not (tmp_path / "files" / art.id).exists()
 
 
+@pytest.mark.parametrize("ttl", [0, -10])
+def test_nonpositive_ttl_disk_upload_and_project(tmp_path, ttl):
+    store = Store(tmp_path, max_total_bytes=10000, ttl_seconds=ttl)
+    key = store.add_agent("alice")
+    project = store.add_project("alice", "Project")
+    config = Config(data_dir=tmp_path, public_url="https://art.example.org", max_total_bytes=10000)
+    with TestClient(create_app(config, store)) as client:
+        headers = {"Authorization": f"Bearer {key}"}
+        response = client.post("/api/v1/artifacts", headers=headers,
+                               files={"file": ("a.txt", b"x")})
+        assert response.status_code == 404
+        response = client.post("/api/v1/artifacts", headers=headers,
+                               files={"file": ("b.txt", b"y")}, data={"project": project.id})
+        assert response.status_code == 201
+        assert response.json()["project"] == project.id
+
+
 def test_failed_staging_cleans_temporary(tmp_path):
     class Broken(io.BytesIO):
         def read(self, size=-1):

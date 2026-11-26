@@ -24,6 +24,7 @@ from starlette.routing import Route
 
 from . import kinds
 from .api import ApiError, error, iso, json_body, on_api_error, require_agent
+from .review_submissions import ReviewSubmission, SubmissionConflict, SubmissionUnavailable, pending_closures
 from .store import (
     ANSWERED,
     DECISIONS,
@@ -65,7 +66,8 @@ _AUTHOR_KEY_RE = re.compile(r"[A-Za-z0-9_-]{22}")
 _DRAFT_ID_RE = re.compile(r"[A-Za-z0-9_-]{11}")
 
 
-def comment_routes(store: Store) -> list[Route]:
+def comment_routes(store: Store, *, drive_viewer: bool = False, versioned_reviews: bool = False,
+                   read_only: bool = False) -> list[Route]:
     def artifact_kind(artifact_id: str) -> kinds.Kind:
         a = store.get(artifact_id)
         if a is None:
@@ -80,7 +82,18 @@ def comment_routes(store: Store) -> list[Route]:
         if found is None:
             raise _no_artifact()
         updated_at, comments = found
-        return _updated(_answer([_json(c) for c in comments]), updated_at)
+        response = _updated(_answer([_json(c) for c in comments]), updated_at)
+        identity = getattr(request.state, "workspace_identity", None)
+        if drive_viewer and identity is not None:
+            version_id = await run_in_threadpool(store.current_drive_version_id, artifact_id)
+            if version_id is not None:
+                response.headers["X-Artifact-Version"] = version_id
+        if versioned_reviews and identity is not None:
+            state = await run_in_threadpool(store.browser_review_state, artifact_id, identity.subject,
+                                            read_only=read_only)
+            if state is not None:
+                response.headers["X-Review-State"] = state
+        return response
 
     async def project_summary(request: Request) -> Response:
         # For the project page's dots; under /p, so the proxy does not
@@ -190,14 +203,31 @@ def comment_routes(store: Store) -> list[Route]:
         artifact_id, key = request.path_params["id"], _author_key(request)
         identity_author = _workspace_author(request)
         required = set() if identity_author else {"author"}
-        data = await json_body(request, {"author", "text", "agent"}, required)
+        allowed = {"author", "text", "agent"} | ({"submission"} if versioned_reviews else set())
+        data = await json_body(request, allowed, required, reject_ambiguous=True)
         author = identity_author or _author(data)
         text = _text(data["text"]) if "text" in data else None
         for_agent = _bool(data.get("agent", False), "agent")
+        submission = None
+        if "submission" in data:
+            identity = getattr(request.state, "workspace_identity", None)
+            if identity is None:
+                raise _no_artifact()
+            try:
+                submission = ReviewSubmission.parse(identity.subject, data["submission"])
+            except ValueError:
+                raise ApiError(400, "bad_request", "Invalid review submission.") from None
+            if submission.closing and read_only:
+                raise ApiError(503, "drive_read_only", "Google Drive writes are paused.")
         try:
             made = await run_in_threadpool(
-                store.publish, artifact_id, key, author=author, text=text, for_agent=for_agent
+                store.publish, artifact_id, key, author=author, text=text, for_agent=for_agent,
+                submission=submission,
             )
+        except SubmissionUnavailable:
+            raise ApiError(404, "review_unavailable", "Review or version not available.") from None
+        except SubmissionConflict:
+            raise ApiError(409, "review_conflict", "This review is already closed or the submission changed.") from None
         except NothingToPublish:
             raise ApiError(400, "bad_request", "no drafts and no text to publish") from None
         except TooManyComments:
@@ -238,7 +268,18 @@ def comment_routes(store: Store) -> list[Route]:
         if found is None:
             raise _no_artifact()
         updated_at, comments = found
-        return _updated(_answer([_json(c) for c in comments]), updated_at)
+        rows = [_json(c) for c in comments]
+        if request.query_params.get("watch") != "1":
+            return _updated(_answer(rows), updated_at)
+
+        def review_closure() -> str | None:
+            with store._conn() as db:
+                return pending_closures(db, agent, artifact_id=artifact_id).get(artifact_id)
+
+        closure = await run_in_threadpool(review_closure) if versioned_reviews else None
+        response = _updated(_answer({"comments": rows, "review_closure": closure}), updated_at)
+        response.headers["Cache-Control"] = "no-store"
+        return response
 
     async def owner_take(request: Request) -> Response:
         agent = require_agent(store, request)

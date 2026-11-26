@@ -9,6 +9,10 @@ services:
       AA_PUBLIC_URL: ${AA_PUBLIC_URL:?set AA_PUBLIC_URL, e.g. https://art.example.org}
       AA_RAW_URL: ${AA_RAW_URL:-}
       AA_ACCOUNTS: ${AA_ACCOUNTS:-0}
+      AA_DRIVE_FOLDER_ID: ${AA_DRIVE_FOLDER_ID:-}
+      AA_DRIVE_FOLDER_KIND: ${AA_DRIVE_FOLDER_KIND:-shared-drive}
+      AA_DRIVE_READ_ONLY: ${AA_DRIVE_READ_ONLY:-0}
+      AA_REVIEW_DOCS: ${AA_REVIEW_DOCS:-0}
     volumes:
       - data:/data
     read_only: true

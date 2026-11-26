@@ -48,7 +48,8 @@ def require_admin(store: Store, request: Request) -> str:
 
 
 async def json_body(
-    request: Request, allowed: Set[str], required: Set[str] = frozenset(), *, strict: bool = True
+    request: Request, allowed: Set[str], required: Set[str] = frozenset(), *, strict: bool = True,
+    reject_ambiguous: bool = False,
 ) -> dict:
     """The request's JSON object, with only ``allowed`` keys and all ``required``.
 
@@ -58,7 +59,7 @@ async def json_body(
     them and they have always taken any body, so their answers stay as they were.
     """
     if not strict:
-        return _json_object(await request.body(), allowed, required)
+        return _json_object(await request.body(), allowed, required, reject_ambiguous=reject_ambiguous)
     ctype = request.headers.get("content-type", "").partition(";")[0].strip().lower()
     if ctype != "application/json":
         raise ApiError(400, "bad_request", "Content-Type must be application/json")
@@ -73,13 +74,25 @@ async def json_body(
         body += chunk
         if len(body) > MAX_BODY_BYTES:
             raise ApiError(413, "too_large", f"limit is {MAX_BODY_BYTES} bytes")
-    return _json_object(bytes(body), allowed, required)
+    return _json_object(bytes(body), allowed, required, reject_ambiguous=reject_ambiguous)
 
 
-def _json_object(body: bytes, allowed: Set[str], required: Set[str]) -> dict:
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict:
+    data = dict(pairs)
+    if len(data) != len(pairs):
+        raise ValueError("duplicate object key")
+    return data
+
+
+def _reject_constant(_: str) -> None:
+    raise ValueError("nonstandard JSON constant")
+
+
+def _json_object(body: bytes, allowed: Set[str], required: Set[str], *, reject_ambiguous: bool = False) -> dict:
     """``body`` parsed as a JSON object, with only ``allowed`` keys and all ``required``."""
     try:
-        data = json.loads(body)
+        options = {"object_pairs_hook": _unique_json_object, "parse_constant": _reject_constant} if reject_ambiguous else {}
+        data = json.loads(body, **options)
     except (ValueError, RecursionError):  # RecursionError: nested too deep
         data = None
     if not isinstance(data, dict) or not required <= set(data) <= allowed or not data:

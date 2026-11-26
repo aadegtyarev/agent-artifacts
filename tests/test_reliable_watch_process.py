@@ -30,7 +30,7 @@ def test_collector_interval(tmp_path, monkeypatch, options, interval):
         url = origin
 
         def send(self, method, path):
-            assert (method, path) == ("GET", f"/api/v1/artifacts/{TARGET}/comments")
+            assert (method, path) == ("GET", f"/api/v1/artifacts/{TARGET}/comments?watch=1")
             return "[]"
 
     def after_poll(seconds):
@@ -51,7 +51,7 @@ def test_collector_reader_crash_retry_and_scope_lock(tmp_path):
             fixture["requests"].append(
                 (self.path, self.headers.get("Authorization"), fixture["status"])
             )
-            assert self.path == f"/api/v1/artifacts/{TARGET}/comments"
+            assert self.path == f"/api/v1/artifacts/{TARGET}/comments?watch=1"
             body = json.dumps(fixture["comments"]).encode()
             self.send_response(fixture["status"])
             self.end_headers()

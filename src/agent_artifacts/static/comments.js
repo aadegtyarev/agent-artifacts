@@ -64,13 +64,17 @@
       try { localStorage.setItem(key, value); } catch { stored = false; }
     },
   };
+  function newRandomId() {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").slice(0, 22);
+  }
+
   const NAME_KEY = "agent-artifacts:name";
   const AUTHOR_KEY = "agent-artifacts:author-key";
   let authorKey = workspaceAuthor ? null : storage.get(AUTHOR_KEY);
   if (!workspaceAuthor) {
     if (!/^[A-Za-z0-9_-]{22}$/.test(authorKey || "")) {
-      const bytes = crypto.getRandomValues(new Uint8Array(16));
-      authorKey = btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").slice(0, 22);
+      authorKey = newRandomId();
       storage.set(AUTHOR_KEY, authorKey);
       if (storage.get(AUTHOR_KEY) !== authorKey) stored = false;
     }
@@ -100,6 +104,9 @@
     edit: null,
     // Finish review sends to the agent, or only publishes
     toAgent: true,
+    reviewState: sheet.dataset.reviewState || null,
+    finalRound: false,
+    submission: null,
     // the list's folded groups (Discussion, Closed) opened by a tap
     opened: new Set(),
     // the list's order of keys while one item is shown, so ‹ › keep it
@@ -145,6 +152,9 @@
         too_many_drafts: "This file has too many drafts. Delete a draft and try again.",
         too_many_comments: "This file cannot hold more comments. Remove a new comment and try again.",
         too_many_replies: "This comment cannot hold more replies. Remove a reply and try again.",
+        review_conflict: "This review may already be closed. Reload to check.",
+        review_unavailable: "This version or review is no longer available here.",
+        drive_read_only: "Closing reviews is paused. You can still send feedback.",
       };
       if (typeof e.code === "string" && Object.hasOwn(limits, e.code)) next = limits[e.code];
     }
@@ -188,8 +198,15 @@
   // header tells when the file was last uploaded.
   async function fetchComments() {
     const { data, headers } = await exchange("GET", "/comments");
-    noteFile(headers.get("X-Artifact-Updated"));
-    return data;
+    noteFile(headers.get("X-Artifact-Updated"), headers.get("X-Artifact-Version"));
+    return { comments: data, reviewState: headers.get("X-Review-State") };
+  }
+
+  function applyReviewState(state) {
+    if (state === S.reviewState) return false;
+    S.reviewState = state;
+    if (state !== "closable") S.finalRound = false;
+    return true;
   }
 
   async function load() {
@@ -202,7 +219,8 @@
       return;
     }
     if (mine !== generation) return; // something newer has landed meanwhile
-    const [comments, drafts] = found;
+    const [{ comments, reviewState }, drafts] = found;
+    applyReviewState(reviewState);
     S.comments = comments;
     S.loaded = true;
     // Pending deletes and edits go by id, so they hold across this.
@@ -573,7 +591,9 @@
       const all = items();
       const drafts = all.filter((i) => i.draft).length;
       const out = [titled(pending ? "Loading comments…" : all.length ? `Comments · ${all.length}` : "No comments yet", addComment)];
-      if (!pending && !all.length) {
+      const result = reviewResultNote();
+      if (result) out.push(result);
+      if (!pending && !all.length && !result) {
         out.push(el("p", "empty", S.mode && canPin()
           ? pinHint()
           : S.mode ? "Nobody has commented yet." : "Use Add comment to start."));
@@ -610,7 +630,7 @@
         out.push(add);
       }
       if (!stored && (S.mode || drafts)) out.push(el("p", "note", "This browser keeps nothing: your drafts last only while this page is open."));
-      return [out, review ? [finishBar(review)] : []];
+      return [out, review || S.reviewState === "closable" ? [finishBar(review)] : []];
     },
 
     item() {
@@ -696,7 +716,8 @@
         ? i.c.agent === "asked" || model.proposalCanApprove(i.c)
         : ["done", "wrote", "asked"].includes(i.c.agent) || i.pend));
       const accepting = (i) => (decisionOn(i.c.n) || {}).kind === "accept";
-      const out = [titled(`Finish review · ${count}`)];
+      const closable = S.reviewState === "closable";
+      const out = [titled(count || !closable ? `Finish review · ${count}` : "Finish review")];
       if (undecided.length) {
         const sec = el("div", "sec-row");
         sec.append(el("p", "sec", `Not decided yet · ${undecided.length}`));
@@ -706,7 +727,7 @@
         for (const it of undecided) out.push(row(it, status(it)));
         out.push(el("p", "sec", "In this review"));
       }
-      if (!count) out.push(el("p", "empty", "No drafts: you can publish a general comment only."));
+      if (!count && !closable) out.push(el("p", "empty", "No drafts: you can publish a general comment only."));
       for (const it of drafts) out.push(row(it, where(it)));
       for (const it of touched.filter((i) => !accepting(i))) out.push(row(it, status(it)));
       for (const it of touched.filter(accepting)) out.push(row(it, status(it)));
@@ -716,10 +737,33 @@
       const bar = el("div", "foot2");
       const done = button("Finish review", () => finish(), "btn pri big");
       finishButton = done;
-      done.disabled = sending || (!count && !fields.general.value.trim());
       bar.append(button("Back", () => go("list", "m")), done);
-      // The choice stays in sight next to the button it changes.
-      return [out, [toWhom(), bar]];
+      const recipient = toWhom();
+      const footer = [recipient, bar];
+      const updateAction = () => {
+        done.textContent = S.finalRound ? "Close review" : "Finish review";
+        done.disabled = sending || (!S.finalRound && !count && !fields.general.value.trim());
+        recipient.hidden = S.finalRound;
+      };
+      if (closable) {
+        const choice = el("label", "close-review");
+        const input = el("input");
+        input.type = "checkbox";
+        input.checked = S.finalRound;
+        input.disabled = sending;
+        input.addEventListener("change", () => {
+          if (sending) { input.checked = S.finalRound; return; }
+          S.finalRound = input.checked;
+          updateAction();
+        });
+        choice.append(input, "This is the final round");
+        const help = el("p", "note close-review-note", "The agent will write a summary, not make more changes.");
+        help.id = "close-review-note";
+        input.setAttribute("aria-describedby", help.id);
+        footer.unshift(choice, help);
+      }
+      updateAction();
+      return [out, footer];
     },
   };
 
@@ -889,8 +933,21 @@
 
   function finishBar(count) {
     const bar = el("div", "foot2");
-    bar.append(button(`Finish review · ${count}`, () => openFinish(), "btn pri"));
+    bar.append(button(count ? `Finish review · ${count}` : "Finish review", () => openFinish(), "btn pri"));
     return bar;
+  }
+
+  function reviewResultNote() {
+    if (S.reviewState === "pending") return el("p", "note", "Review closed. The agent will write the summary.");
+    const id = /^ready:([A-Za-z0-9_-]{1,1024})$/.exec(S.reviewState || "")?.[1];
+    if (!id) return null;
+    const note = el("p", "note", "Review closed. ");
+    const link = el("a", "review-summary-link", "Read the summary");
+    link.href = `https://docs.google.com/document/d/${id}/edit`;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    note.append(link);
+    return note;
   }
 
   // --- Pins ----------------------------------------------------------------------
@@ -1577,7 +1634,8 @@
       toast("Still saving your decisions. Try again.");
       return;
     }
-    if (!reviewCount() && !fields.general.value.trim()) return;
+    const closing = S.reviewState === "closable" && S.finalRound;
+    if (!closing && !reviewCount() && !fields.general.value.trim()) return;
     if (name === null) {
       if (dialog.hidden) askName(() => finish());
       return;
@@ -1597,13 +1655,22 @@
       const payload = { author: name || "" };
       // Omitted when empty: the review is then the drafts alone.
       if (general.trim()) payload.text = general;
-      if (S.toAgent) payload.agent = true;
+      if (S.toAgent && !closing) payload.agent = true;
+      if (S.reviewState && sheet.dataset.version) {
+        const version = sheet.dataset.version;
+        const scope = JSON.stringify([version, !!closing, payload]);
+        if (S.submission?.scope !== scope) S.submission = { id: newRandomId(), scope };
+        payload.submission = { id: S.submission.id, version, close: !!closing };
+      }
       const drafts = liveDrafts();
       const onlyProposalApprovals = !general.trim() && drafts.length > 0 && drafts.every((d) =>
         d.kind === "approve" && S.comments.some((c) => c.n === d.of && c.by_agent));
-      const sent = S.toAgent && !onlyProposalApprovals;
+      const sent = S.toAgent && !onlyProposalApprovals && !closing;
       const made = await call("POST", "/review", payload);
       S.toAgent = true;
+      S.finalRound = false;
+      S.submission = null;
+      if (closing) S.reviewState = "pending";
       changed();
       // The comments it made or touched take their new state; accepted ones
       // are closed and leave.
@@ -1619,7 +1686,7 @@
       S.view = "list";
       S.pos = "strip";
       render();
-      toast(sent ? "Review sent to the agent" : "Review published");
+      toast(closing ? "Review closed" : sent ? "Review sent to the agent" : "Review published");
       // The server's word on what each comment is now (an acceptance it
       // dropped, say).
       load();
@@ -1629,7 +1696,7 @@
       load();
     } finally {
       sending = false;
-      if (finishButton && finishButton.isConnected) finishButton.disabled = !reviewCount() && !fields.general.value.trim();
+      if (finishButton && finishButton.isConnected) finishButton.disabled = !S.finalRound && !reviewCount() && !fields.general.value.trim();
     }
   }
 
@@ -1691,7 +1758,7 @@
       body.scrollTop = scroll + added;
     } else grow(area);
     const done = finishButton;
-    if (done && done.isConnected) done.disabled = sending || (!reviewCount() && !area.value.trim());
+    if (done && done.isConnected) done.disabled = sending || (!S.finalRound && !reviewCount() && !area.value.trim());
   });
   fields.compose.addEventListener("keydown", (e) => {
     if (e.key !== "Enter" || e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
@@ -1915,6 +1982,20 @@
         { error: true, ms: 10000 });
       return;
     }
+    const nextVersion = sheetThere?.dataset.version;
+    let nextRaw = null;
+    if (sheet.dataset.version) {
+      if (!/^[A-Za-z0-9_-]{22}$/.test(nextVersion || "")) {
+        toast("Could not load the new file. Try again.", { error: true });
+        return;
+      }
+      if (nextVersion !== sheet.dataset.version && (reviewCount() || fields.general.value.trim() ||
+          (S.compose && fields.compose.value.trim()) || fields.reply.value.trim() || S.edit || sending)) {
+        toast("Send or discard your draft review before showing the new version.", { error: true });
+        return;
+      }
+      nextRaw = `/a/${artifact}/versions/${nextVersion}/raw`;
+    }
     if ((!content && !img) || !sheetThere || sheetThere.dataset.kind !== sheet.dataset.kind) {
       const editing = S.edit && draftById(S.edit);
       if ((S.compose && fields.compose.value) || fields.reply.value ||
@@ -1942,20 +2023,31 @@
     if (fresh.title) document.title = fresh.title;
     banner.hidden = true;
     fileAt = null;
+    if (nextRaw) {
+      sheet.dataset.version = nextVersion;
+      const download = $("share-download");
+      if (download) download.href = `/a/${artifact}/versions/${nextVersion}/download`;
+      const link = $("image-link");
+      if (link) link.href = nextRaw;
+    }
     // Replaced, not pushed: Back still leaves the viewer in one step.
     // Without a #fragment, which would only move within the old content.
-    if (content) content.contentWindow.location.replace(content.src.split("#")[0]);
-    else {
+    if (content) {
+      if (nextRaw) content.dataset.reviewRaw = nextRaw;
+      content.contentWindow.location.replace(nextRaw || content.src.split("#")[0]);
+    } else {
       const again = fresh.getElementById("image");
       if (again) img.alt = again.alt;
-      img.src = `${img.src.split("?")[0]}?v=${Date.now()}`;
+      img.src = nextRaw || `${img.src.split("?")[0]}?v=${Date.now()}`;
     }
     load();
   }
-  // The first answer sets what the page shows; a later different one means
-  // the file was replaced.
-  function noteFile(at) {
-    if (at && fileAt === null) fileAt = at;
+  // Compare Drive revision IDs rather than times; an upload can occur
+  // between opening the page and the very first discussion poll.
+  function noteFile(at, latest) {
+    if (sheet.dataset.version && latest) {
+      if (latest !== sheet.dataset.version) { placeBanner(); banner.hidden = false; }
+    } else if (at && fileAt === null) fileAt = at;
     else if (at && at !== fileAt) { placeBanner(); banner.hidden = false; }
   }
   let pollSeq = 0;
@@ -1977,10 +2069,11 @@
       }
       return;
     }
-    if (mine !== generation || seq !== pollSeq || !Array.isArray(data)) return;
-    if (S.loaded && JSON.stringify(data) === JSON.stringify(S.comments)) return;
+    if (mine !== generation || seq !== pollSeq || !Array.isArray(data?.comments)) return;
+    const statusChanged = applyReviewState(data.reviewState);
+    if (S.loaded && !statusChanged && JSON.stringify(data.comments) === JSON.stringify(S.comments)) return;
     S.loaded = true;
-    S.comments = data;
+    S.comments = data.comments;
     if (S.sel && !items().some((i) => i.key === S.sel)) unselect();
     render();
   }

@@ -128,10 +128,17 @@ def viewer_page(
     now: float = 0,
     workspace_author: str | None = None,
     workspace_marker: str | None = None,
+    review_state: str | None = None,
+    version_id: str | None = None,
 ) -> HTMLResponse:
     """The page at /a/{id}: a one-line header and the content below.
-    ``separate`` is the file at the raw origin, for "Open separately";
-    ``project``, the file's project and its files, for the header's list."""
+
+    A Drive viewer loads its displayed revision even if the shared file is
+    replaced after this response. The page URL and comment scope stay stable.
+    """
+    content_path = f"/a/{a.id}"
+    if version_id is not None:
+        content_path += f"/versions/{version_id}"
     page = _page(
         "viewer.html",
         VIEWER_CSP,
@@ -140,9 +147,12 @@ def viewer_page(
         workspace_author=workspace_author,
         workspace_marker=workspace_marker,
         separate=separate,
+        review_state=review_state,
         a=a,
         url=url,
-        raw=f"/a/{a.id}/raw",
+        raw=f"{content_path}/raw",
+        download=f"{content_path}/download",
+        version_id=version_id,
         kind=kinds.get(a.kind),
         sandbox=SANDBOX,
         size=size(a.size),
@@ -204,10 +214,11 @@ def account_page(template: str, status: int, **context: object) -> HTMLResponse:
 
 
 def sign_in_page(domain: str, destination: str, *, email: str | None = None,
-                 title: str = "Sign in", status: int = 200, account_mode: bool = False) -> HTMLResponse:
+                 title: str = "Sign in", status: int = 200, account_mode: bool = False,
+                 drive_consent: bool = False) -> HTMLResponse:
     response = _page(
         "sign-in.html", SIGN_IN_CSP, status, title=title, domain=domain,
-        destination=destination, email=email, retry=status >= 400, account_mode=account_mode,
+        destination=destination, email=email, drive_consent=drive_consent, retry=status >= 400, account_mode=account_mode,
     )
     # Don't send the callback query to subresources. Only the signed-in
     # landing page needs a same-origin policy for the logout form's Origin.

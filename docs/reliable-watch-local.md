@@ -56,10 +56,19 @@ goes to stderr when writable. Both readers are independent of the collector
 and do not change legacy `wait` behavior.
 
 When resuming an interrupted review, run `artifacts watch recover URL` to read
-the numbers of open `working` threads. It does not take, close, reassign or
-acknowledge them. On a project it reads only files reporting open comments,
-with pacing between requests. Decide which work to resume in the receiving
+the numbers of open `working` threads and any pending Workspace reports. It
+does not take, close, reassign or acknowledge them. On a project the file
+list includes outstanding closure IDs, even for files without comments. It
+fetches individual threads only for files reporting open comments, with
+pacing between requests. Decide which work to resume in the receiving
 session. When migrating a link, stop its previous watcher before starting
 the supervised collector and receiver. Confirm the collector's last
 successful poll, pending count, and Pi recipient with `watch status`.
 Stopping or rebinding a process does not delete the local journal.
+
+A `review_closed` notice contains the artifact and closing publication IDs
+(and the project ID for a project watch). It is not an edit request. Confirm
+it with `artifacts review-source ID`; use `review-evidence ID CLOSURE N` to
+read a captured thread without later replies. The closing publication remains recoverable after an acknowledgment until the
+server verifies the native Doc. Restart an old collector after updating the
+skill so it can read the new event; keep its journal.

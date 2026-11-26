@@ -546,8 +546,8 @@ def test_viewer_page_has_every_element_its_scripts_use(env):
     }
     # The data the comments script reads from the sheet.
     datasets = set(re.findall(r"sheet\.dataset\.(\w+)", (static / "comments.js").read_text()))
-    assert datasets == {"artifact", "count", "kind", "pin", "pos", "workspaceAuthor",
-                        "workspaceMarker"}
+    assert datasets == {"artifact", "count", "kind", "pin", "pos", "reviewState", "version",
+                        "workspaceAuthor", "workspaceMarker"}
     # Shown only for images, or only for pages in a frame.
     image_only = {"image", "image-box", "image-link", "pins"}
     for filename, data, missing in (
@@ -577,6 +577,7 @@ def test_viewer_page_has_every_element_its_scripts_use(env):
             "toast-undo",
         } <= ids, filename
         assert f'data-artifact="{art["id"]}"' in page
+        assert "data-review-state=" not in page and "data-version=" not in page
         # The theme is applied in <head>, before the body is drawn.
         head = page.split("</head>", 1)[0]
         assert re.search(r'<script src="/static/theme\.js\?v=\w+"></script>', head)

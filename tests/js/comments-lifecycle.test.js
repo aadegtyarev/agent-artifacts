@@ -12,7 +12,8 @@ test('completed poll does not acknowledge; explicit visible open redraws strip a
   const context = { document: { visibilityState: 'visible', activeElement: null },
     S: { comments: [], sel: 'c1', view: 'item', pos: 'm', edit: null, compose: null, order: ['c1'] },
     pollStopped: false, sending: false, fields: { reply: { value: '' } }, generation: 0, pollSeq: 0,
-    fetchComments: async () => [c], items: () => [{ key: 'c1' }], itemOf: () => ({ c }),
+    fetchComments: async () => ({ comments: [c], reviewState: null }), applyReviewState: () => false,
+    items: () => [{ key: 'c1' }], itemOf: () => ({ c }),
     markSeen: () => { unread = 0; marked++; }, ordered: () => [{ key: 'c1' }],
     go: () => { strip = unread; pin = unread; }, toChatEnd() {}, revealSoon() {}, protectRetainedCompose: () => false,
     render: () => { strip = unread; pin = unread; }, body: {}, desk: { matches: false },
@@ -168,10 +169,11 @@ test('comment attention follows Need you rather than draft or total counts', () 
   }
 });
 
-test('pending list keeps whole-file compose, local drafts and Finish review on both layouts', () => {
-  for (const desktop of [false, true]) for (const review of [0, 1]) {
+test('discussion shows a confirmed result without changing draft and review actions', () => {
+  for (const desktop of [false, true]) for (const review of [0, 1]) for (const hasResult of [false, true]) {
     const draft = { draft: true };
     const context = { S: { loaded: false, mode: true }, sheet: { dataset: { count: '1' } },
+      reviewResultNote: () => hasResult ? 'Review closed. Read the summary' : null,
       desk: { matches: desktop }, stored: true, titled: text => text, addComment: {}, reviewCount: () => review,
       items: () => review ? [draft] : [], groups: () => review ? [{ id: 'drafts', title: 'Drafts', items: [draft] }] : [],
       FOLDED: new Set(), row: () => 'draft row', status: () => '', finishBar: () => 'Finish review',
@@ -183,8 +185,31 @@ test('pending list keeps whole-file compose, local drafts and Finish review on b
     assert.equal(content[0], 'Loading comments…');
     assert.ok(content.some(node => node && node.child === '+ About the whole file'));
     assert.equal(content.includes('draft row'), !!review);
+    assert.equal(content.includes('Review closed. Read the summary'), hasResult);
     assert.equal(footer.includes('Finish review'), !!review);
   }
+});
+
+test('report readiness alone redraws the existing discussion and only then links to the Doc', async () => {
+  const rendered = [];
+  const context = { S: { loaded: true, comments: [], reviewState: 'pending' },
+    document: { visibilityState: 'visible', activeElement: null }, fields: {},
+    pollStopped: false, sending: false, generation: 0, pollSeq: 0,
+    fetchComments: async () => ({ comments: [], reviewState: 'ready:example-id' }),
+    render: () => rendered.push(context.reviewResultNote()),
+    el: (tag, cls, text) => ({ tag, text, append(node) { this.link = node; } }) };
+  vm.createContext(context);
+  vm.runInContext(part('  function applyReviewState(', '  async function load()'), context);
+  vm.runInContext(part('  function reviewResultNote()', '  // --- Pins'), context);
+  vm.runInContext(part('  async function poll()', '  setInterval(poll'), context);
+  assert.equal(context.reviewResultNote().link, undefined);
+  await context.poll();
+  assert.equal(rendered.length, 1);
+  assert.equal(rendered[0].link.text, 'Read the summary');
+  assert.equal(rendered[0].link.href, 'https://docs.google.com/document/d/example-id/edit');
+  assert.equal(rendered[0].link.rel, 'noopener noreferrer');
+  context.S.reviewState = 'ready:../../outside';
+  assert.equal(context.reviewResultNote(), null);
 });
 
 test('Workspace picking works without the anonymous name dialog', () => {
