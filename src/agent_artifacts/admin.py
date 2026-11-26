@@ -14,7 +14,7 @@ from starlette.routing import Route
 
 from .api import ApiError, iso, json_body, require_admin, user_json
 from .config import MB
-from .store import NAME_RE, Invite, NameTaken, Store
+from .store import NAME_RE, DriveRetentionBlocked, Invite, NameTaken, Store
 
 HOUR = 3600
 DAY = 24 * HOUR
@@ -51,7 +51,12 @@ def admin_routes(store: Store, public_url: str) -> list[Route]:
         if request.method == "DELETE":
             if name == admin:
                 raise ApiError(400, "bad_request", "an admin cannot remove its own key")
-            await run_in_threadpool(store.remove_agent, name)
+            try:
+                await run_in_threadpool(store.remove_agent, name)
+            except DriveRetentionBlocked:
+                raise ApiError(
+                    409, "retention_unresolved", "Drive retention policy is unresolved"
+                ) from None
             return Response(status_code=204)
         data = await json_body(request, {"quota_bytes"}, {"quota_bytes"}, strict=False)
         quota = data["quota_bytes"]

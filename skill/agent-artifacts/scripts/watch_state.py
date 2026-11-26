@@ -49,10 +49,17 @@ def _number(value):
 
 def _event(event, kind, target):
     # Construct an allowlisted record; never serialize arbitrary server data.
-    if not isinstance(event, dict) or event.get("event") not in ("waiting", "accepted"):
+    if not isinstance(event, dict) or event.get("event") not in ("waiting", "accepted", "review_closed"):
         raise ValueError("invalid event")
     name = event["event"]
-    if kind == "a":
+    if name == "review_closed":
+        keys = {"event", "artifact", "closure"} | ({"project"} if kind == "p" else set())
+        if set(event) != keys or event.get("project" if kind == "p" else "artifact") != target:
+            raise ValueError("invalid review event scope")
+        result = {"event": name, "artifact": _id(event["artifact"]), "closure": _id(event["closure"])}
+        if kind == "p":
+            result["project"] = target
+    elif kind == "a":
         if set(event) != {"event", "comments"} or not isinstance(event["comments"], list):
             raise ValueError("invalid file event")
         comments = event["comments"]
@@ -93,6 +100,7 @@ def _checkpoint(state):
         "since": state.since,
         "accepted": {_id(fid): _number(n) for fid, n in state.accepted.items()},
         "next_detail": None if state.next_detail is None else _id(state.next_detail),
+        "review_closures": {_id(fid): _id(closure) for fid, closure in state.review_closures.items()},
     }
     encoded = json.dumps(data, separators=(",", ":"), allow_nan=False)
     if len(encoded.encode()) > MAX_CHECKPOINT_BYTES:
@@ -114,6 +122,7 @@ def _restore(state, encoded):
         data["accepted"],
         data["next_detail"],
     )
+    state.review_closures = {_id(fid): _id(closure) for fid, closure in data.get("review_closures", {}).items()}
 
 
 def _origin(origin):

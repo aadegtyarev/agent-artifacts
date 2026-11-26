@@ -20,6 +20,18 @@ class WorkspaceConfig:
 
 
 @dataclass(frozen=True)
+class DriveFolderConfig:
+    folder_id: str
+    folder_kind: str = "shared-drive"
+
+    def __post_init__(self) -> None:
+        if not re.fullmatch(r"[A-Za-z0-9_-]{10,256}", self.folder_id):
+            raise ValueError("AA_DRIVE_FOLDER_ID must be a folder ID, not a URL")
+        if self.folder_kind not in ("my-drive", "shared-drive"):
+            raise ValueError("AA_DRIVE_FOLDER_KIND must be my-drive or shared-drive")
+
+
+@dataclass(frozen=True)
 class Config:
     data_dir: Path
     public_url: str
@@ -31,10 +43,19 @@ class Config:
     raw_url: str = ""
     workspace: WorkspaceConfig | None = None
     accounts: bool = False
+    drive: DriveFolderConfig | None = None
+    drive_read_only: bool = False
+    review_docs: bool = False
 
     def __post_init__(self) -> None:
         if self.accounts:
             check_https_origin(self.public_url, "AA_PUBLIC_URL", "with accounts enabled")
+        if self.drive is not None and (self.workspace is None or not self.accounts):
+            raise ValueError("Drive storage requires Workspace sign-in and accounts")
+        if self.drive_read_only and self.drive is None:
+            raise ValueError("Drive read-only mode requires configured Workspace Drive storage")
+        if self.review_docs and self.drive is None:
+            raise ValueError("Docs review reports require configured Workspace Drive storage")
 
     @classmethod
     def from_env(cls) -> Config:
@@ -45,12 +66,23 @@ class Config:
         accounts = env.get("AA_ACCOUNTS", "0")
         if accounts not in ("0", "1"):
             raise ValueError("AA_ACCOUNTS must be 0 or 1")
+        read_only = env.get("AA_DRIVE_READ_ONLY", "0")
+        if read_only not in ("0", "1"):
+            raise ValueError("AA_DRIVE_READ_ONLY must be 0 or 1")
+        review_docs = env.get("AA_REVIEW_DOCS", "0")
+        if review_docs not in ("0", "1"):
+            raise ValueError("AA_REVIEW_DOCS must be 0 or 1")
+        drive_id = env.get("AA_DRIVE_FOLDER_ID", "").strip()
+        drive = DriveFolderConfig(drive_id, env.get("AA_DRIVE_FOLDER_KIND", "shared-drive").strip()) if drive_id else None
         return cls(
             data_dir=Path(env.get("AA_DATA_DIR", "./data")),
             public_url=public_url,
             raw_url=raw_url,
             workspace=workspace,
             accounts=accounts == "1",
+            drive=drive,
+            drive_read_only=read_only == "1",
+            review_docs=review_docs == "1",
             ttl_seconds=int(float(env.get("AA_TTL_HOURS", "48")) * 3600),
             max_file_bytes=int(float(env.get("AA_MAX_FILE_MB", "25")) * MB),
             max_total_bytes=int(float(env.get("AA_MAX_TOTAL_MB", "2048")) * MB),

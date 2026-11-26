@@ -23,10 +23,11 @@ from urllib.parse import urlsplit
 
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
-from starlette.responses import RedirectResponse, Response
+from starlette.responses import HTMLResponse, RedirectResponse, Response
 
 from . import pages
 from .config import WorkspaceConfig
+from .drive_grants import DriveGrantStoreError, WorkspaceDriveGrants
 from .google_oidc import (
     CALLBACK_PATH, GoogleIdentity, GoogleOIDC, GoogleOIDCError, GoogleOIDCFailure,
 )
@@ -39,10 +40,14 @@ SESSION_COOKIE = "__Host-aa-workspace-session"
 LOGIN_TTL = 300
 SESSION_TTL = 8 * 60 * 60
 _RANDOM = re.compile(r"[A-Za-z0-9_-]{43}")
-_MAIN_RETURN = re.compile(rf"(?:/|/a/{ID_RE}(?:/(?:raw|download))?|/p/{ID_RE}|/join/{TOKEN_RE})")
+_MAIN_RETURN = re.compile(
+    rf"(?:/|/a/{ID_RE}(?:/versions/{ID_RE})?(?:/(?:raw|download))?|/p/{ID_RE}|/join/{TOKEN_RE})"
+)
 _RAW_RETURN = re.compile(rf"/a/{ID_RE}/raw")
 ACCOUNT_ENTRY_PATHS = frozenset(("/account", "/account/claim"))
 _AUTH_HEADERS = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
+_DRIVE_LOGIN = "wdrive."
+_DRIVE_RENEW = "wdrive-renew."
 
 
 def same_origin(value: str, configured: str) -> bool:
@@ -214,12 +219,16 @@ class WorkspaceAuth:
     """Endpoints and session lookup for exactly one configured origin."""
 
     def __init__(self, store: WorkspaceAuthStore, oidc: GoogleOIDC, *, origin: str,
-                 raw: bool = False, accounts: bool = False) -> None:
+                 raw: bool = False, accounts: bool = False,
+                 drive_grants: WorkspaceDriveGrants | None = None) -> None:
+        if raw and drive_grants is not None:
+            raise ValueError("the raw origin cannot request Drive grants")
         self.store = store
         self.oidc = oidc
         self.origin = origin
         self.raw = raw
         self.accounts = accounts and not raw
+        self.drive_grants = drive_grants
         self.callback_uri = origin + CALLBACK_PATH
         if self.callback_uri not in oidc.callbacks:
             raise ValueError("origin is not a configured OIDC callback origin")
@@ -250,29 +259,51 @@ class WorkspaceAuth:
         return pages.sign_in_page(self.store.hosted_domain, destination, title="Could not sign in",
                                   status=status, account_mode=self.accounts)
 
+    async def drive_access(self, request: Request) -> Response:
+        values = request.query_params.getlist("return")
+        if self.drive_grants is None or len(values) != 1 or not self._destination(values[0]):
+            return _response(404, "Not found")
+        if await self.identity(request) is None:
+            return pages.sign_in_page(self.store.hosted_domain, values[0], account_mode=self.accounts)
+        return self._drive_consent_page(values[0], 403, "Google Drive access needed")
+
+    def _drive_consent_page(self, destination: str, status: int, title: str) -> HTMLResponse:
+        return pages.sign_in_page(self.store.hosted_domain, destination, title=title, status=status,
+                                  account_mode=self.accounts, drive_consent=True)
+
     async def login(self, request: Request) -> Response:
         values = request.query_params.getlist("return")
         if len(values) != 1 or not self._destination(values[0]):
             return _response(400, "Invalid return path")
-        state, browser, nonce, verifier = _random(), _random(), _random(), _random()
+        consent = request.query_params.getlist("consent")
+        if consent and (consent != ["drive"] or self.drive_grants is None):
+            return _response(400, "Invalid authorization request")
+        renew = bool(consent)
+        if renew and await self.identity(request) is None:
+            return _response(401, "Sign in before renewing Google Drive access.")
+        prefix = _DRIVE_RENEW if renew else _DRIVE_LOGIN if self.drive_grants is not None else ""
+        state, browser, nonce, verifier = prefix + _random(), _random(), _random(), _random()
+        bound_state = state + "." + self.page_marker(request) if renew else state
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest())
-        await run_in_threadpool(self.store.begin, state, browser, self.origin, nonce, verifier,
-                                values[0])
+        await run_in_threadpool(self.store.begin, bound_state, browser, self.origin, nonce, verifier, values[0])
+        options = {"drive": True, "consent": renew} if self.drive_grants is not None else {}
         url = self.oidc.authorization_url(redirect_uri=self.callback_uri, state=state, nonce=nonce,
-                                          code_challenge=challenge.rstrip(b"=").decode("ascii"))
+                                          code_challenge=challenge.rstrip(b"=").decode("ascii"), **options)
         response = RedirectResponse(url, status_code=303, headers=_AUTH_HEADERS)
         _cookie(response, LOGIN_COOKIE, browser, LOGIN_TTL)
         return response
 
     async def callback(self, request: Request) -> Response:
         started = time.monotonic()
+        renew = False
 
         def fail(status: int, reason: LiteralString | GoogleOIDCFailure,
                  destination: str | None = None) -> Response:
             # Labels and timing only: never log request data or provider errors.
             log.warning("Workspace sign-in failed: %s (%d ms)", reason,
                         round((time.monotonic() - started) * 1000))
-            response = self._sign_in_failed(status, destination or "/")
+            response = (self._drive_consent_page(destination, status, "Could not authorize Google Drive")
+                        if renew and destination is not None else self._sign_in_failed(status, destination or "/"))
             if destination is not None:
                 _clear_cookie(response, LOGIN_COOKIE)
             return response
@@ -281,13 +312,22 @@ class WorkspaceAuth:
         errors = request.query_params.getlist("error")
         denied = len(errors) == 1 and not codes
         browser = request.cookies.get(LOGIN_COOKIE)
-        if len(states) != 1 or not _valid_token(states[0]):
+        if len(states) != 1:
+            return fail(400, "callback_state_invalid")
+        state = states[0]
+        renew = state.startswith(_DRIVE_RENEW)
+        prefix = _DRIVE_RENEW if renew else _DRIVE_LOGIN if state.startswith(_DRIVE_LOGIN) else ""
+        if not _valid_token(state[len(prefix):]) or bool(prefix) != (self.drive_grants is not None):
             return fail(400, "callback_state_invalid")
         if not _valid_token(browser):
             return fail(400, "callback_browser_cookie_missing_or_invalid")
         if not (denied or (not errors and len(codes) == 1 and 0 < len(codes[0]) <= 4096)):
             return fail(400, "callback_result_invalid")
-        attempt = await run_in_threadpool(self.store.consume, states[0], browser, self.origin)
+        current = await self.identity(request) if renew else None
+        if renew and current is None:
+            return fail(400, "drive_renew_session_missing")
+        bound_state = state + "." + self.page_marker(request) if renew else state
+        attempt = await run_in_threadpool(self.store.consume, bound_state, browser, self.origin)
         if attempt is None:
             return fail(400, "callback_attempt_not_found_or_expired")
         nonce, verifier, destination = attempt
@@ -297,13 +337,31 @@ class WorkspaceAuth:
             if errors[0] == "access_denied":
                 return fail(400, "google_access_denied", destination)
             return fail(400, "google_authorization_error", destination)
+        callback = {"code": codes[0], "redirect_uri": self.callback_uri,
+                    "code_verifier": verifier, "nonce": nonce}
         try:
-            identity = await run_in_threadpool(
-                self.oidc.exchange, code=codes[0], redirect_uri=self.callback_uri,
-                code_verifier=verifier, nonce=nonce,
-            )
+            if self.drive_grants is None:
+                identity = await run_in_threadpool(self.oidc.exchange, **callback)
+            else:
+                login = await run_in_threadpool(self.oidc.exchange_with_drive, **callback)
+                identity = login.identity
+                if current is not None and identity.subject != current.subject:
+                    return fail(403, "drive_renew_subject_changed", destination)
+                if login.refresh_token is not None:
+                    try:
+                        await run_in_threadpool(self.drive_grants.put, identity.subject, login.refresh_token)
+                    except DriveGrantStoreError:
+                        log.warning("Workspace Drive grant not saved: store unavailable")
+                        if renew:
+                            return fail(503, "drive_grant_store_unavailable", destination)
+                elif renew:
+                    return fail(403, "drive_renew_missing_grant", destination)
         except GoogleOIDCError as e:
             return fail(401, e.reason, destination)
+        if renew:
+            response = RedirectResponse(destination, status_code=303, headers=_AUTH_HEADERS)
+            _clear_cookie(response, LOGIN_COOKIE)
+            return response
         token = await run_in_threadpool(self.store.create_session, self.origin, identity)
         response = RedirectResponse(destination, status_code=303, headers=_AUTH_HEADERS)
         _clear_cookie(response, LOGIN_COOKIE)

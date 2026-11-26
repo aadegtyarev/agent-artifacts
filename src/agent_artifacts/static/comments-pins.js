@@ -348,7 +348,7 @@ const commentsPins = ({
   const raw = frame && frame.getAttribute("src");
   function toFragment() {
     const fragment = pageLinks.fragmentOf(location.hash);
-    if (fragment) frame.src = `${raw}#${fragment}`;
+    if (fragment) frame.src = `${frame.dataset.reviewRaw || raw}#${fragment}`;
   }
 
   // The script may have reported ready before this page listened; asked

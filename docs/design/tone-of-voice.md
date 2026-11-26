@@ -98,6 +98,8 @@ image", "“Send”", "on the page".
 | Item navigation | "‹ All", "2 of 7 · on the image"; "Others" over the rest |
 | Compose | "New draft", "New draft · about the whole file" |
 | Finish review | "Finish review · N", "Not decided yet · N", "In this review" |
+| Final Workspace round | "This is the final round", "The agent will write a summary, not make more changes.", "Close review" |
+| Closed Workspace review | "Review closed.", "The agent will write the summary.", "Read the summary" |
 | Dialogs | "Share", "Settings", "What should we call you?" |
 | Project page header | "3 files · kept until deleted" |
 | Project row's dot (title, `aria-label`) | "Needs you" (the file needs you) |

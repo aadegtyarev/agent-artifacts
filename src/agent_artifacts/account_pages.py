@@ -265,6 +265,9 @@ class AccountPages:
                                          **self._binding(request, principal))
         if result.status == "missing":
             return pages.message(404, "File or project not found.")
+        if result.status == "retained":
+            return await self._render_account(request, principal, status=409,
+                                              notice="Drive files cannot be deleted here yet.")
         if result.status in ("confirm", "changed"):
             return pages.account_page("account-delete-project.html", 409 if result.status == "changed" else 200,
                                       title="Delete project?", scope=result.scope,

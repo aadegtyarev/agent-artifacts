@@ -1,7 +1,15 @@
 {% extends "base.html" %}
 {% block body %}
 <main class="join{% if account_mode %} account-page{% endif %}">
-  {% if email %}
+  {% if drive_consent %}
+  <h1>{{ title }}</h1>
+  <p>Continue with your work account to allow access to Google Drive. Google asks for access to all Drive files available to that account. Agent Artifacts uses the configured folder.</p>
+  <form method="get" action="/auth/start">
+    <input type="hidden" name="return" value="{{ destination }}">
+    <input type="hidden" name="consent" value="drive">
+    <button type="submit" class="btn pri">Continue with Google</button>
+  </form>
+  {% elif email %}
   <h1>Signed in</h1>
   <p>You’re signed in as <strong>{{ email }}</strong>. Open a file or project link to get started.</p>
   <form method="post" action="/auth/logout?view=sign-in"><button type="submit"{% if account_mode %} class="btn"{% endif %}>Sign out</button></form>

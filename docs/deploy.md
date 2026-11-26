@@ -156,12 +156,30 @@ not understand pending deletion markers against a database that still has
 any: it would expose those files again. Back up `meta.sqlite` and `files/`
 together and use a build that still honors these markers for a rollback.
 
+### Storage mode at deployment
+
+- **Disk:** set `AA_ACCOUNTS=1` for one-time device pairing and leave Google,
+  Drive and Docs settings unset. File and project links open without sign-in.
+- **Google Workspace:** use the Workspace sign-in settings above and
+  `AA_ACCOUNTS=1`. Set `AA_DRIVE_FOLDER_ID` to the configured folder ID,
+  `AA_DRIVE_FOLDER_KIND` to `my-drive` or `shared-drive`, and `AA_REVIEW_DOCS=1`
+  for a native summary after explicit review closure. The supplied Compose
+  file passes those settings from `.env`. Keep `AA_DRIVE_READ_ONLY` unset or
+  `0` for normal writes.
+
+Workspace new uploads use each linked agent's Workspace grant. Browser
+views use the signed-in person's grant. The `drive` scope is not limited to
+one folder by Google; the app validates its configured destination. The
+setting does not move any existing disk files or change Google sharing.
+See [backups, write pause and recovery](plans/workspace-drive-release.md).
+
 ## 3. Block the container's outbound connections
 
 Optional, recommended in public mode. In public mode the app never connects
 anywhere, so a firewall rule can make sure a compromised container cannot either.
-Workspace sign-in needs outbound HTTPS to Google's token and certificate endpoints;
-do not use the blanket outbound block below for a Workspace deployment. Give the compose network a
+Workspace needs outbound HTTPS to Google's sign-in endpoints and, when
+configured, the Drive and Docs APIs. Do not use the blanket outbound block
+below for a Workspace deployment. Give the compose network a
 fixed bridge name in `compose.override.yaml` next to `compose.yaml`:
 
 ```yaml

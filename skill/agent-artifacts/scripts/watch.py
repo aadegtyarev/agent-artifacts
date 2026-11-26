@@ -266,6 +266,7 @@ def follow(key, deadline):
 def recover(client, key):
     """Find interrupted work without assigning it or acknowledging notices."""
     _, kind, target = key
+    closures = {}
     if kind == "a":
         candidates = [target]
     else:
@@ -283,6 +284,8 @@ def recover(client, key):
                 or count < 0
             ):
                 raise ValueError("invalid project file")
+            if (closure := cli._review_closure(row.get("review_closure"))) is not None:
+                closures[file_id] = closure
             if count:
                 candidates.append(file_id)
     files = []
@@ -290,13 +293,17 @@ def recover(client, key):
         if kind == "p":
             time.sleep(cli._PROJECT_DETAIL_DELAY)
         try:
-            rows = json.loads(client.send("GET", f"/api/v1/artifacts/{file_id}/comments"))
+            data = json.loads(client.send("GET", f"/api/v1/artifacts/{file_id}/comments?watch=1"))
         except urllib.error.HTTPError as e:
             if kind == "p" and e.code == 404:
+                closures.pop(file_id, None)
                 continue  # removed after the project listing
             raise
-        if not isinstance(rows, list):
-            raise ValueError("invalid comments")
+        rows, closure = cli._read_watch_comments(data)
+        if closure is not None:
+            closures[file_id] = closure
+        else:
+            closures.pop(file_id, None)
         working = []
         for row in rows:
             if not isinstance(row, dict) or type(n := row.get("n")) is not int or n < 1:
@@ -305,7 +312,10 @@ def recover(client, key):
                 working.append({"n": n})
         if working:
             files.append({"id": file_id, "comments": working})
-    return {"scope": {"kind": kind, "id": target}, "unfinished": files}
+    result = {"scope": {"kind": kind, "id": target}, "unfinished": files}
+    if closures:
+        result["pending_reports"] = [{"id": fid, "closure": closure} for fid, closure in closures.items()]
+    return result
 
 
 def main(argv=None):

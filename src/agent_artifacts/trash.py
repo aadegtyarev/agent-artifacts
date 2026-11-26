@@ -53,7 +53,7 @@ class Scope:
 
 @dataclass(frozen=True)
 class DeleteResult:
-    status: Literal["missing", "confirm", "changed", "deleted"]
+    status: Literal["missing", "retained", "confirm", "changed", "deleted"]
     scope: Scope | None = None
     deletion_id: str | None = None
 
@@ -108,6 +108,19 @@ class Trash:
             scope = self._scope(db, account_id, kind, target, now)
             if not scope:
                 return DeleteResult("missing")
+            # Drive-backed content must not enter hard-delete cleanup. An
+            # archive-aware close path is separate from this disk-only action.
+            if kind == "project":
+                retained = db.execute(
+                    "SELECT 1 FROM drive_refs d JOIN artifacts a ON a.id = d.artifact_id "
+                    "WHERE a.project = ? LIMIT 1", (target,),
+                ).fetchone()
+            else:
+                retained = db.execute(
+                    "SELECT 1 FROM drive_refs WHERE artifact_id = ?", (target,),
+                ).fetchone()
+            if retained:
+                return DeleteResult("retained")
             if kind == "project" and fingerprint != scope.fingerprint:
                 return DeleteResult("confirm" if fingerprint is None else "changed", scope)
             deletion_id = secrets.token_urlsafe(16)
@@ -171,12 +184,16 @@ class Trash:
 def collect_expired(db: sqlite3.Connection, now: float) -> list[str]:
     """Delete due metadata under the caller's write lock, returning byte IDs."""
     ids = [r[0] for r in db.execute(
-        "SELECT a.id FROM artifacts a WHERE EXISTS (SELECT 1 FROM account_deletions d "
+        "SELECT a.id FROM artifacts a WHERE "
+        "NOT EXISTS (SELECT 1 FROM drive_refs r WHERE r.artifact_id = a.id) AND ("
+        "EXISTS (SELECT 1 FROM account_deletions d "
         "WHERE d.deadline <= :now AND (d.artifact_id = a.id OR d.project_id = a.project)) "
         "OR (a.expires_at <= :now AND NOT EXISTS (SELECT 1 FROM account_deletions d "
-        "WHERE d.artifact_id = a.id OR d.project_id = a.project))", {"now": now},
+        "WHERE d.artifact_id = a.id OR d.project_id = a.project)))", {"now": now},
     )]
     db.execute("DELETE FROM projects WHERE id IN (SELECT project_id FROM account_deletions "
-               "WHERE project_id IS NOT NULL AND deadline <= ?)", (now,))
+               "WHERE project_id IS NOT NULL AND deadline <= ?) AND NOT EXISTS ("
+               "SELECT 1 FROM drive_refs d JOIN artifacts a ON a.id = d.artifact_id "
+               "WHERE a.project = projects.id)", (now,))
     db.executemany("DELETE FROM artifacts WHERE id = ?", [(id_,) for id_ in ids])
     return ids

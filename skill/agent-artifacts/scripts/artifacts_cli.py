@@ -38,7 +38,7 @@ from typing import NoReturn
 
 # The date of the last change to this script or the skill; bump it with
 # every such change. `version` prints it.
-VERSION = "2026-11-23"
+VERSION = "2026-11-26"
 
 USAGE = """usage: artifacts_cli.py <command> [args]
 
@@ -64,6 +64,9 @@ USAGE = """usage: artifacts_cli.py <command> [args]
   list                      your live files, with comments and open_comments counts
   delete ID                 delete one now
   comments ID               the comments on a file, oldest first
+  review-source ID            read the exact versions and published thread numbers of a closed review
+  review-evidence ID CLOSURE N read one published thread as it was at closure
+  review-finalize ID JSON_FILE write the one Workspace summary for that closure
   take ID                   take the comments waiting for you ("agent": "waiting"):
                             they become "working"; prints them
   comment ID TEXT [--anchor JSON]
@@ -74,8 +77,8 @@ USAGE = """usage: artifacts_cli.py <command> [args]
                             goes after TEXT or before ID
   wait ID [--once] [--every S] [--timeout S]
                             subscribe to a file or project (including new files)
-                            and flush one JSON line per waiting/accepted event;
-                            only IDs, comment numbers or counts, no comment text.
+                            and flush one JSON line per review_closed, waiting or
+                            accepted event (IDs, comment numbers or counts only).
                             Poll every S seconds (default 5, minimum 5).
                             Stop on gone, Ctrl+C, or --timeout (default 0: none).
                             --once: return the first event with the full legacy
@@ -314,15 +317,39 @@ def _watch(c: Client, path, every: float, timeout: float, check) -> dict:  # noq
         time.sleep(min(every, left))
 
 
+def _review_closure(value: object) -> str | None:
+    if value is not None and (not isinstance(value, str) or not ID_RE.fullmatch(value)):
+        raise ValueError("invalid review closure ID")
+    return value
+
+
+def _read_watch_comments(value: object) -> tuple[list[dict], str | None]:
+    closure = None
+    if isinstance(value, dict):
+        closure = _review_closure(value.get("review_closure"))
+        value = value.get("comments")
+    if not isinstance(value, list) or not all(isinstance(x, dict) for x in value):
+        raise ValueError("not a list of comments")
+    return value, closure
+
+
+def _closing_event(artifact: str, closure: str, *, project: str | None = None) -> dict:
+    event = {"event": "review_closed", "artifact": artifact, "closure": closure}
+    if project is not None:
+        event["project"] = project
+    return event
+
+
 def wait(c: Client, artifact_id: str, every: float, timeout: float) -> dict:
     """News on one file: comments waiting for the agent, comments resolved
     since the first poll, the file gone, or the time up."""
     before = None  # the comments resolved at the first poll do not count
 
-    def check(comments: object) -> dict | None:
+    def check(data: object) -> dict | None:
         nonlocal before
-        if not isinstance(comments, list) or not all(isinstance(x, dict) for x in comments):
-            raise ValueError("not a list of comments")
+        comments, closure = _read_watch_comments(data)
+        if closure is not None:
+            return _closing_event(artifact_id, closure)
         waiting = [x for x in comments if x.get("agent") == "waiting" and not x.get("resolved")]
         if waiting:
             return {"event": "waiting", "comments": waiting}
@@ -331,7 +358,7 @@ def wait(c: Client, artifact_id: str, every: float, timeout: float) -> dict:
         accepted = [x for x in comments if x.get("resolved") and x.get("n") not in before]
         return {"event": "accepted", "comments": accepted} if accepted else None
 
-    path = f"/api/v1/artifacts/{artifact_id}/comments"
+    path = f"/api/v1/artifacts/{artifact_id}/comments?watch=1"
     return _watch(c, lambda: path, every, timeout, check)
 
 
@@ -357,6 +384,13 @@ def wait_project(
             if not isinstance(now, (int, float)) or isinstance(now, bool):
                 raise ValueError("no time in the summary")
             since = float(now)
+        for row in files:
+            closure = _review_closure(row.get("review_closure"))
+            if closure is not None:
+                fid = row.get("id")
+                if not isinstance(fid, str) or not ID_RE.fullmatch(fid):
+                    raise ValueError("invalid artifact ID")
+                return _closing_event(fid, closure, project=project_id)
         for event in ("waiting", "accepted"):
             news = [
                 {"id": f.get("id"), "title": f.get("title"), event: f[event]}
@@ -375,11 +409,10 @@ def wait_project(
     return None if maybe_file and not seen and event["event"] == "gone" else event
 
 
-def _watch_file(c: Client, artifact_id: str) -> tuple[dict[int, int], set[int]]:
-    """Each waiting number and its reply count, and resolved numbers."""
-    rows = json.loads(c.send("GET", f"/api/v1/artifacts/{artifact_id}/comments"))
-    if not isinstance(rows, list):
-        raise ValueError("not a comments list")
+def _watch_file(c: Client, artifact_id: str) -> tuple[dict[int, int], set[int], str | None]:
+    """Waiting and resolved comments plus any pending closing publication."""
+    data = c.send("GET", f"/api/v1/artifacts/{artifact_id}/comments?watch=1")
+    rows, closure = _read_watch_comments(json.loads(data))
     waiting, resolved = {}, set()
     for row in rows:
         if not isinstance(row, dict) or type(row.get("n")) is not int:
@@ -392,7 +425,7 @@ def _watch_file(c: Client, artifact_id: str) -> tuple[dict[int, int], set[int]]:
             if not isinstance(replies, list):
                 raise ValueError("no reply list")
             waiting[n] = len(replies)
-    return waiting, resolved
+    return waiting, resolved, closure
 
 
 def _new_waiting(before: dict[int, int], now: dict[int, int]) -> list[int]:
@@ -414,6 +447,7 @@ class _Subscription:
         self.since: float | None = None
         self.accepted: dict[str, int] = {}
         self.next_detail: str | None = None
+        self.review_closures: dict[str, str] = {}
 
     def poll(self, deadline: float | None = None) -> list[dict]:
         self.detail_failure = None
@@ -431,15 +465,23 @@ class _Subscription:
                 self.kind = "p"
                 return data
         self.kind = "a"
-        waiting, resolved = _watch_file(self.client, self.target)
+        waiting, resolved, closure = _watch_file(self.client, self.target)
         news = _new_waiting(self.waiting.get(self.target, {}), waiting)
         closed = sorted(resolved - self.resolved) if self.resolved is not None else []
         self.waiting, self.resolved = {self.target: waiting}, resolved
-        return [
+        pending = {self.target: closure} if closure is not None else {}
+        return self.closing_updates(pending) + [
             {"event": event, "comments": [{"n": n} for n in numbers]}
             for event, numbers in (("waiting", news), ("accepted", closed))
             if numbers
         ]
+
+    def closing_updates(self, pending: dict[str, str]) -> list[dict]:
+        project = self.target if self.kind == "p" else None
+        events = [_closing_event(fid, closure, project=project) for fid, closure in pending.items()
+                  if self.review_closures.get(fid) != closure]
+        self.review_closures = pending
+        return events
 
     def project_updates(self, deadline: float | None) -> list[dict]:
         # Keep the first server timestamp as the baseline. Advancing to the
@@ -453,6 +495,7 @@ class _Subscription:
         if type(now) not in (int, float) or not math.isfinite(now):
             raise ValueError("no server clock")
         pending, accepted = [], self.accepted.copy()
+        closures = {}
         news = {"waiting": [], "accepted": []}
         for row in summary["files"]:
             if not isinstance(row, dict) or not isinstance(fid := row.get("id"), str):
@@ -463,6 +506,8 @@ class _Subscription:
                 raise ValueError("bad project file summary")
             if row["waiting"]:
                 pending.append(fid)
+            if (closure := _review_closure(row.get("review_closure"))) is not None:
+                closures[fid] = closure
             if self.since is not None:
                 additional = row["accepted"] - accepted.get(fid, 0)
                 if additional > 0:
@@ -476,7 +521,7 @@ class _Subscription:
             self.since = float(now)
         self.accepted = accepted
         news["waiting"] = self.project_waiting(pending, deadline)
-        return [
+        return self.closing_updates(closures) + [
             {"event": event, "project": self.target, "files": files}
             for event, files in news.items()
             if files
@@ -499,7 +544,7 @@ class _Subscription:
                 break
             time.sleep(_PROJECT_DETAIL_DELAY)
             try:
-                snapshot, _ = _watch_file(self.client, fid)
+                snapshot, _, _ = _watch_file(self.client, fid)
             except urllib.error.HTTPError as e:
                 if e.code == 404:
                     waiting.pop(fid, None)
@@ -695,6 +740,32 @@ def run(argv: list[str], *, emit: Callable[[dict], None] = event_line) -> str | 
         case "comments":
             need(1, "ID")
             return c.call("GET", f"{api}/{_id(args[0])}/comments")
+        case "review-source":
+            need(1, "ID")
+            return c.call("GET", f"{api}/{_id(args[0])}/review-report/source")
+        case "review-evidence":
+            need(3, "ID CLOSURE N")
+            artifact, closure, thread = _id(args[0]), args[1], _number(args[2])
+            if not ID_RE.fullmatch(closure):
+                raise Usage("expected the closure ID from review-source")
+            return c.call("GET", f"{api}/{artifact}/review-report/evidence/{thread}?closure_id={closure}")
+        case "review-finalize":
+            need(2, "ID JSON_FILE")
+            artifact = _id(args[0])
+            path = Path(args[1])
+            if not path.is_file():
+                raise Usage("choose a local review JSON file")
+            limit = 16 * 1024  # report routes use a bounded JSON body
+            try:
+                with path.open("rb") as f:
+                    body = f.read(limit + 1)
+            except OSError:
+                raise Usage("could not read the review JSON file") from None
+            if not 0 < len(body) <= limit:
+                raise Usage("review JSON must be between 1 and 16384 bytes")
+            # Send the original bytes: server rejects ambiguous JSON, and an
+            # unresolved operation must be retried with its original inputs.
+            return c.call("POST", f"{api}/{artifact}/review-report/finalize", body, "application/json")
         case "comment":
             anchor, tail = _option(args[2:], "--anchor")
             args = args[:2] + tail

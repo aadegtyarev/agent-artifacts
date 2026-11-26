@@ -12,7 +12,7 @@ from pathlib import Path
 
 import artifacts_cli as cli
 
-EVENTS = ("waiting", "accepted", "gone", "timeout")
+EVENTS = ("waiting", "accepted", "review_closed", "gone", "timeout")
 
 
 def intercom(*args: str) -> dict:
@@ -35,6 +35,10 @@ def notice(target: str, event: str, data: dict, *, terminal: bool) -> str:
     # IDs and event tags are the only server-derived data allowed in the notice.
     verb = "finished" if terminal else "received"
     message = f"Agent Artifacts watcher for `{target}` {verb}: `{event}`."
+    if event == "review_closed" and data.get("project", data.get("artifact")) == target:
+        artifact, closure = data.get("artifact"), data.get("closure")
+        if all(isinstance(value, str) and cli.ID_RE.fullmatch(value) for value in (artifact, closure)):
+            message += f" Artifact `{artifact}`, closure `{closure}`."
     files = data.get("files") if data.get("project") == target else None
     if isinstance(files, list):
         ids = list(
