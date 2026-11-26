@@ -32,8 +32,12 @@ def request_claim(client, key):
     return body["code"]
 
 
-def use_claim(client, code, follow=False):
-    return client.post("/account/claim", data={"code": code, "confirm": "1"}, headers=ORIGIN,
+def use_claim(client, code, follow=False, *, proof=None):
+    if proof is None:
+        preview = client.post("/account/claim", data={"code": code}, headers=ORIGIN | {"Accept": "application/json"})
+        assert preview.status_code == 200
+        proof = preview.json()["proof"]
+    return client.post("/account/claim", data={"code": code, "confirm": "1", "proof": proof}, headers=ORIGIN,
                        follow_redirects=follow)
 
 
@@ -57,10 +61,12 @@ def test_public_browser_claims_pairs_and_revokes_one_device(tmp_path):
         preview = owner.post("/account/claim", data={"code": code}, headers=ORIGIN)
         assert preview.status_code == 200 and "alice-agent" in preview.text
         assert 'name="confirm"' in preview.text and DEVICE_COOKIE not in owner.cookies
-        response = use_claim(owner, code)
-        assert response.status_code == 303 and response.headers["location"] == "/account"
+        proof = re.search(r'name="proof" value="([a-f0-9]{64})"', preview.text)[1]
+        assert owner.post("/account/claim", data={"code": code, "confirm": "1"}, headers=ORIGIN).status_code == 400
+        response = use_claim(owner, code, proof=proof)
+        assert response.status_code == 303 and response.headers["location"] == "/account?linked=1#account-agents"
         assert all(token in response.headers["set-cookie"].lower() for token in ("secure", "httponly", "samesite=lax"))
-        assert use_claim(receiver, code).status_code == 409
+        assert use_claim(receiver, code, proof=proof).status_code == 409
         assert owner.post("/api/v1/me/account-claim", headers={"Authorization": f"Bearer {key}"}).status_code == 409
         home = owner.get("/")
         assert home.url.path == "/account" and "Your account" in home.text
@@ -138,10 +144,38 @@ def test_browser_recovers_and_changes_only_the_requested_agent_key(tmp_path):
         assert recovered.url.path == "/account" and "Keep this file" in recovered.text
         assert owner.get("/account").url.path == "/"
         assert owner.post("/account/recover", data={"code": replacement}, headers=ORIGIN).status_code == 400
-        new = receiver.post("/account/agents/key", data={"name": "other-agent"}, headers=ORIGIN)
+        unintentional = receiver.post("/account/agents/key", data={"name": "other-agent", "purpose": "new"}, headers=ORIGIN)
+        assert unintentional.status_code == 409 and "AGENT_ARTIFACTS_KEY=" not in unintentional.text
+        new = receiver.post("/account/agents/key", data={"name": "other-agent", "purpose": "reissue"}, headers=ORIGIN)
         next_key = re.search(r'AGENT_ARTIFACTS_KEY=(aa_[\w-]+)', new.text)[1]
         assert receiver.get("/api/v1/me", headers={"Authorization": f"Bearer {next_key}"}).status_code == 200
         assert receiver.get("/api/v1/me", headers=headers).status_code == 401
+
+
+def test_prefilled_agent_name_can_only_issue_once(tmp_path):
+    store = Store(tmp_path, max_total_bytes=1_000_000)
+    key = store.add_agent("existing")
+    store.add_agent("Agent")
+    store.add_agent("Agent-2")
+    app = create_app(Config(tmp_path, BASE, accounts=True), store)
+    with TestClient(app, base_url=BASE) as owner:
+        assert use_claim(owner, request_claim(owner, key)).status_code == 303
+        dashboard = owner.get("/account")
+        assert re.search(r'id="agent-name"[^>]+value="Agent-3"', dashboard.text)
+        form = {"name": "Agent-3", "purpose": "new"}
+        headers = ORIGIN | {"Accept": "application/json"}
+        issued = owner.post("/account/agents/key", headers=headers, data=form)
+        assert issued.status_code == 201 and issued.headers["cache-control"] == "no-store"
+        assert issued.json()["name"] == "Agent-3"
+        setup = issued.json()["setup"]
+        assert re.search(r'AGENT_ARTIFACTS_KEY=aa_[A-Za-z0-9_-]{43}$', setup)
+        assert upload(owner, setup.split("AGENT_ARTIFACTS_KEY=")[1], "First upload")
+        replay = owner.post("/account/agents/key", headers=headers, data=form)
+        assert replay.status_code == 409 and "setup" not in replay.json()
+        assert store.agent_info("Agent-4") is None
+        after = owner.get("/account")
+        assert "First upload" in after.text and re.search(r'id="agent-name"[^>]+value="Agent-4"', after.text)
+        assert "AGENT_ARTIFACTS_KEY=" not in after.text
 
 
 def google_login(client, subject, dest):
@@ -172,12 +206,20 @@ def test_workspace_entry_uses_same_account_page_without_public_pairing(tmp_path,
         assert account.url.path == "/account" and "Your account" in account.text
         assert "Connect another device" not in account.text and "Account recovery" not in account.text
         assert "Company file" not in account.text
-        assert use_claim(owner, token, follow=True).status_code == 200
+        assert 'value="Agent"' in account.text and 'id="account-setup" open' in account.text
+        preview = owner.post("/account/claim", data={"code": token}, headers=ORIGIN | {"Accept": "application/json"})
+        assert preview.status_code == 200 and preview.headers["cache-control"] == "no-store"
+        assert set(preview.json()) == {"agent", "proof"} and token not in preview.text
+        google_login(outsider, "different-subject", "/account")
+        assert use_claim(outsider, token, proof=preview.json()["proof"]).status_code == 409
+        assert store.accounts.claim_name(token) == "old-agent"
+        wrong = owner.post("/account/claim", data={"code": key}, headers=ORIGIN | {"Accept": "application/json"})
+        assert wrong.status_code == 400 and key not in wrong.text and "proof" not in wrong.json()
+        assert use_claim(owner, token, follow=True, proof=preview.json()["proof"]).status_code == 200
         assert "Company file" in owner.get("/account").text
         assert owner.get(f"/a/{file}").status_code == 200
         assert DEVICE_COOKIE not in owner.cookies
         assert owner.post("/account/devices/connect", headers=ORIGIN).status_code == 404
-        google_login(outsider, "different-subject", "/account")
         assert "Company file" not in outsider.get("/account").text
         assert outsider.get(RAW + "/account").status_code == 404
         pattern = r'name="device" value="([\w-]+)"'

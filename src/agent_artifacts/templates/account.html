@@ -1,18 +1,22 @@
 {% extends "base.html" %}
 {% import "menu.html" as menu %}
+{% import "icons.html" as icon %}
 {% macro share(kind, id, title, origin) %}
   <button type="button" class="btn" data-share-link="{{ origin }}/{{ kind }}/{{ id }}" aria-haspopup="dialog" aria-label="Share {{ title }}">Share…</button>
 {% endmacro %}
-{% macro deletion(kind, id, title) %}
+{% macro deletion(kind, id, title, scope) %}
   <form method="post" action="/account/delete">
     <input type="hidden" name="kind" value="{{ kind }}">
     <input type="hidden" name="target" value="{{ id }}">
+    {% if scope %}<input type="hidden" name="scope" value="{{ scope }}">{% endif %}
     <button type="submit" class="btn" aria-label="Delete {{ title }}">Delete</button>
   </form>
 {% endmacro %}
-{% macro row_actions(kind, item, origin) %}
+{% macro row_actions(kind, item, origin, scope=none) %}
+  <button type="button" class="btn account-row-trigger" data-account-menu data-row-title="{{ item.title }}"
+      aria-label="Actions for {{ item.title }}" aria-haspopup="dialog" aria-controls="account-row-menu" aria-expanded="false" hidden>{{ icon.dots() }}</button>
   <div class="account-row-actions">
-    {{ share('p' if kind == 'project' else 'a', item.id, item.title, origin) }}{{ deletion(kind, item.id, item.title) }}
+    {{ share('p' if kind == 'project' else 'a', item.id, item.title, origin) }}{{ deletion(kind, item.id, item.title, scope) }}
   </div>
 {% endmacro %}
 {% block body %}
@@ -29,14 +33,18 @@
   </div>
 </aside>
 {% endif %}
-<main class="join account-page">
+{% set has_work = projects or standalone %}
+<main class="join account-page account-workspace{% if has_work %} account-has-work{% endif %}">
   <h1 tabindex="-1">Your account</h1>
-  {% if email %}<p>{{ email }}</p>{% endif %}
+  {% if email %}<p class="account-identity">{{ email }}</p>{% endif %}
   {% if notice %}<p role="status">{{ notice }}</p>{% endif %}
+  <div class="account-layout">
+  {% if has_work %}<div class="account-work">
   <section aria-labelledby="account-projects">
     <h2 id="account-projects">Projects</h2>
     {% for project, files in projects %}
-    <div class="account-row"><h3><a href="/p/{{ project.id }}">{{ project.title }}</a></h3>{{ row_actions('project', project, origin) }}</div>
+    <div class="account-row"><div class="account-row-main"><h3><a href="/p/{{ project.id }}" aria-describedby="account-count-{{ project.id }}">{{ project.title }}</a></h3>
+      <span class="meta" id="account-count-{{ project.id }}">{{ files|length }} {{ 'file' if files|length == 1 else 'files' }}</span></div>{{ row_actions('project', project, origin, project_scopes[project.id]) }}</div>
     {% if files %}<ul>{% for file in files %}<li><div class="account-row"><a href="/a/{{ file.id }}">{{ file.title }}</a>{{ row_actions('file', file, origin) }}</div></li>{% endfor %}</ul>
     {% else %}<p class="meta">No files yet</p>{% endif %}
     {% else %}<p class="meta">No projects yet</p>{% endfor %}
@@ -46,33 +54,10 @@
     {% if standalone %}<ul>{% for file in standalone %}<li><div class="account-row"><a href="/a/{{ file.id }}">{{ file.title }}</a>{{ row_actions('file', file, origin) }}</div></li>{% endfor %}</ul>
     {% else %}<p class="meta">No files yet</p>{% endif %}
   </section>
-  <section aria-labelledby="account-devices">
-    <h2 id="account-devices">Devices</h2>
-    {% if pairing %}
-    {% if code %}<p>Enter <strong class="account-code">{{ code }}</strong> on the other device. The code works once and expires in 5 minutes.</p>{% endif %}
-    <form method="post" action="/account/devices/connect"><button type="submit" class="btn pri">Connect another device</button></form>
-    {% endif %}
-    <ul class="account-devices">
-      {% for device in devices %}
-      <li>
-        <span>{% if device.current %}This device{% else %}Browser{% endif %}{% if device.since %}<span class="meta"> · Connected {{ device.since }}</span>{% endif %}</span>
-        <form method="post" action="/account/devices/sign-out">
-          <input type="hidden" name="device" value="{{ device.id }}">
-          <button type="submit" class="btn">{% if device.current %}Sign out{% else %}Sign out device{% endif %}</button>
-        </form>
-      </li>
-      {% endfor %}
-    </ul>
-    {% if pairing %}
-    <details class="account-details">
-      <summary>Account recovery</summary>
-      <p>Save a recovery code in case you lose access to every device. Creating a code replaces the previous one.</p>
-      <form method="post" action="/account/recovery/key"><button type="submit" class="btn">{% if has_recovery %}Replace recovery code{% else %}Get a recovery code{% endif %}</button></form>
-    </details>
-    {% endif %}
-  </section>
+  </div>{% endif %}
+  <div class="account-access">
   <section aria-labelledby="account-agents">
-    <h2 id="account-agents">Agent keys</h2>
+    <h2 id="account-agents" tabindex="-1">Agent keys</h2>
     {% if agents %}<ul class="account-agent-list">
       {% for agent in agents %}
       <li>
@@ -87,23 +72,27 @@
         <p class="meta">Key revoked</p>
         <form method="post" action="/account/agents/key">
           <input type="hidden" name="name" value="{{ agent.name }}">
+          <input type="hidden" name="purpose" value="reissue">
           <button type="submit" class="btn" aria-label="Issue new key for {{ agent.name }}">Issue new key</button>
         </form>
         {% endif %}
       </li>
       {% endfor %}
     </ul>{% else %}<p class="meta">No linked agents yet</p>{% endif %}
-    <details class="account-details">
-      <summary>Issue an agent key</summary>
-      <form method="post" action="/account/agents/key" class="account-form">
-        <label for="agent-name">Agent name</label>
-        <input id="agent-name" type="text" name="name" maxlength="64" autocomplete="off" spellcheck="false" required>
-        <button type="submit" class="btn pri">Issue key</button>
-      </form>
-    </details>
-    <p><a href="/account/claim">Link an agent</a></p>
+    {% include "account-setup-panel.html" %}
   </section>
+  {% include "account-devices-panel.html" %}
+  </div>
+  </div>
+  {% if not has_work %}<p class="meta account-empty-work">No files yet</p>{% endif %}
   <footer class="account-footer"><a href="https://github.com/aadegtyarev/agent-artifacts" rel="noreferrer">GitHub</a></footer>
 </main>
+<dialog id="account-row-menu" class="account-row-menu" aria-labelledby="account-row-menu-title">
+  <div class="account-menu-content">
+    <h2 id="account-row-menu-title"></h2>
+    <div id="account-row-menu-body"></div>
+    <button type="button" class="btn account-menu-cancel" data-account-menu-close>Cancel</button>
+  </div>
+</dialog>
 {{ menu.share_dialog('', company_only=email is not none) }}
 {% endblock %}

@@ -96,6 +96,12 @@
   // The toast sits under the dialog's scrim, so the dialog says it itself.
   const link = $("share-link");
   const note = $("share-note");
+  document.addEventListener("aa:share-link", (e) => {
+    const { url, from } = e.detail || {};
+    if (typeof url !== "string") return;
+    link.value = url;
+    open("share", from);
+  });
   document.addEventListener("click", (e) => {
     const button = e.target.closest?.("[data-share-link]");
     if (!button) return;

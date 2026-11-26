@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 import secrets
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from typing import Literal
@@ -51,6 +51,13 @@ class Scope:
     fingerprint: str
 
 
+def project_delete_scope(title: str, file_ids: Iterable[str]) -> Scope:
+    """Bind an account action to the exact project contents shown in its row."""
+    ids = sorted(file_ids)
+    stamp = hashlib.sha256(title.encode() + b"\0" + b"\0".join(id_.encode() for id_ in ids))
+    return Scope(title, len(ids), stamp.hexdigest())
+
+
 @dataclass(frozen=True)
 class DeleteResult:
     status: Literal["missing", "retained", "confirm", "changed", "deleted"]
@@ -84,11 +91,9 @@ class Trash:
             ).fetchone()
             if project is None:
                 return None
-            files = db.execute("SELECT id FROM visible_artifacts WHERE project = ? ORDER BY id", (target,)).fetchall()
-            # Hold consent to the set that the confirmation covered. A new
-            # file taking an old one's place is still a change of scope.
-            stamp = hashlib.sha256(project[0].encode() + b"\0" + b"\0".join(r[0].encode() for r in files))
-            return Scope(project[0], len(files), stamp.hexdigest())
+            files = db.execute("SELECT id FROM visible_artifacts WHERE project = ?", (target,))
+            # A new file taking an old one's place is still a change of scope.
+            return project_delete_scope(project[0], (row[0] for row in files))
         if kind != "file":
             return None
         file = db.execute(

@@ -1,0 +1,25 @@
+<section aria-labelledby="account-devices">
+  <h2 id="account-devices">Devices</h2>
+  {% if pairing %}
+  {% if code %}<p>Enter <strong class="account-code">{{ code }}</strong> on the other device. The code works once and expires in 5 minutes.</p>{% endif %}
+  <form method="post" action="/account/devices/connect"><button type="submit" class="btn pri">Connect another device</button></form>
+  {% endif %}
+  <ul class="account-devices">
+    {% for device in devices %}
+    <li>
+      <span class="account-device-main">{% if device.current %}This device{% else %}Browser{% endif %}{% if device.since %}<span class="meta">Connected {{ device.since }}</span>{% endif %}</span>
+      <form method="post" action="/account/devices/sign-out">
+        <input type="hidden" name="device" value="{{ device.id }}">
+        <button type="submit" class="btn">{% if device.current %}Sign out{% else %}Sign out device{% endif %}</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% if pairing %}
+  <details class="account-details">
+    <summary>Account recovery</summary>
+    <p>Save a recovery code in case you lose access to every device. Creating a code replaces the previous one.</p>
+    <form method="post" action="/account/recovery/key"><button type="submit" class="btn">{% if has_recovery %}Replace recovery code{% else %}Get a recovery code{% endif %}</button></form>
+  </details>
+  {% endif %}
+</section>

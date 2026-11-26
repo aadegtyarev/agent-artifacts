@@ -175,7 +175,9 @@ def test_account_ui_and_old_public_routes_observe_the_same_deletion(tmp_path):
     app = create_app(Config(tmp_path, base, raw_url=raw, accounts=True), store)
     with TestClient(app, base_url=base) as browser, TestClient(app, base_url=base) as public:
         code = browser.post("/api/v1/me/account-claim", headers=headers).json()["code"]
-        browser.post("/account/claim", headers=origin, data={"code": code, "confirm": "1"})
+        proof = browser.post("/account/claim", headers=origin | {"Accept": "application/json"},
+                             data={"code": code}).json()["proof"]
+        browser.post("/account/claim", headers=origin, data={"code": code, "confirm": "1", "proof": proof})
         params = {"kind": "file", "target": standalone.id}
         assert browser.post("/account/delete", data=params).status_code == 403
         assert public.get(f"/a/{standalone.id}").status_code == 200
@@ -195,13 +197,17 @@ def test_account_ui_and_old_public_routes_observe_the_same_deletion(tmp_path):
         assert "Restored." in restored.text and public.get(f"/a/{standalone.id}").status_code == 200
         assert browser.post("/account/undo", headers=origin, data={"deletion": deletion}).status_code == 404
         params = {"kind": "project", "target": project.id}
-        preview = browser.post("/account/delete", headers=origin, data=params)
-        fingerprint = re.search(r'name="scope" value="([a-f0-9]{64})"', preview.text)[1]
-        assert "1 file" in preview.text and public.get(f"/p/{project.id}").status_code == 200
-        put(store, name="new.md", project=project.id)
+        shown = browser.get("/account")
+        fingerprint = re.search(r'name="scope" value="([a-f0-9]{64})"', shown.text)[1]
+        missing_scope = browser.post("/account/delete", headers=origin, data=params)
+        assert missing_scope.status_code == 409 and "Delete project?" not in missing_scope.text
+        assert public.get(f"/p/{project.id}").status_code == 200
+        added = put(store, name="new.md", project=project.id)
         changed = browser.post("/account/delete", headers=origin, data=params | {"scope": fingerprint})
-        assert changed.status_code == 409 and "2 files" in changed.text
+        assert changed.status_code == 409 and "The project changed." in changed.text
+        assert f'/a/{added.id}' in changed.text and public.get(f"/p/{project.id}").status_code == 200
         safe = re.search(r'name="scope" value="([a-f0-9]{64})"', changed.text)[1]
+        assert safe != fingerprint and "Delete project?" not in changed.text
         hidden = browser.post("/account/delete", headers=origin, data=params | {"scope": safe})
         assert "Deleted 1 project, 2 files · Project with upload" in hidden.text
         deletion = re.search(r'name="deletion" value="([\w-]+)"', hidden.text)[1]

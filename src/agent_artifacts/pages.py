@@ -45,7 +45,7 @@ _env.globals["static"] = {
         "pin.css", "site.css", "theme.js", "copy.js",
         "pin-marks.js", "comments-model.js", "sheet-drag.js", "links.js", "zoom.js", "review-keys.js",
         "comments-pins.js", "comments.js", "float-tip.js", "viewer.js", "menu-dialogs.js",
-        "project.js", "local-dates.js", "account-notices.js",
+        "project.js", "local-dates.js", "account-notices.js", "account-dashboard.js", "account-setup.js",
     )
 }
 
@@ -207,7 +207,8 @@ def file_rows(files: list[Artifact], now: float) -> list[dict]:
 
 
 def account_page(template: str, status: int, **context: object) -> HTMLResponse:
-    response = _page(template, JOIN_CSP, status, **context)
+    csp = f"{JOIN_CSP}; connect-src 'self'" if context.get("account_setup") else JOIN_CSP
+    response = _page(template, csp, status, **context)
     # Same-origin forms send Origin on POST. No credential is in a page URL.
     response.headers["Referrer-Policy"] = "same-origin"
     return response
@@ -238,19 +239,20 @@ def invite_page(invite: Invite) -> HTMLResponse:
     )
 
 
+def key_setup(key: str, public_url: str) -> str:
+    return (f"Set up agent-artifacts for me: follow {SETUP_URL}\n"
+            f"AGENT_ARTIFACTS_URL={public_url}\nAGENT_ARTIFACTS_KEY={key}")
+
+
 def key_page(name: str, key: str, public_url: str, *, account_back: bool = False) -> HTMLResponse:
     """Reveal a new key once, as one text to paste into an agent."""
-    setup = (
-        f"Set up agent-artifacts for me: follow {SETUP_URL}\n"
-        f"AGENT_ARTIFACTS_URL={public_url}\nAGENT_ARTIFACTS_KEY={key}"
-    )
     return _page(
         "key.html",
         JOIN_CSP,
         title="Your key",
         copy=True,
         name=name,
-        setup=setup,
+        setup=key_setup(key, public_url),
         user_guide=USER_GUIDE_URL,
         account_back=account_back,
     )
