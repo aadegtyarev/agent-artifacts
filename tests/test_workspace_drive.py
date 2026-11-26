@@ -126,7 +126,7 @@ def start(client, *, destination="/account", raw=False, renew=False):
         expected.add(DRIVE_SCOPE)
     assert set(google["scope"][0].split()) == expected
     assert google.get("access_type") == (None if raw else ["offline"])
-    assert google.get("prompt") == (["consent"] if renew else None)
+    assert google.get("prompt") == (None if raw else ["consent"])
     assert google["code_challenge_method"] == ["S256"]
     return google["state"][0]
 
@@ -142,6 +142,20 @@ def login(client, who, **kwargs):
     assert response.status_code == 303
     assert response.headers["location"] == kwargs.get("destination", "/account")
     return state
+
+
+def test_normal_workspace_sign_in_gets_drive_without_a_second_consent_action(env):
+    client, _, _, _, grants, calls, _, _, _ = env
+    page = client.get("/account", follow_redirects=True)
+    assert page.status_code == 200 and "Sign in with Google" in page.text
+    assert 'action="/auth/start"' in page.text and 'name="consent"' not in page.text
+    assert grants.get("author") is None
+    login(client, "author")
+    assert grants.get("author") == REFRESH["author"]
+    after = calls["exchanges"].copy()
+    assert client.get("/account", follow_redirects=False).status_code == 200
+    assert client.get("/account", follow_redirects=False).status_code == 200
+    assert calls["exchanges"] == after  # the live app session needs no new Google flow
 
 
 def test_routes_use_each_actor_or_fail_closed(env):
