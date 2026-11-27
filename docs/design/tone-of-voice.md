@@ -57,7 +57,7 @@ dialog; "address" is the network address in the 429 error).
 | This person | you, your ("Your draft", "Your reply") | author key | me, my, user |
 | Personal options | Settings… | Preferences | Options |
 | Passing the link on | Share… | Export | Send |
-| Panel and placement | "Show comments" / "Hide comments" for the panel; "Add comment" (pressed during placement); "Commenting on" / "Commenting off" for the touch gesture | annotate mode, edit mode | |
+| Panel and placement | "Show comments" / "Hide comments" for the panel; "Add comment" to start placement, "Stop adding comments" to leave it; the menu's "Add comment" stays checked during placement; "Commenting on" / "Commenting off" for the touch gesture | annotate mode, edit mode | |
 | The comment's spot | spot ("Tap a spot", "spot not found") | pin point | anchor, element |
 | Time | "just now", "5 min ago", "2 h ago", "Nov 3", "Nov 3, 2025" | timestamps | seconds |
 

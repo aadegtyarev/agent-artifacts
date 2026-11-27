@@ -485,7 +485,9 @@
     toggle.title = expanded ? "Hide comments" : "Show comments";
     document.querySelector('[data-act="comments"]').setAttribute("aria-expanded", String(expanded));
     document.querySelector('[data-act="comment"]').setAttribute("aria-checked", String(S.mode));
-    addComment.setAttribute("aria-pressed", String(S.mode));
+    addLabel.textContent = S.mode ? "Stop adding comments" : "Add comment";
+    addKey.textContent = S.mode ? "Esc" : "C";
+    addComment.classList.toggle("stop-adding", S.mode);
     addComment.classList.toggle("pri", !S.mode && reviewCount() === 0);
     if (desktopComposeKeys()) fields.compose.setAttribute("aria-describedby", "compose-key-hint");
     else fields.compose.removeAttribute("aria-describedby");
@@ -521,7 +523,13 @@
       const link = sameMessage?.querySelectorAll("a")[keptLink];
       if (link?.href === active.href && link.textContent === active.textContent) link.focus({ preventScroll: true });
     }
-    if (keptAdd && addComment.isConnected) addComment.focus({ preventScroll: true });
+    if (keptAdd && !sheet.hidden) {
+      const target = addComment.isConnected ? addComment : body.querySelector(".nav .lbl, .head .ttl");
+      if (target) {
+        if (!target.matches("button")) target.tabIndex = -1;
+        target.focus({ preventScroll: true });
+      }
+    }
     if (keptSlot) foot.querySelector(`[data-review-slot="${keptSlot}"]`)?.focus({ preventScroll: true });
     if (keptRecipient !== null) [...foot.querySelectorAll('.towhom .opt')]
       .find((choice) => choice.agent === keptRecipient)?.focus({ preventScroll: true });
@@ -665,6 +673,7 @@
       next.setAttribute("aria-label", "Next");
       nav.append(prev, next);
       if (!desk.matches || !S.mode) nav.append(foldButton());
+      if (S.mode) nav.append(placementAction());
 
       const out = [nav, ...(it.draft ? [draftMsg(it)] : thread(it))];
       // Only full height includes the other items.
@@ -699,6 +708,7 @@
           dropCompose(false);
           go("list", "m");
         }));
+      if (S.mode) head.append(placementAction());
       const out = [head];
       if (!stored) out.push(el("p", "note", "This browser keeps nothing: your drafts last only while this page is open."));
       const pill = el("div", "pill");
@@ -1274,10 +1284,16 @@
 
   const coarsePointer = matchMedia("(pointer: coarse)");
   const desktopComposeKeys = () => desk.matches && !coarsePointer.matches;
-  const addComment = button("Add comment", () => setMode(!S.mode), "btn add-comment");
+  const addComment = button("", () => setMode(!S.mode), "btn add-comment");
+  const addLabel = el("span", null, "Add comment");
   const addKey = el("kbd", "fan-key desk-viewer", "C");
   addKey.setAttribute("aria-hidden", "true");
-  addComment.append(addKey);
+  addComment.append(addLabel, addKey);
+  function placementAction() {
+    const actions = el("div", "placement-actions");
+    actions.append(addComment);
+    return actions;
+  }
   toggle.addEventListener("click", () => setPanel(!panelOpen()));
   document.addEventListener("aa:comment-mode", (e) => setMode(e.detail?.start || !S.mode));
 

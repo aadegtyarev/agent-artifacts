@@ -192,7 +192,11 @@ On a phone every title line ends with the fold button (⌄).
 | finish | title "Finish review", open comments, drafts to publish, optional final note | Back, Finish review |
 
 **Add comment** sits next to the list title. It is primary if there are no
-drafts; while placing pins it has a blue inset outline and `aria-pressed`.
+drafts. During placement the same button says **Stop adding comments** and
+uses the plain sheet-button style; the keyboard hint changes from `C` to
+`Esc` on a computer with a fine pointer. It is also available in the title
+area of a selected comment or new draft while placing pins. The title and
+actions can wrap. Stopping leaves the input and the panel in place.
 With drafts, **Review drafts** is the primary action at the bottom right of
 the list or thread on both layouts. **Discard** in a new draft offers Undo.
 
@@ -215,7 +219,7 @@ list at middle height; drag: the sheet follows the finger.
 | N drafts | the person has drafts; **Finish review** (primary) at the right |
 | N in progress | sent to the agent and not answered, and no drafts |
 | N comments | none of the above |
-| Tap a spot to comment. / Click a spot to comment. | active placement on a folded narrow sheet, next to the pressed Add comment control instead of counts |
+| Tap a spot to comment. / Click a spot to comment. | active placement on a folded narrow sheet, next to Stop adding comments instead of counts |
 | No comments yet | no comments otherwise |
 | › | at the end on a phone when there is no Finish review |
 
