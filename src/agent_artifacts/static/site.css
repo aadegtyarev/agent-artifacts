@@ -172,7 +172,7 @@ html:has(> body > .stage.zooms) { touch-action: pan-x pan-y; }
 .sheet .btn.big { height: 36px; padding: 0 16px; }
 .sheet .btn:focus-visible, .modal .btn:focus-visible, .toast .btn:focus-visible, .account-page .btn:focus-visible,
 .sheet .send:focus-visible, .sheet .chev:focus-visible, .sheet .it:focus-visible,
-.sheet .sec-fold:focus-visible {
+.sheet .sec-fold:focus-visible, .comment-markdown a:focus-visible {
   outline: 2px solid var(--blue); outline-offset: 2px; }
 
 /* Titles and the list: a row is a pin, the text on one line, its state. */
@@ -230,6 +230,13 @@ html:has(> body > .stage.zooms) { touch-action: pan-x pan-y; }
 .msg.unsent .btn:not(.pri):active { background: var(--surface-2); }
 .msg .bd { flex: 1; min-width: 0; font-size: 16px; line-height: 1.32; overflow-wrap: anywhere; }
 .msg .text { white-space: pre-wrap; }
+.comment-markdown :is(p, ul, ol, blockquote, pre, hr) { margin: 0; }
+.comment-markdown > :not(:first-child) { margin-block-start: 0.42em; }
+.comment-markdown :is(ul, ol) { padding-inline-start: 1.35em; }
+.comment-markdown blockquote { border-inline-start: 2px solid var(--hair); padding-inline-start: 0.6em; }
+.comment-markdown pre { padding: 0.4em 0.6em; background: var(--surface); border-radius: 6px; white-space: inherit; }
+.comment-markdown hr { border: 0; border-block-start: 1px solid var(--hair); }
+.comment-markdown a { color: var(--blue); text-decoration: underline; }
 .msg .who { font-size: 14px; font-weight: 600; }
 .msg .when { margin-left: 5px; color: var(--muted); font-size: 13px; font-weight: 400; }
 .msg .acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }

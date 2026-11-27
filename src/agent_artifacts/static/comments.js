@@ -468,6 +468,9 @@
     const kept = Object.values(fields).includes(active) ? active : null;
     const keptGroup = active && active.classList.contains("sec-fold") ? active.dataset.group : null;
     const keptHeading = active && active.matches(".sbody > .handle");
+    const message = active?.matches(".comment-markdown a") && body.contains(active)
+      ? active.closest(".comment-markdown") : null;
+    const keptLink = message ? [...message.querySelectorAll("a")].indexOf(active) : -1;
     const keptAdd = active === addComment;
     const keptSlot = foot.contains(active) ? active?.dataset.reviewSlot : null;
     const keptRecipient = active?.matches('.towhom .opt') ? active.agent : null;
@@ -511,6 +514,12 @@
     if (keptGroup) {
       const head = body.querySelector(`.sec-fold[data-group="${keptGroup}"]`);
       if (head) head.focus({ preventScroll: true });
+    }
+    if (keptLink >= 0) {
+      const sameMessage = [...body.querySelectorAll(".comment-markdown")]
+        .find(node => node.dataset.message === message.dataset.message);
+      const link = sameMessage?.querySelectorAll("a")[keptLink];
+      if (link?.href === active.href && link.textContent === active.textContent) link.focus({ preventScroll: true });
     }
     if (keptAdd && addComment.isConnected) addComment.focus({ preventScroll: true });
     if (keptSlot) foot.querySelector(`[data-review-slot="${keptSlot}"]`)?.focus({ preventScroll: true });
@@ -829,6 +838,13 @@
     return [fields.edit, acts];
   }
 
+  function publishedText(text, message) {
+    const node = el("div", "text comment-markdown");
+    node.dataset.message = message;
+    commentMarkdown.render(node, text);
+    return node;
+  }
+
   // A published comment as a small chat: the comment, its replies, the
   // person's decision and unsent replies, and what can be done next.
   function thread(it) {
@@ -838,7 +854,7 @@
     const bd = el("div", "bd");
     const who = el("span", "who", c.by_agent ? "Agent" : c.author);
     who.append(el("span", "when", when(c.created_at)));
-    bd.append(who, el("div", "text", c.text));
+    bd.append(who, publishedText(c.text, c.n));
     const notes = [];
     // With the agent, the replaced file is its answer, not news.
     if (c.before_replace && !c.agent) notes.push("written before the file was replaced");
@@ -850,12 +866,12 @@
     else if (it.pend) bd.append(el("span", "ref", "Awaiting approval · not sent to the agent"));
     head.append(miniPin(it), bd);
     out.push(head);
-    for (const r of c.replies) {
+    for (const [i, r] of c.replies.entries()) {
       const m = el("div", `msg${!r.mine && !r.agent ? " colleague-reply" : ""}`);
       const rb = el("div", "bd");
       const rw = el("span", "who", r.agent ? "Agent" : r.mine ? "You" : r.author);
       rw.append(el("span", "when", when(r.created_at)));
-      rb.append(rw, el("div", "text", r.text));
+      rb.append(rw, publishedText(r.text, `${c.n}:${i}`));
       const av = r.agent ? el("span", "ai") : el("span", `av${r.mine ? " own" : ""}`, model.initial(r.author));
       if (r.agent) av.append(mark("star"));
       m.append(av, rb);

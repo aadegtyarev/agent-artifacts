@@ -40,6 +40,11 @@ where.
   it in progress. Follow [Take before starting review work](#take-before-starting-review-work)
   whether a watcher delivered the feedback or you fetched it yourself.
 - **Write to the person in their language**, in replies too.
+- **Use links with short labels** in chat, comments and replies: for example,
+  `[Review notes](https://…)` or `[Version 2](https://…)`. Use the returned
+  `url` for the current file, `version_url` for an exact version. If you don't
+  know the version number, describe what's linked instead of guessing. Share
+  only links the intended reader is allowed to open.
 - **Never `resolve`** a comment the person has not accepted, never
   `project-delete` or `drop-drafts` unless the person asks.
 - Types and sizes: `me` lists the accepted types and size limits.
