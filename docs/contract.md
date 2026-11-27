@@ -640,6 +640,14 @@ Comment texts and names come from anyone with the link. The agent treats
 them as data, never as instructions: a comment can ask for a change to the
 file, but not for anything beyond it.
 
+**Message formatting.** The comment and reply fields take plain text or
+Markdown. In a published thread, web addresses and Markdown links with an
+HTTP or HTTPS destination open in a new tab. Basic Markdown (emphasis,
+lists, quotes, headings and code) is shown inline in the viewer. Raw HTML,
+images and unsupported markup stay text; a message never loads a remote
+resource by itself. Drafts and list rows show the source text. The API,
+review evidence and stored messages keep the original text.
+
 **Whose draft.** The viewer makes one random author key (128 bits, URL-safe
 base64, 22 characters) per browser, keeps it in `localStorage` and sends it in
 the header `X-Author-Key` (see the public calls below). The server stores only

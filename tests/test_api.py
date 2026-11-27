@@ -853,6 +853,8 @@ def test_viewer_page_has_comments_on_every_type(env):
             r'<script src="/static/links\.js\?v=[0-9a-f]{12}"></script>\n'
             r'<script src="/static/zoom\.js\?v=[0-9a-f]{12}"></script>\n'
             r'<script src="/static/comments-pins\.js\?v=[0-9a-f]{12}"></script>\n'
+            r'<script src="/static/marked\.umd\.js\?v=[0-9a-f]{12}"></script>\n'
+            r'<script src="/static/comment-markdown\.js\?v=[0-9a-f]{12}"></script>\n'
             r'<script src="/static/comments\.js\?v=[0-9a-f]{12}"></script>',
             page.text,
         ), name
@@ -862,6 +864,8 @@ def test_viewer_page_has_comments_on_every_type(env):
     assert client.get("/static/comments-model.js").status_code == 200
     assert client.get("/static/sheet-drag.js").status_code == 200
     assert client.get("/static/comments-pins.js").status_code == 200
+    assert client.get("/static/marked.umd.js").status_code == 200
+    assert client.get("/static/comment-markdown.js").status_code == 200
     assert client.get("/static/links.js").status_code == 200
     pin_css = re.search(r'<link rel="stylesheet" href="(/static/pin\.css\?v=[0-9a-f]{12})">\n<link rel="stylesheet" href="/static/site\.css', page.text)
     assert pin_css and client.get(pin_css.group(1)).status_code == 200

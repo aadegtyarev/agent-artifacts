@@ -275,6 +275,12 @@ last).
 | Own draft | `--tint`, "Your draft" + time, text, Edit / Delete; editing: field, Save (primary), Cancel |
 | Reply field | pill field in the footer: "Reply to the agent…", "Add a reply…" or "Reply to {name}…"; not shown on a rejected comment or with an accept draft |
 
+Published comments and replies render basic Markdown in the item view.
+Links use the message's size and wrap with the text; underline them in
+`--blue`, reuse the sheet's focus outline and open them in a new tab to
+keep the discussion in place. List rows and unsubmitted drafts stay plain
+text; a row is a button, not a group of links. Keep the same compose field.
+
 An agent-authored proposal says "Awaiting approval" and offers only **✓ Accept**
 when it can be approved. Approval keeps the thread and its pin. It does not
 send work to the agent unless the same review sends a reply.
