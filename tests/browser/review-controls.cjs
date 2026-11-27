@@ -23,7 +23,8 @@ async function dismissTip(page) {
       await toggle.click();
       assert(await pane.isVisible()); assert(!(await placing(p)));
       assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
-      await p.keyboard.press('c'); assert.equal(await add.getAttribute('aria-pressed'), 'true');
+      await p.keyboard.press('c'); assert(await p.getByRole('button', { name: 'Stop adding comments', exact: true }).isVisible());
+      assert.equal(await p.locator('[data-act="comment"]').getAttribute('aria-checked'), 'true');
       await p.keyboard.press('c'); assert(await placing(p));
       await p.keyboard.press('Escape'); assert(await pane.isVisible()); assert(!(await placing(p)));
       await p.keyboard.press('Shift+c'); assert(!(await pane.isVisible()));
@@ -62,7 +63,7 @@ async function dismissTip(page) {
       await strip.tap(); assert(!(await placing(m)));
       await mAdd.tap(); assert(await placing(m));
       assert(await strip.getByText('Tap a spot to comment.', { exact: true }).isVisible());
-      await strip.getByRole('button', { name: 'Add comment', exact: true }).tap();
+      await strip.getByRole('button', { name: 'Stop adding comments', exact: true }).tap();
       assert(!(await placing(m))); assert(await mAdd.isVisible());
       await m.locator('#full-button').tap(); assert(!(await mPane.isVisible()));
       await dismissTip(m);

@@ -134,6 +134,9 @@ html:has(> body > .stage.zooms) { touch-action: pan-x pan-y; }
 .sbody > .ttl.handle { padding-bottom: 4px; }
 .sbody > .head { display: flex; align-items: center; gap: 4px; padding-bottom: 4px; }
 .sbody > .head .ttl { flex: 1; min-width: 0; margin: 0; }
+.handle:has(.add-comment.stop-adding) { flex-wrap: wrap; }
+.sbody > .head:has(> .add-comment.stop-adding) .ttl { flex-basis: 7em; }
+.placement-actions { display: flex; flex: 0 0 100%; justify-content: flex-end; padding: 2px 0; }
 .chev.fold { margin-right: -6px; }
 .nav .chev.fold { margin-left: 10px; }
 .sfoot { flex: none; padding: 6px 12px calc(8px + env(safe-area-inset-bottom)); }
@@ -459,9 +462,9 @@ body.account-dashboard { height: auto; min-height: var(--viewport-height); }
   .strip:has(.add-comment) { flex-wrap: wrap; justify-content: space-between; }
   .strip:has(.add-comment) .strip-text { flex: auto; }
 }
-.sheet .add-comment[aria-pressed="true"] { color: var(--blue); background: var(--surface);
-  box-shadow: inset 0 0 0 2px var(--blue); }
-.sheet .add-comment[aria-pressed="true"] .fan-key { display: none; }
+@media (pointer: coarse) {
+  .sheet .add-comment .fan-key { display: none; }
+}
 @media (min-width: 900px) {
   body.comments-folded .sheet { display: none; }
 }

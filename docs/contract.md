@@ -656,9 +656,10 @@ other key, nor the owner agent, sees or changes it. Without browser storage
 the key lives as long as the page, and the viewer says that drafts will not
 outlast it. The name the person gives is kept by the browser too.
 
-**Comment mode.** **Add comment** starts placement and stays pressed. A second
-press or Escape leaves placement without discarding input or closing the panel.
-Closing the panel also ends placement. At the first nonempty Finish review
+**Comment mode.** **Add comment** starts placement. The sheet's button becomes
+**Stop adding comments**; the menu's **Add comment** is checked. Stop adding
+comments or press Escape to leave placement without discarding or saving input,
+closing the panel or finishing a review. Closing the panel also ends placement. At the first nonempty Finish review
 submission, the viewer asks for a name once
 ("No name" leaves it `anonymous`). While comment mode is on, a tap
 on the content places a draft pin where a pin is possible (a link or a button
@@ -675,7 +676,7 @@ bottom sheet with three heights:
 
 | Height | Holds |
 | --- | --- |
-| strip | one line of words, no icons, its parts joined by " · " and zeros left out: "**N need you**" in bold (the agent's answers, `done`, `wrote` or `asked`, and colleagues' comments awaiting approval, without a decision or reply draft of the person's), "N drafts" (the comments the person's drafts add, decide or reply to) with **Finish review** at the right, and, without drafts, "N in progress" (`waiting` and `working`); with none of these, "N comments"; "›" at the end on a phone when there is no **Finish review**; while placing a pin the strip instead shows the placement hint and pressed **Add comment** |
+| strip | one line of words, no icons, its parts joined by " · " and zeros left out: "**N need you**" in bold (the agent's answers, `done`, `wrote` or `asked`, and colleagues' comments awaiting approval, without a decision or reply draft of the person's), "N drafts" (the comments the person's drafts add, decide or reply to) with **Finish review** at the right, and, without drafts, "N in progress" (`waiting` and `working`); with none of these, "N comments"; "›" at the end on a phone when there is no **Finish review**; while placing a pin the strip instead shows the placement hint and **Stop adding comments** |
 | middle | list, selected item, compose or Finish review, as tall as its content up to 60% of the visible viewport and the available stage; the body scrolls when capped |
 | full | the same view filling the stage; an item also shows Others below its thread |
 
