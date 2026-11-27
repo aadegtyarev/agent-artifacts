@@ -18,7 +18,7 @@
   <div class="fan-scrim"></div>
   <div id="fan-list" class="fan-list" role="menu" aria-label="Menu">
     <button type="button" role="menuitem" class="fan-item" data-act="exit" data-when="full"><span class="fan-label">Exit full screen</span><span class="fan-sq">{{ icon.shrink() }}</span></button>
-    {{- menu.tail() }}
+    {{- menu.tail(accounts) }}
   </div>
 </div>
 <button type="button" id="float-button" class="float-button" hidden aria-haspopup="menu" aria-controls="fan" aria-expanded="false" title="Menu" aria-label="Menu"><span class="float-hint">{{ icon.corners() }}</span>{{ icon.menu() }}{{ icon.close() }}</button>

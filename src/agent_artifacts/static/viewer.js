@@ -121,11 +121,10 @@
     const item = e.target.closest(".fan-item");
     if (!item) return;
     const act = item.dataset.act;
-    // Open separately is a link and goes on by itself; the project's file
-    // list (project.js) and the dialogs (menu-dialogs.js) take the focus
-    // themselves and give it back to the button the menu came from.
+    // Links navigate by themselves. Restore focus here when they open a
+    // new tab. The file list and dialogs manage their own return focus.
     const from = opener;
-    closeFan(["separate", "comments", "comment"].includes(act));
+    closeFan(item.matches("a") || ["comments", "comment"].includes(act));
     if (act === "exit") exitFull();
     else if (act === "enter") enterFull();
     else if (act === "files") {

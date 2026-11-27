@@ -378,6 +378,9 @@ The menu holds, top to bottom:
 
   It says "Saved in this browser."; **Done** closes it. Without storage
   the settings last as long as the page.
+- **Account**, when accounts are enabled: open `/account` in a new tab so the
+  file and unsent review text stay open. The account route uses its existing
+  sign-in or device connection flow if needed.
 
 A tap outside the menu or Escape closes it. Both dialogs take the focus when
 they open (`role="dialog"`, `aria-modal`), keep Tab inside, and give it back
@@ -461,7 +464,8 @@ viewer page and shows the type, the title, the size and when it was last
 updated ("2 h ago", then the date). An empty project says "No files yet". The
 header has the project's title, the number of files and "kept until
 deleted", **Full screen** and the "≡" menu with **Share…** (the project
-page's link to copy, no download) and **Settings…**, as in the viewer
+page's link to copy, no download), **Settings…**, and **Account** when
+accounts are enabled, as in the viewer
 (without comment mode); in full screen **Exit full screen** comes first, and a
 double tap on the floating button and its tip work as there. The page sends the
 same headers as the viewer page (`noindex`, `no-referrer`, its own CSP with

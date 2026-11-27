@@ -131,6 +131,8 @@ def viewer_page(
     workspace_marker: str | None = None,
     review_state: str | None = None,
     version_id: str | None = None,
+    *,
+    accounts: bool = False,
 ) -> HTMLResponse:
     """The page at /a/{id}: a one-line header and the content below.
 
@@ -145,6 +147,7 @@ def viewer_page(
         VIEWER_CSP,
         title=a.title,
         viewer=True,
+        accounts=accounts,
         workspace_author=workspace_author,
         workspace_marker=workspace_marker,
         separate=separate,
@@ -169,7 +172,7 @@ def viewer_page(
 
 
 def project_page(p: Project, files: list[Artifact], url: str, now: float,
-                 workspace_author: str | None = None) -> HTMLResponse:
+                 workspace_author: str | None = None, *, accounts: bool = False) -> HTMLResponse:
     """The page at /p/{id}: the project's files in its order, a heading
     before each section; the counters come from its script."""
     count = f"{len(files)} file" + ("" if len(files) == 1 else "s")
@@ -178,6 +181,7 @@ def project_page(p: Project, files: list[Artifact], url: str, now: float,
         PROJECT_CSP,
         title=p.title,
         project=p,
+        accounts=accounts,
         workspace_author=workspace_author,
         rows=file_rows(files, now),
         count=count,

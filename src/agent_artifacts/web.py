@@ -536,6 +536,7 @@ def create_app(
             workspace_marker=getattr(request.state, "workspace_marker", None),
             review_state=review_state,
             version_id=version_id,
+            accounts=config.accounts,
         )
 
     async def project_view(request: Request) -> Response:
@@ -545,7 +546,7 @@ def create_app(
             return pages.not_found()
         p, files = found
         return pages.project_page(p, files, f"{config.public_url}/p/{p.id}", store.clock(),
-                                  workspace_author=_workspace_author(request))
+                                  workspace_author=_workspace_author(request), accounts=config.accounts)
 
     def drive_failure(request: Request, exc: DriveError) -> Response:
         if delegated is not None and isinstance(exc, DriveGrantRequired):
