@@ -1,6 +1,7 @@
 import re
 from urllib.parse import parse_qs, urlencode, urlsplit
 
+import pytest
 from starlette.testclient import TestClient
 
 from agent_artifacts.account_pages import DEVICE_COOKIE
@@ -39,6 +40,29 @@ def use_claim(client, code, follow=False, *, proof=None):
         proof = preview.json()["proof"]
     return client.post("/account/claim", data={"code": code, "confirm": "1", "proof": proof}, headers=ORIGIN,
                        follow_redirects=follow)
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_account_menu_is_shared_by_viewer_and_project_when_enabled(tmp_path, enabled):
+    store = Store(tmp_path, max_total_bytes=1_000_000)
+    key = store.add_agent("preview-agent")
+    with TestClient(create_app(Config(tmp_path, BASE, accounts=enabled), store), base_url=BASE) as client:
+        project = client.post("/api/v1/projects", headers={"Authorization": f"Bearer {key}"},
+                              json={"title": "Review"}).json()["id"]
+        artifact = upload(client, key, "File", project)
+        for path in (f"/a/{artifact}", f"/p/{project}"):
+            page = client.get(path)
+            assert page.status_code == 200
+            link = re.findall(r'<a role="menuitem"[^>]+data-act="account"[^>]*>', page.text)
+            assert len(link) == int(enabled)
+            if enabled:
+                assert all(attr in link[0] for attr in ('href="/account"', 'target="_blank"',
+                                                       'rel="noopener noreferrer"'))
+                assert re.search(r'data-act="settings"[^\n]+</button>\s*<a[^>]+data-act="account"', page.text)
+        account = client.get("/account")
+        assert account.status_code == (200 if enabled else 404)
+        if enabled:
+            assert "To connect this device" in account.text
 
 
 def test_public_browser_claims_pairs_and_revokes_one_device(tmp_path):
@@ -198,6 +222,7 @@ def test_workspace_entry_uses_same_account_page_without_public_pairing(tmp_path,
         assert owner.get("/").status_code == 200
         assert 'name="return" value="/account"' in owner.get("/").text
         assert owner.get("/account/claim").url.path == "/auth/login"
+        assert owner.get("/account", follow_redirects=False).headers["location"] == "/auth/login?return=/account"
         assert owner.get(f"/a/{file}").url.path == "/auth/login"
         assert owner.get(f"/a/{file}/download").status_code == 401
         token = request_claim(owner, key)
@@ -217,7 +242,8 @@ def test_workspace_entry_uses_same_account_page_without_public_pairing(tmp_path,
         assert wrong.status_code == 400 and key not in wrong.text and "proof" not in wrong.json()
         assert use_claim(owner, token, follow=True, proof=preview.json()["proof"]).status_code == 200
         assert "Company file" in owner.get("/account").text
-        assert owner.get(f"/a/{file}").status_code == 200
+        viewer = owner.get(f"/a/{file}")
+        assert viewer.status_code == 200 and 'data-act="account" href="/account"' in viewer.text
         assert DEVICE_COOKIE not in owner.cookies
         assert owner.post("/account/devices/connect", headers=ORIGIN).status_code == 404
         assert "Company file" not in outsider.get("/account").text

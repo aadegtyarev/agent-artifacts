@@ -20,6 +20,7 @@ Sizes below are before Text scaling.
 | ![external](icons/external.svg) | `external` | icons.html | 20 | menu Open separately |
 | ![share](icons/share.svg) | `share` | icons.html | 20 | menu Share… |
 | ![settings](icons/settings.svg) | `settings` | icons.html | 20 | menu Settings… |
+| ![account](icons/account.svg) | `account` | icons.html | 20 | menu Account |
 | ![download](icons/download.svg) | `download` | icons.html | 18 | Share dialog: Download file |
 | ![check](icons/check.svg) | `check` | icons.html | 18 | key page: replaces "Copy" for a moment after copying |
 | ![chevron](icons/chevron.svg) | `chevron` | icons.html | 10, 10 × 10 grid, stroke 1.6 | after the project title in the header |

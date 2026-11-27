@@ -52,6 +52,10 @@ the project page keeps the fan.
 | 5 | Open separately | when the raw origin is set | same | — | — |
 | 6 | Share… | yes | yes | yes | yes |
 | 7 | Settings… | yes | yes | yes | yes |
+| 8 | Account | when accounts are enabled | same | same | same |
+
+**Account** opens the account page in a new tab. The original file or
+project stays open, including any text being typed in the comments panel.
 
 Show comments opens the panel without enabling placement. **Add comment**
 starts or stops placement and is checked while active. The desktop menu

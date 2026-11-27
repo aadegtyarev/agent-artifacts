@@ -4,9 +4,12 @@
     Project files is also available in both modes on a project file. #}
 {% import "icons.html" as icon %}
 
-{% macro tail() %}
+{% macro tail(accounts=False) %}
     <button type="button" role="menuitem" aria-haspopup="dialog" class="fan-item" data-act="share"><span class="fan-label">Share…</span><span class="fan-sq">{{ icon.share() }}</span></button>
     <button type="button" role="menuitem" aria-haspopup="dialog" class="fan-item" data-act="settings"><span class="fan-label">Settings…</span><span class="fan-sq">{{ icon.settings() }}</span></button>
+    {%- if accounts %}
+    <a role="menuitem" class="fan-item" data-act="account" href="/account" target="_blank" rel="noopener noreferrer" aria-description="Opens in a new tab"><span class="fan-label">Account</span><span class="fan-sq">{{ icon.account() }}</span></a>
+    {%- endif %}
 {%- endmacro %}
 
 {#- Shown beside the floating ≡ on entering full screen, three times at most

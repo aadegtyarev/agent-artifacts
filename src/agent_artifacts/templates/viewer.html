@@ -37,7 +37,7 @@
     {%- if separate %}
     <a role="menuitem" class="fan-item" href="{{ separate }}" target="_blank" rel="noopener" data-act="separate"><span class="fan-label">Open separately</span><span class="fan-sq">{{ icon.external() }}</span></a>
     {%- endif %}
-    {{- menu.tail() }}
+    {{- menu.tail(accounts) }}
   </div>
 </div>
 {#- Full screen: this button takes the header's place. Dragged, it snaps
