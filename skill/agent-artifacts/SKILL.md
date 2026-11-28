@@ -39,6 +39,8 @@ where.
 - **Take review work before starting it.** The agent, not the reviewer, marks
   it in progress. Follow [Take before starting review work](#take-before-starting-review-work)
   whether a watcher delivered the feedback or you fetched it yourself.
+- **Answer in the thread.** A work status or a summary in the Doc is not a
+  [reply to the person](#answer-in-the-thread).
 - **Write to the person in their language**, in replies too.
 - **Use links with short labels** in chat, comments and replies: for example,
   `[Review notes](https://…)` or `[Version 2](https://…)`. Use the returned
@@ -67,7 +69,7 @@ artifacts_cli.py review-finalize <id> <json-file>        # add the closing outco
 artifacts_cli.py comment <id> "Should this be blue?"    # owner proposal, whole file
 artifacts_cli.py comment <id> "Try this?" --anchor '{"type":"element","selector":"main > p","text":"Hi","x":0.5,"y":0.5,"width":1280}'
 artifacts_cli.py take <id>                              # required first step for waiting work on this file
-artifacts_cli.py reply <id> <n> "what was done"         # --wrote: done with a remark; --asked: not done
+artifacts_cli.py reply <id> <n> "answer for this thread" # --wrote: answer with a note; --asked: need an answer
 artifacts_cli.py wait <id>                              # subscribe in the background
 artifacts_cli.py wait <id> --once                       # one result, then exit
 artifacts_cli.py list                                   # your files; also: projects, me
@@ -245,9 +247,8 @@ file; `screen`/`hash` say which screen of a multi-screen page),
 `replies` (its chat) and `agent`:
 
 - `waiting` — requested work. Take it as described below before you start.
-  Then fix the file, `replace` and `reply` on each thread. Use a plain reply
-  for done, `--wrote` for done with a remark, or `--asked` when you need an
-  answer before continuing. Tell the person what changed and what is open.
+  Address the agreed changes and `replace` the file if revised. Answer each
+  thread; do not wait for a new version to give an answer you already have.
 - `working` — already taken. Resume your own unfinished work (or work handed
   off to you) after checking the thread, without another `take`.
 - anything else — context; act only when the person asks.
@@ -274,7 +275,28 @@ Do not take work just because a notice arrived or when asked only to read or
 summarize comments. **Only publish**, `review_notes` and `review_closed` are
 not edit requests; none calls for `take` without separate waiting work.
 
+### Answer in the thread
+
+Read the live `comments` before replying. For each thread in scope that
+needs an answer, use `reply` as soon as you can say what you decided, what
+changed, or what you still need to know. Distinguish a proposal from a fix.
+A verified `take` is not an answer. If there is no result or question yet,
+give a short progress update in the conversation and leave the work
+`working` rather than using `reply` just to change its status. Before
+ending the turn, check that the replies you posted are visible and say
+which threads still need an answer and why.
+
+Use a plain reply for completed work, `--wrote` for a substantive answer
+with a note, or `--asked` when the person's answer is needed to continue.
+None of these resolves the thread. Replying to an existing thread does not
+require reopening a closed review.
+
 ## Workspace review notes and outcomes
+
+`review-notes-update` and `review-finalize` write the Doc, not the threads.
+They do not replace requested replies. Use captured evidence for the Doc and
+live comments for replies; a notes or closure notice alone asks for neither
+edits nor replies.
 
 On `review_notes` (or `watch recover` → `pending_notes`), run
 `review-notes-source` for the owning artifact. It returns the oldest pending

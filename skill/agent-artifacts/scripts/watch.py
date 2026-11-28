@@ -109,7 +109,7 @@ def pi_active(state):
 
 
 def pi_follow(state, session):
-    from watch_pi import intercom
+    from watch_pi import intercom, reply_hint
     from watch_state import _event
 
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", session):
@@ -154,7 +154,8 @@ def pi_follow(state, session):
                     text = (
                         f"Agent Artifacts watch {state.kind}/{state.target} event {event_id}: "
                         f"{json.dumps(event, separators=(',', ':'))}. "
-                        "Delivery is not acknowledgment. Follow the agent-artifacts skill."
+                        "Delivery is not acknowledgment."
+                        f"{reply_hint(event['event'])} Follow the agent-artifacts skill."
                     )
                     result = intercom(
                         "send", "--to", session, "--name", "agent-artifacts", "--text", text
