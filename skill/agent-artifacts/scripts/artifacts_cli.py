@@ -38,7 +38,7 @@ from typing import NoReturn
 
 # The date of the last change to this script or the skill; bump it with
 # every such change. `version` prints it.
-VERSION = "2026-11-26"
+VERSION = "2026-11-28"
 
 USAGE = """usage: artifacts_cli.py <command> [args]
 
@@ -66,18 +66,19 @@ USAGE = """usage: artifacts_cli.py <command> [args]
   comments ID               the comments on a file, oldest first
   review-notes-source ID      read the next ordinary round awaiting notes
   review-notes-evidence ID SUBMISSION N read one captured thread from an ordinary round
-  review-notes-update ID JSON_FILE update the living Doc for that round
+  review-notes-update ID JSON_FILE update the living Doc; does not reply to threads
   review-source ID            read the exact versions and published thread numbers of a closed review
   review-evidence ID CLOSURE N read one published thread as it was at closure
-  review-finalize ID JSON_FILE write the one Workspace summary for that closure
-  take ID                   take the comments waiting for you ("agent": "waiting"):
-                            they become "working"; prints them
+  review-finalize ID JSON_FILE write the closing outcome in the Doc; does not reply to threads
+  take ID                   set all waiting threads to working; verify the
+                            returned thread numbers. Taking work is not a reply.
   comment ID TEXT [--anchor JSON]
   reply ID N TEXT [--wrote|--asked]
-                            answer in comment N's chat: done (default), done
-                            with a remark or question (--wrote), or not done
-                            until the person answers (--asked); the option
-                            goes after TEXT or before ID
+                            answer in thread N, even after review closure.
+                            Say what changed, what you propose, or what is open.
+                            Default: done; --wrote: answer with a note;
+                            --asked: need an answer to continue. Does not
+                            resolve the thread. Option goes after TEXT or before ID.
   wait ID [--once] [--every S] [--timeout S]
                             subscribe to a file or project (including new files)
                             and flush one JSON line per review_closed, waiting or

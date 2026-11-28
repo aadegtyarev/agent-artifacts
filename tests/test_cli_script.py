@@ -135,9 +135,18 @@ def test_setup_refuses_a_wrong_key(server):
     assert not (home / ".config" / "agent-artifacts" / "env").exists()
 
 
+def test_help_distinguishes_replies_from_claims_and_reports(tmp_path):
+    code, out, _ = cli(tmp_path, "--help")
+    assert code == 0
+    assert "Taking work is not a reply." in out
+    assert "answer in thread N, even after review closure" in out
+    for command in ("review-notes-update", "review-finalize"):
+        line = next(line for line in out.splitlines() if line.lstrip().startswith(command + " "))
+        assert "does not reply to threads" in line
+
+
 def test_help_admin_and_env_key(server):
     url, store, home = server
-    assert cli(home, "--help")[0] == 0
     code, out, _ = cli(home, "version")  # works without a key
     assert code == 0 and re.fullmatch(r"\d{4}-\d{2}-\d{2}\n", out)
     root = store.add_agent("root", admin=True)
